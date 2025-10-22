@@ -1,34 +1,43 @@
 # Base: Python 3.12 (Debian-based)
-FROM python:3.12-slim
+FROM python:3.12.11-slim-bookworm
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies
+# Install system dependencies (including build tools)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     autoconf \
     automake \
     libtool \
+    pkg-config \
     zlib1g-dev \
     curl \
     git \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Rust (latest stable)
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-# Install Jellyfish from source
-RUN git clone https://github.com/gmarcais/Jellyfish.git /tmp/jellyfish && \
-    cd /tmp/jellyfish && \
-    autoreconf -i && \
-    ./configure && \
-    make && make install && \
-    cd / && rm -rf /tmp/jellyfish
+# Install setuptools for Python 3.12 (needed for legacy distutils import)
+RUN pip install --no-cache-dir setuptools wheel
 
-# Install pipx and set up its path
-RUN pip install --no-cache-dir pipx && \
+# Download and install jellyfish
+RUN curl -L https://github.com/gmarcais/Jellyfish/releases/download/v2.2.6/jellyfish-2.2.6.tar.gz --output jellyfish-2.2.6.tar.gz
+RUN tar zxvf jellyfish-2.2.6.tar.gz && \
+    cd jellyfish-2.2.6 && \
+    ./configure PYTHON=$(which python3.12) --prefix=$VIRTUAL_ENV --enable-python-binding && \
+    make -j 4 && \
+    make install 
+
+# Clean up
+RUN rm -rf jellyfish-2.2.6 && \
+    rm -rf jellyfish-2.2.6.tar.gz
+
+# Install pipx and ensure path
+RUN pip install --no-cache-dir setuptools wheel pipx && \
     pipx ensurepath
 ENV PATH="/root/.local/bin:${PATH}"
 
@@ -36,7 +45,10 @@ ENV PATH="/root/.local/bin:${PATH}"
 RUN pipx install km-walk && \
     pipx install vcf2xlsx
 
-# Optional: verify installation
+# Install Rust-based tools via cargo
+RUN cargo install --git https://github.com/trentzz/multiseqex
+
+# Verify installations (non-fatal)
 RUN jellyfish --version && \
     rustc --version && \
     km --help && \
