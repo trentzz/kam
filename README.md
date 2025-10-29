@@ -4,6 +4,14 @@ This is a collection of tools written as part of a pipeline for Kmer based varia
 
 ## Docker
 
+### From dockerhub
+
+```bash
+docker pull trentzz/kam
+```
+
+### From repo
+
 Start by cloning this repo, then.
 
 ```bash
@@ -26,4 +34,14 @@ You should now have access to the tools below, as well as jellyfish and km.
 
 ## Workflow
 
-TODO
+You have a few options for using all the tools here and running a workflow:
+
+1. Simple bash script: [example-workflow.sh](./example-workflow.sh)
+2. Nextflow script: [example-workflow.nf](./example-workflow.nf)
+3. Manually running each tool individually. This is useful when using a custom workflow, debugging, rerunning certain sections, etc.
+
+### Bash Script
+
+### Nextflow
+
+### Manually

@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     ca-certificates \
+    openjdk-17-jdk \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Rust (latest stable)
@@ -43,15 +44,26 @@ ENV PATH="/root/.local/bin:${PATH}"
 
 # Install Python CLI tools with pipx
 RUN pipx install km-walk && \
-    pipx install vcf2xlsx
+    pipx install vcf2xlsx && \
+    pip install vcf2pandas && \
+    pipx install git+https://github.com/trentzz/kmtools
 
 # Install Rust-based tools via cargo
-RUN cargo install --git https://github.com/trentzz/multiseqex
+RUN cargo install --git https://github.com/trentzz/multiseqex && \
+    cargo install refolder
+
+# Install Nextflow
+RUN curl -s https://get.nextflow.io | bash && \
+    mv nextflow /usr/local/bin/ && \
+    chmod +x /usr/local/bin/nextflow
 
 # Verify installations (non-fatal)
 RUN jellyfish --version && \
     rustc --version && \
     km --help && \
+    multiseqex --help && \
+    refolder --help && \
+    kmtools --help && \
     vcf2xlsx --help || true
 
 # Default shell
