@@ -1,0 +1,11 @@
+[package]
+name = "kam-index"
+version = "0.1.0"
+edition = "2021"
+description = "Indexes k-mers with molecule-level evidence from consensus reads"
+
+[dependencies]
+kam-core = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+log = { workspace = true }

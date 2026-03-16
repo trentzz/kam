@@ -1,0 +1,15 @@
+[package]
+name = "kam-core"
+version = "0.1.0"
+edition = "2021"
+description = "Shared types and traits for the kam alignment-free variant detection pipeline"
+
+[dependencies]
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+bincode = { workspace = true }
+log = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

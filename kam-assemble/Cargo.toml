@@ -1,0 +1,12 @@
+[package]
+name = "kam-assemble"
+version = "0.1.0"
+edition = "2021"
+description = "Assembles molecules from raw FASTQ for Twist UMI duplex sequencing"
+
+[dependencies]
+kam-core = { workspace = true }
+needletail = "0.6"
+thiserror = { workspace = true }
+serde = { workspace = true }
+log = { workspace = true }

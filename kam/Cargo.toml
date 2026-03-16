@@ -1,0 +1,24 @@
+[package]
+name = "kam"
+version = "0.1.0"
+edition = "2021"
+description = "Alignment-free variant detection for duplex UMI sequencing"
+
+[[bin]]
+name = "kam"
+path = "src/main.rs"
+
+[dependencies]
+kam-core = { workspace = true }
+kam-assemble = { workspace = true }
+kam-index = { workspace = true }
+kam-pathfind = { workspace = true }
+kam-call = { workspace = true }
+log = { workspace = true }
+clap = { workspace = true }
+needletail = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
