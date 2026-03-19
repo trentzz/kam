@@ -88,6 +88,7 @@ pub enum VariantFilter {
 /// use kam_call::caller::CallerConfig;
 /// let cfg = CallerConfig::default();
 /// assert_eq!(cfg.min_alt_molecules, 2);
+/// assert_eq!(cfg.min_alt_duplex, 1);
 /// ```
 #[derive(Debug, Clone)]
 pub struct CallerConfig {
@@ -97,7 +98,12 @@ pub struct CallerConfig {
     pub strand_bias_threshold: f64,
     /// Minimum alt-supporting molecules required. Default: 2.
     pub min_alt_molecules: u32,
-    /// Minimum duplex alt molecules required. Default: 0.
+    /// Minimum duplex alt molecules required.
+    ///
+    /// Requiring at least one duplex molecule suppresses false positives from
+    /// background sequencing errors: a random error that generates 2+ simplex
+    /// molecules at the same position is unlikely to produce independent errors
+    /// on both strands, so it cannot form a duplex call.  Default: 1.
     pub min_alt_duplex: u32,
     /// Per-site background error rate used in the posterior. Default: 1e-4.
     pub background_error_rate: f64,
@@ -109,7 +115,7 @@ impl Default for CallerConfig {
             min_confidence: 0.99,
             strand_bias_threshold: 0.01,
             min_alt_molecules: 2,
-            min_alt_duplex: 0,
+            min_alt_duplex: 1,
             background_error_rate: 1e-4,
         }
     }
@@ -130,13 +136,13 @@ impl Default for CallerConfig {
 /// let ref_ev = PathEvidence {
 ///     min_molecules: 990, mean_molecules: 990.0,
 ///     min_duplex: 0, mean_duplex: 0.0,
-///     total_simplex_fwd: 495, total_simplex_rev: 495,
+///     min_simplex_fwd: 495, min_simplex_rev: 495,
 ///     mean_error_prob: 0.001,
 /// };
 /// let alt_ev = PathEvidence {
 ///     min_molecules: 10, mean_molecules: 10.0,
 ///     min_duplex: 5, mean_duplex: 5.0,
-///     total_simplex_fwd: 5, total_simplex_rev: 5,
+///     min_simplex_fwd: 5, min_simplex_rev: 5,
 ///     mean_error_prob: 0.001,
 /// };
 /// let call = call_variant("TP53", &ref_ev, &alt_ev, b"A", b"T", &CallerConfig::default());
@@ -156,17 +162,21 @@ pub fn call_variant(
     let (vaf, vaf_ci_low, vaf_ci_high) = estimate_vaf(k, total);
 
     let strand_bias_p = strand_bias_test(
-        alt_evidence.total_simplex_fwd,
-        alt_evidence.total_simplex_rev,
-        ref_evidence.total_simplex_fwd,
-        ref_evidence.total_simplex_rev,
+        alt_evidence.min_simplex_fwd,
+        alt_evidence.min_simplex_rev,
+        ref_evidence.min_simplex_fwd,
+        ref_evidence.min_simplex_rev,
     );
 
     let confidence = compute_confidence(k, total, config.background_error_rate);
 
     let variant_type = classify_variant(ref_seq, alt_seq);
 
-    let n_duplex_alt = alt_evidence.min_duplex;
+    // Use mean_duplex across all path k-mers rather than the minimum.
+    // The minimum is almost always 0: some k-mers at the path boundary lack
+    // coverage even for genuine variants.  The mean gives a calibrated
+    // per-k-mer duplex count.  Round to the nearest integer for the filter.
+    let n_duplex_alt = alt_evidence.mean_duplex.round() as u32;
     let n_simplex_alt = k.saturating_sub(n_duplex_alt);
 
     let filter = assign_filter(confidence, strand_bias_p, k, n_duplex_alt, config);
@@ -419,8 +429,8 @@ mod tests {
             mean_molecules: min_molecules as f32,
             min_duplex,
             mean_duplex: min_duplex as f32,
-            total_simplex_fwd: fwd,
-            total_simplex_rev: rev,
+            min_simplex_fwd: fwd,
+            min_simplex_rev: rev,
             mean_error_prob: 0.001,
         }
     }
@@ -500,8 +510,8 @@ mod tests {
             mean_molecules: 10.0,
             min_duplex: 5,
             mean_duplex: 5.0,
-            total_simplex_fwd: 10, // all forward
-            total_simplex_rev: 0,
+            min_simplex_fwd: 10, // all forward
+            min_simplex_rev: 0,
             mean_error_prob: 0.001,
         };
         let cfg = CallerConfig::default();
@@ -513,10 +523,22 @@ mod tests {
     #[test]
     fn call_variant_low_molecules_flagged() {
         // Only 1 alt molecule — below the default minimum of 2.
+        // The min_alt_molecules check fires before min_alt_duplex.
         let ref_ev = make_path_evidence(999, 0, 500, 499);
         let alt_ev = make_path_evidence(1, 0, 1, 0);
         let cfg = CallerConfig::default();
         let call = call_variant("TP53", &ref_ev, &alt_ev, b"A", b"T", &cfg);
         assert_eq!(call.filter, VariantFilter::LowConfidence);
+    }
+
+    // Test 11: call_variant with sufficient molecules but no duplex → LowDuplex filter.
+    #[test]
+    fn call_variant_no_duplex_flagged() {
+        // 10 alt molecules but 0 duplex — fails the default min_alt_duplex = 1.
+        let ref_ev = make_path_evidence(990, 0, 495, 495);
+        let alt_ev = make_path_evidence(10, 0, 5, 5); // min_duplex = 0
+        let cfg = CallerConfig::default();
+        let call = call_variant("TP53", &ref_ev, &alt_ev, b"A", b"T", &cfg);
+        assert_eq!(call.filter, VariantFilter::LowDuplex);
     }
 }

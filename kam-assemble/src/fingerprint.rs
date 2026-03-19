@@ -129,6 +129,45 @@ pub fn fingerprints_compatible(fp1: u64, fp2: u64) -> bool {
     (fp1 ^ fp2).count_ones() <= FINGERPRINT_MAX_DIFF
 }
 
+/// Check whether two fingerprints could come from a genuine duplex pair.
+///
+/// For a duplex pair sequenced from both strands of the same DNA molecule,
+/// the forward and reverse read fingerprints are related by a 32-bit rotation:
+///
+/// ```text
+/// fp_fwd = [enc(T[0:8]) | enc(T[-8:]) | enc(RC(T[-8:])) | enc(RC(T[0:8]))]
+/// fp_rev = rotate_left(fp_fwd, 32)
+/// ```
+///
+/// This happens because the forward read has `(template_r1 = T, template_r2 =
+/// RC(T))` while the reverse read has `(template_r1 = RC(T), template_r2 =
+/// T)`, swapping the upper and lower 32-bit halves of the fingerprint.
+///
+/// Without this check, genuine duplex pairs are split into separate fingerprint
+/// groups and never combined into a duplex molecule.
+///
+/// # Examples
+///
+/// ```
+/// use kam_assemble::fingerprint::{compute_endpoint_fingerprint, fingerprints_duplex_compatible};
+///
+/// let t = b"ACGTACGTTTTTTTTTACGT"; // forward template
+/// let rc_t = b"ACGTAAAAAAAAACGTACGT"; // approximate RC (for illustration)
+///
+/// let fp_fwd = compute_endpoint_fingerprint(t, rc_t);
+/// let fp_rev = compute_endpoint_fingerprint(rc_t, t);
+///
+/// // Direct compatibility fails for genuine duplex pairs.
+/// // Duplex-aware check succeeds.
+/// assert!(fingerprints_duplex_compatible(fp_fwd, fp_rev));
+/// ```
+pub fn fingerprints_duplex_compatible(fp1: u64, fp2: u64) -> bool {
+    // Direct: both reads on the same strand, or very similar templates.
+    fingerprints_compatible(fp1, fp2)
+        // Rotated: one read is fwd, the other is rev of the same molecule.
+        || fingerprints_compatible(fp1, fp2.rotate_left(32))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -221,7 +260,47 @@ mod tests {
     }
 
     // ---------------------------------------------------------------------------
-    // Test 6: Fingerprint is deterministic (same input always same output)
+    // Test 6: Genuine duplex pair fingerprints are rotation-compatible
+    // ---------------------------------------------------------------------------
+    // For a duplex pair, fp_fwd = [R1_first | R1_last | R2_first | R2_last]
+    // and fp_rev = [R2_first | R2_last | R1_first | R1_last] = rotate_left(fp_fwd, 32).
+    // Direct XOR has ~32 bits set (the two halves encode different sequences),
+    // so fingerprints_compatible returns false.  fingerprints_duplex_compatible
+    // must return true.
+    #[test]
+    fn test_duplex_pair_rotation_compatible() {
+        // Distinct fwd and rev templates (not all-same) so the two halves differ.
+        let t: &[u8] = b"ACGTACGTAGCTAGCTAGCT"; // forward template
+        let rc_t: &[u8] = b"TTTTTTTTGGGGGGGGCCCC"; // reverse template (distinct)
+
+        let fp_fwd = compute_endpoint_fingerprint(t, rc_t);
+        let fp_rev = compute_endpoint_fingerprint(rc_t, t);
+
+        // Verify the rotation relationship holds exactly.
+        assert_eq!(
+            fp_rev,
+            fp_fwd.rotate_left(32),
+            "fp_rev must equal rotate_left(fp_fwd, 32)"
+        );
+
+        // Direct compatibility should fail (the two halves differ).
+        assert!(
+            !fingerprints_compatible(fp_fwd, fp_rev),
+            "direct fingerprint_compatible should be false for a genuine duplex pair"
+        );
+
+        // Duplex-aware check must succeed.
+        assert!(
+            fingerprints_duplex_compatible(fp_fwd, fp_rev),
+            "fingerprints_duplex_compatible must return true for a genuine duplex pair"
+        );
+
+        // Symmetry: swapping arguments should give the same result.
+        assert!(fingerprints_duplex_compatible(fp_rev, fp_fwd));
+    }
+
+    // ---------------------------------------------------------------------------
+    // Test 7: Fingerprint is deterministic (same input always same output)
     // ---------------------------------------------------------------------------
     #[test]
     fn test_fingerprint_deterministic() {

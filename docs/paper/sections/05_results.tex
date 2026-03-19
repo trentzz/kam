@@ -17,14 +17,13 @@ input mass: 5\,ng samples yield fewer PCR duplicates per molecule than 30\,ng
 samples, so the collapse ratio is lower. Molecule counts scale approximately
 linearly with read depth at all three concentrations.
 
-Duplex identification at 2M reads ranged from 2.9\% to 5.1\% of molecules,
-well above the near-zero rates observed at 200K reads in earlier evaluations.
-The improvement is a depth effect: duplex molecules require both strands of the
-same fragment to be sampled, so duplex yield grows roughly linearly with
-sequencing depth until the available fragments are saturated. The current
-duplex rates fall at the low end of the 5--15\% range expected for this
-chemistry; a known bug in the endpoint fingerprint orientation comparison
-(described in Section~\ref{sec:evaluation}) accounts for the remaining gap.
+Duplex identification at 2M reads ranged from 4.6\% to 15.5\% of molecules
+after fixing a duplex orientation comparison bug (Section~\ref{sec:evaluation}).
+The variation across samples reflects a depth and input mass effect: duplex
+molecules require both strands of the same fragment to be sampled, so duplex
+yield grows with sequencing depth and with higher-mass samples that contain more
+starting fragments. These rates are consistent with the 5--15\% range expected
+for this chemistry.
 
 % ── Variant detection ─────────────────────────────────────────────────────────
 \subsection{Variant detection}
@@ -34,7 +33,7 @@ titration series for each input concentration.
 At the lowest VAF levels (0.001\% and 0.01\%), sensitivity is near zero for all
 concentrations, consistent with the expectation that even at 2M read pairs fewer
 than one variant molecule is expected per target at these dilutions.
-Sensitivity rises from 0.1\% VAF and reaches 56\%--59\% at 2\% VAF.
+Sensitivity rises from 0.1\% VAF and reaches 52\%--61\% at 2\% VAF.
 
 \begin{figure}[t]
   \centering
@@ -46,19 +45,23 @@ Sensitivity rises from 0.1\% VAF and reaches 56\%--59\% at 2\% VAF.
   \label{fig:sensitivity}
 \end{figure}
 
-At 2\% VAF, the 15\,ng and 30\,ng samples achieve sensitivity of 59.2\% and
-57.9\%, respectively, with precision of 0.72 and 0.78.
-The 5\,ng sample achieves 55.5\% sensitivity with precision of 0.84.
+At 2\% VAF, the 15\,ng and 30\,ng samples achieve sensitivity of 61.3\% and
+59.7\%, respectively.
+The 5\,ng sample achieves 52.3\%.
 The difference between concentrations is most pronounced at 0.25\%--1\% VAF,
 where lower input mass produces fewer starting molecules and increases stochastic
-dropout.
+dropout. At 0.5\% VAF, 15\,ng and 30\,ng samples reach 41.6\% and 48.5\%
+sensitivity, respectively; 5\,ng drops to 18.7\%.
 
-Precision remains consistently high (above 0.55 wherever calls are made,
-Figure~\ref{fig:precision_recall}). False positives arise from two main
-sources: (1) k-mer path artefacts where alternative paths through the de Bruijn
-graph do not correspond to real variants, and (2) positions where the 100\,bp
-target window covers a germline polymorphism not present in the reference
-sequence used to build the allowlist.
+Precision varies with input mass and VAF (Figure~\ref{fig:precision_recall}).
+At 2\% VAF, precision is 0.77 for 5\,ng, 0.71 for 30\,ng, and 0.57 for 15\,ng.
+The 15\,ng samples have the highest duplex rates (up to 15.5\%) and the most
+calls; the additional calls relative to the truth set are consistent with real
+background biological variants in the cfDNA that are not part of the 375-variant
+spike-in panel. False positives from two further sources are present: k-mer path
+artefacts where alternative paths through the de Bruijn graph do not correspond
+to real variants, and positions where the 100\,bp target window covers a germline
+polymorphism not in the reference sequence used to build the allowlist.
 
 \begin{figure}[t]
   \centering
@@ -74,9 +77,9 @@ sequence used to build the allowlist.
 \subsection{SNV and indel sensitivity}
 
 Figure~\ref{fig:sensitivity_by_type} shows sensitivity broken down by variant
-type at 2M read pairs. At 2\% VAF, SNV sensitivity ranges from 75\% to 79\%
+type at 2M read pairs. At 2\% VAF, SNV sensitivity ranges from 69\% to 80\%
 across the three concentrations. Indel sensitivity is lower, ranging from 32\%
-to 36\%. The gap reflects a structural limitation: indels require a variant
+to 39\%. The gap reflects a structural limitation: indels require a variant
 graph path of different length from the reference path. Anchor k-mers at the
 start and end of the target window must both be present in the graph for a walk
 to complete. At lower sequencing depths, anchor k-mers may be missing for some

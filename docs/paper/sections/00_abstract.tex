@@ -15,13 +15,15 @@ indels.
 
 We evaluate kam on the Twist cfDNA Pan-Cancer Reference Standard v2 titration
 series (375 truth variants, 24 samples, 5--30\,ng input DNA, VAF 0\%--2\%).
-At 2M read pairs per sample, kam detects 56--59\% of truth variants at 2\%
-VAF with precision of 0.72--0.84, running end-to-end in under 35 seconds per
-sample on a single core. SNV sensitivity reaches 75--79\% at 2\% VAF; indel
-sensitivity is 32--36\%. Sensitivity is currently limited by one implementation
-issue: a duplex orientation comparison bug that suppresses full duplex
-identification. This has a known single-line fix. At corrected duplex signal
-and greater input depth, we project sensitivity extending to the 0.1--0.5\%
-VAF range.
+Two implementation bugs were identified and fixed during evaluation: a strand
+bias overcounting bug that inflated the Fisher exact test sample size
+approximately 70-fold, and a duplex orientation comparison bug that prevented
+genuine duplex pairs from being grouped correctly.
+With both fixes applied and 2M read pairs per sample, duplex identification
+rates are 4.6--15.5\% of molecules. kam detects 52--61\% of truth variants
+at 2\% VAF, running end-to-end in under 30 seconds per sample on a single
+core. SNV sensitivity reaches 69--80\% at 2\% VAF; indel sensitivity is
+32--39\%. Sensitivity extends to the 0.25--0.5\% VAF range at 15--30\,ng
+input, reaching 7--49\% across those concentrations.
 
 kam is implemented in Rust and is available as an open-source workspace.

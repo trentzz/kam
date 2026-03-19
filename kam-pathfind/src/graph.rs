@@ -1,6 +1,6 @@
 //! De Bruijn graph construction from a k-mer index.
 //!
-//! Nodes are canonical k-mers. Edges connect k-mers that overlap by k-1 bases.
+//! Nodes are raw (non-canonical) k-mers. Edges connect k-mers that overlap by k-1 bases.
 //! An edge A → B exists when the last k-1 bases of A equal the first k-1 bases of B.
 //!
 //! In 2-bit encoded form:
@@ -14,7 +14,7 @@ use kam_core::kmer::KmerIndex;
 
 /// A de Bruijn graph built from a k-mer index.
 ///
-/// Nodes are canonical k-mers encoded as `u64`. An edge A → B exists when
+/// Nodes are raw (non-canonical) k-mers encoded as `u64`. An edge A → B exists when
 /// `suffix(A, k-1) == prefix(B, k-1)` in 2-bit encoded form.
 ///
 /// Only successor adjacency is stored. Predecessor adjacency was removed

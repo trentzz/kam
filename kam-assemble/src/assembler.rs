@@ -24,7 +24,7 @@ use kam_core::molecule::{CanonicalUmiPair, ConsensusRead, FamilyType, Molecule, 
 
 use crate::clustering::cluster_umi_pairs;
 use crate::consensus::{single_strand_consensus, ConsensusConfig, DisagreementStrategy};
-use crate::fingerprint::{compute_endpoint_fingerprint, fingerprints_compatible};
+use crate::fingerprint::{compute_endpoint_fingerprint, fingerprints_duplex_compatible};
 use crate::parser::{ParseStats, ParsedReadPair};
 
 // ── Configuration ─────────────────────────────────────────────────────────────
@@ -226,7 +226,7 @@ fn split_by_fingerprint(indices: &[usize], read_pairs: &[ParsedReadPair]) -> Vec
 
         let found = groups
             .iter_mut()
-            .find(|(rep_fp, _)| fingerprints_compatible(*rep_fp, fp));
+            .find(|(rep_fp, _)| fingerprints_duplex_compatible(*rep_fp, fp));
 
         match found {
             Some((_, members)) => members.push(idx),
@@ -628,7 +628,82 @@ mod tests {
         assert_eq!(stats.n_singletons, 1);
     }
 
-    // ── Test 8: Empty input returns empty vec ─────────────────────────────────
+    // ── Test 8: Genuine duplex pair with rotated fingerprints → one molecule ──
+    // Before the rotation fix, forward and reverse reads from the same molecule
+    // would fail fingerprint compatibility and be split into two separate
+    // molecules, suppressing duplex calling.  The duplex-aware check must group
+    // them into a single duplex molecule.
+
+    #[test]
+    fn duplex_pair_with_rotated_fingerprints_forms_one_molecule() {
+        use kam_core::molecule::{CanonicalUmiPair, Strand};
+
+        // For a genuine duplex pair the forward read has
+        //   template_r1 = T,      template_r2 = RC(T)
+        // and the reverse read has
+        //   template_r1 = RC(T),  template_r2 = T.
+        //
+        // This gives fp_fwd and fp_rev = rotate_left(fp_fwd, 32), so direct
+        // fingerprint comparison fails (~32 bits differ).
+        //
+        // Use T = AAAAAAAAGGGGGGGG and RC(T) = CCCCCCCCTTTTTTTT to get clearly
+        // distinct templates whose fingerprint XOR has exactly 32 bits set.
+
+        let t: Vec<u8> = b"AAAAAAAAGGGGGGGG".to_vec();
+        let rc_t: Vec<u8> = b"CCCCCCCCTTTTTTTT".to_vec();
+
+        // UMIs: ACGTA < TGCAT → canonical = (ACGTA, TGCAT).
+        // Forward read: R1_UMI = umi_a = ACGTA → strand = Forward.
+        // Reverse read: R1_UMI = umi_b = TGCAT → strand = Reverse.
+        let canonical_umi = CanonicalUmiPair::new(*b"ACGTA", *b"TGCAT");
+        let qual = vec![b'I'; t.len()];
+
+        let fwd_pair = crate::parser::ParsedReadPair {
+            umi_r1: *b"ACGTA",
+            umi_r2: *b"TGCAT",
+            skip_r1: *b"TG",
+            skip_r2: *b"TG",
+            template_r1: t.clone(),
+            template_r2: rc_t.clone(),
+            qual_r1: qual.clone(),
+            qual_r2: qual.clone(),
+            umi_qual_r1: [b'I'; 5],
+            umi_qual_r2: [b'I'; 5],
+            canonical_umi: canonical_umi.clone(),
+            strand: Strand::Forward,
+        };
+
+        let rev_pair = crate::parser::ParsedReadPair {
+            umi_r1: *b"TGCAT",
+            umi_r2: *b"ACGTA",
+            skip_r1: *b"TG",
+            skip_r2: *b"TG",
+            template_r1: rc_t.clone(),
+            template_r2: t.clone(),
+            qual_r1: qual.clone(),
+            qual_r2: qual.clone(),
+            umi_qual_r1: [b'I'; 5],
+            umi_qual_r2: [b'I'; 5],
+            canonical_umi: canonical_umi.clone(),
+            strand: Strand::Reverse,
+        };
+
+        let (molecules, stats) =
+            assemble_molecules(vec![fwd_pair, rev_pair], &AssemblerConfig::default());
+
+        assert_eq!(
+            molecules.len(),
+            1,
+            "genuine duplex pair must be grouped into one molecule, not split"
+        );
+        assert_eq!(stats.n_duplex, 1, "should be classified as duplex");
+        assert_eq!(
+            stats.n_umi_collisions_detected, 0,
+            "no UMI collision should be reported for a genuine duplex pair"
+        );
+    }
+
+    // ── Test 9: Empty input returns empty vec ─────────────────────────────────
 
     #[test]
     fn empty_input_returns_empty() {

@@ -1,16 +1,6 @@
 \section{Future Work}
 \label{sec:future}
 
-One correctness fix remains before a full production evaluation is meaningful.
-
-\paragraph{Fix duplex orientation comparison.}
-The endpoint fingerprint comparison must canonicalise both fingerprints before
-the XOR Hamming distance test. The forward fingerprint should be compared
-against the reverse complement of the reverse fingerprint. This is a
-single-line change in \texttt{kam-assemble}. Once fixed, duplex rates should
-reach the 5--15\% range expected for this chemistry and depth, substantially
-improving both confidence scores and strand bias power.
-
 \paragraph{Replace O($n^2$) UMI grouping with hash partitioning.}
 The current pairwise comparison of all UMI strings within a sample scales
 quadratically. Partitioning reads by UMI prefix (first 3 bases gives
@@ -45,4 +35,4 @@ size, and a morning report summarising QC metrics across a run.
 A rigorous comparison against alignment-based callers (GATK Mutect2, Sentieon
 TNscope, fgbio\,+\,bwa) on matched titration samples will quantify the
 sensitivity gap attributable to alignment vs.\ the gap attributable to depth.
-This comparison is deferred until the duplex orientation fix is resolved.
+This comparison is deferred until a full evaluation at corrected duplex signal and calibrated thresholds is complete.

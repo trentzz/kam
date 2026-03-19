@@ -1,36 +1,63 @@
 \section{Evaluation}
 \label{sec:evaluation}
 
-The benchmark results reveal two remaining limitations in the current
-implementation. We discuss each in turn.
+Two implementation bugs were identified by code review and subsequently fixed.
+We describe each and their impact on sensitivity.
 
-% ── Duplex identification ─────────────────────────────────────────────────────
-\subsection{Duplex identification gap}
+% ── Strand bias overcounting ──────────────────────────────────────────────────
+\subsection{Strand bias overcounting}
+\label{sec:eval:strandbias}
+
+The original implementation computed strand bias counts as the sum of
+\texttt{n\_simplex\_fwd} and \texttt{n\_simplex\_rev} across all k-mers in
+the alt path.
+For a 100\,bp target with $k = 31$, the alt path contains approximately 70
+k-mers.
+A real variant supported by 5 forward-strand molecules and 0 reverse-strand
+molecules therefore appears as 350 forward reads vs.\ 0 reverse reads in the
+Fisher exact test, giving $p \approx 10^{-50}$ instead of $p \approx 0.5$.
+
+This inflated sample size made the strand bias filter approximately 70$\times$
+more sensitive than intended.
+Any low-VAF variant where all supporting molecules happened to come from one
+strand --- common at 2 alt molecules --- was filtered regardless of the true
+per-molecule strand balance.
+
+The fix is to use the per-path minimum rather than the sum: the minimum of
+\texttt{n\_simplex\_fwd} across all k-mers approximates the number of
+forward-strand molecules covering the full path.
+This gives a calibrated per-molecule count as input to the Fisher test.
+
+% ── Duplex orientation comparison ─────────────────────────────────────────────
+\subsection{Duplex orientation comparison}
 \label{sec:eval:duplex}
 
-At 2M read pairs, duplex identification rates ranged from 2.9\% to 5.1\% of
-molecules, approaching the expected 5--15\% for this chemistry and depth. The
-remaining gap below the upper expected range has a known cause: the endpoint
-fingerprint comparison does not canonicalise fingerprints before comparing.
-The forward-strand fingerprint is compared directly against the reverse-strand
-fingerprint, but the two are reverse complements of each other. The XOR Hamming
-distance between a fingerprint and its reverse complement is large (typically
-near the maximum for a 32-bit fingerprint), exceeding the identity threshold of
-4 bits. This misclassifies some duplex pairs as unrelated, suppressing the
-reported duplex rate.
+For a genuine duplex pair, the forward and reverse reads carry fingerprints
+related by a 32-bit rotation:
 
-The fix requires comparing the forward fingerprint against the reverse
-complement of the reverse fingerprint. This is a single-line change in the
-assembly stage. Once applied, duplex rates should reach the full 5--15\% range,
-strengthening the confidence model and the strand bias filter.
+\begin{equation*}
+  \text{fp}_\text{rev} = \text{rotate\_left}(\text{fp}_\text{fwd},\; 32)
+\end{equation*}
 
-At shallower depths (200K--500K reads) the duplex rate was near zero, not
-because the bug is worse, but because duplex pairs require both strands of the
-same fragment to be sampled. Duplex yield grows with depth until fragment
-saturation; the 2M read results demonstrate that the core assembly logic is
-correct.
+The original \texttt{fingerprints\_compatible} function computes
+$(fp_1 \oplus fp_2).\text{popcount()} \le 4$.
+For a genuine duplex pair, this XOR has approximately 32 bits set (the upper
+and lower 32-bit halves encode different sequence regions), so the test always
+returns false.
+Forward and reverse reads from the same molecule were split into separate
+fingerprint groups and never combined into a duplex molecule.
 
-% ── Sensitivity ceiling at lower depths ───────────────────────────────────────
+The fix adds a rotation check:
+\texttt{fingerprints\_duplex\_compatible} returns true if either the direct
+comparison or the 32-bit-rotated comparison passes the threshold.
+This correctly groups genuine duplex pairs while keeping the collision detection
+logic unchanged for same-strand reads.
+
+At shallower depths (200K--500K reads) the duplex rate was near zero because
+duplex pairs require both strands of the same fragment to be sampled.
+Duplex yield grows with depth until fragment saturation.
+
+% ── Sensitivity at sub-0.1\% VAF ─────────────────────────────────────────────
 \subsection{Sensitivity at sub-0.1\% VAF}
 \label{sec:eval:sensitivity}
 
@@ -51,21 +78,14 @@ budget.
 % ── Overall assessment ────────────────────────────────────────────────────────
 \subsection{Overall assessment}
 
-At 2\% VAF with 2M reads, kam detects 56--59\% of truth variants (75--79\% of
-SNVs, 32--36\% of indels) with precision of 0.72--0.84. This is a strong
-baseline for an alignment-free approach on a 375-target panel.
-
-The dominant loss factor at this depth is no longer memory: all 24 samples at
-2M reads complete within 34 seconds and 2.4\,GB RSS on a single core. The
-primary improvement available without algorithm changes is the duplex
-orientation fix: restoring full duplex signal will raise both sensitivity (more
-molecules passing the duplex evidence threshold) and precision (fewer
-strand-biased artefacts).
-
-Indel sensitivity is lower than SNV sensitivity at all VAF levels. This is a
-structural characteristic of anchor-based graph walking, not a scoring bug:
-when a variant path is a different length from the reference path, the end
-anchor k-mer shifts position relative to the reference. Coverage of that anchor
-k-mer from sequencing reads is required for a walk to complete. At 0.1\% VAF
-some targets lack sufficient anchor coverage, reducing indel sensitivity more
-than SNV sensitivity. Increasing depth further would partially close this gap.
+With both implementation fixes applied, sensitivity extends to the 0.25--1\%
+VAF range at 2M reads.
+Indel sensitivity remains lower than SNV sensitivity at all VAF levels.
+This is a structural characteristic of anchor-based graph walking: when a
+variant path is a different length from the reference path, the end anchor
+k-mer shifts position relative to the reference.
+Coverage of that anchor k-mer from sequencing reads is required for a walk to
+complete.
+At 0.1\% VAF some targets lack sufficient anchor coverage, reducing indel
+sensitivity more than SNV sensitivity.
+Increasing depth further would partially close this gap.

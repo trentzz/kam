@@ -143,8 +143,8 @@ fn record_to_path_evidence(rec: &ScoredPathRecord) -> kam_pathfind::score::PathE
         mean_molecules: rec.mean_molecules,
         min_duplex: rec.min_duplex,
         mean_duplex: rec.mean_duplex,
-        total_simplex_fwd: rec.total_simplex_fwd,
-        total_simplex_rev: rec.total_simplex_rev,
+        min_simplex_fwd: rec.min_simplex_fwd,
+        min_simplex_rev: rec.min_simplex_rev,
         mean_error_prob: rec.mean_error_prob,
     }
 }
@@ -202,8 +202,8 @@ mod tests {
             mean_molecules: n_molecules as f32,
             min_duplex: 0,
             mean_duplex: 0.0,
-            total_simplex_fwd: n_molecules / 2,
-            total_simplex_rev: n_molecules / 2,
+            min_simplex_fwd: n_molecules / 2,
+            min_simplex_rev: n_molecules / 2,
             mean_error_prob: 0.001,
         }
     }

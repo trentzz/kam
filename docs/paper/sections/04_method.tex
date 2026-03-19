@@ -285,7 +285,7 @@ The aggregate statistics are:
   \item $n_\text{min}$: minimum $n_\text{molecules}$ across all k-mers in the path.
   \item $\bar{n}$: mean $n_\text{molecules}$ across all k-mers in the path.
   \item $d_\text{min}$: minimum $n_\text{duplex}$ across all k-mers.
-  \item Total forward and reverse simplex molecule counts (summed across k-mers).
+  \item $s_\text{fwd}$, $s_\text{rev}$: minimum forward and reverse simplex molecule counts across all k-mers in the path.
 \end{itemize}
 
 The weakest k-mer (lowest $n_\text{molecules}$) identifies the bottleneck supporting the call.
@@ -293,22 +293,22 @@ The path whose reconstructed sequence matches the reference is marked as the ref
 
 \subsubsection{VAF Estimation}
 
-Let $k$ be the number of molecules supporting the alternate path (from $n_\text{min}$ of the alt path) and $M$ be the total molecules ($n_\text{min,ref} + n_\text{min,alt}$).
+Let $n_a$ be the number of molecules supporting the alternate path (from $n_\text{min}$ of the alt path) and $M$ be the total molecules ($n_\text{min,ref} + n_\text{min,alt}$).
 The point estimate of VAF is:
 
 \begin{equation}
   \label{eq:vaf}
-  \hat{f} = \frac{k}{M}
+  \hat{f} = \frac{n_a}{M}
 \end{equation}
 
 The 95\% credible interval uses the conjugate Beta posterior with a uniform prior $\text{Beta}(1, 1)$.
-Observing $k$ successes in $M$ trials yields posterior $\text{Beta}(k + 1, M - k + 1)$:
+Observing $n_a$ successes in $M$ trials yields posterior $\text{Beta}(n_a + 1, M - n_a + 1)$:
 
 \begin{equation}
   \label{eq:vaf-ci}
   \text{CI}_{95\%} = \bigl[q_{0.025}, \; q_{0.975}\bigr]
   \quad \text{where} \quad
-  q_\alpha = F^{-1}_{\text{Beta}(k+1, \, M-k+1)}(\alpha)
+  q_\alpha = F^{-1}_{\text{Beta}(n_a+1, \, M-n_a+1)}(\alpha)
 \end{equation}
 
 \noindent and $F^{-1}$ is the inverse CDF (quantile function) of the Beta distribution.
@@ -316,7 +316,8 @@ Observing $k$ successes in $M$ trials yields posterior $\text{Beta}(k + 1, M - k
 \subsubsection{Strand Bias}
 
 kam tests for strand bias using Fisher's exact test on a $2 \times 2$ contingency table.
-Let $a$, $b$ be the number of forward and reverse simplex molecules supporting the alternate allele, and $c$, $d$ be the corresponding counts for the reference allele:
+Let $a = s_\text{fwd,alt}$, $b = s_\text{rev,alt}$ be the minimum forward and reverse simplex molecule counts for the alternate path, and $c = s_\text{fwd,ref}$, $d = s_\text{rev,ref}$ the corresponding counts for the reference path.
+These are per-molecule counts (the path minimum across k-mers), not per-k-mer sums:
 
 \begin{equation}
   \label{eq:strand-bias-table}
@@ -340,7 +341,7 @@ Under equal priors, the posterior is:
   P(\text{signal} \mid \text{data}) = \frac{L(\hat{f})}{L(\hat{f}) + L(\varepsilon)}
 \end{equation}
 
-\noindent where $L(p) = p^k (1 - p)^{M - k}$ is the binomial likelihood and $\varepsilon$ is the per-site background error rate (default: $10^{-4}$).
+\noindent where $L(p) = p^{n_a} (1 - p)^{M - n_a}$ is the binomial likelihood and $\varepsilon$ is the per-site background error rate (default: $10^{-4}$).
 Variants require a posterior probability $\ge 0.99$ to pass the confidence filter.
 
 \subsubsection{Variant Classification}
@@ -358,8 +359,12 @@ Let $|R|$ and $|A|$ denote their lengths:
 \subsubsection{Filter Assignment}
 
 Each variant receives one of five filter labels.
-A variant passes all filters when: the posterior confidence $\ge 0.99$, the strand bias p-value $\ge 0.01$, the alt molecule count $\ge 2$ (configurable), and the duplex alt molecule count meets the minimum threshold (default: 0).
-Variants failing any criterion are labelled with the corresponding filter (\texttt{LowConfidence}, \texttt{StrandBias}, \texttt{LowDuplex}, or \texttt{CollisionRisk}).
+A variant passes all filters when: the alt molecule count $n_a \ge 2$ (configurable), the duplex alt molecule count $\ge 1$ (configurable), the strand bias p-value $\ge 0.01$, and the posterior confidence $\ge 0.99$.
+Filters are evaluated in this order; a variant failing any criterion is labelled with the first filter it fails: \texttt{LowConfidence}, \texttt{LowDuplex}, \texttt{StrandBias}, or \texttt{CollisionRisk}.
+
+Requiring at least one duplex alt molecule suppresses false positives from background sequencing errors.
+A random single-base error producing 2+ simplex alt molecules is unlikely to produce independent errors on both strands of the same molecule, so it cannot generate duplex evidence.
+True variants at $\ge 0.1\%$ VAF with 5--15\% duplex rates will have duplex alt evidence in all but the rarest cases.
 
 \subsubsection{VCF Allele Extraction and Left-Normalisation}
 

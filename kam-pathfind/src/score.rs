@@ -62,10 +62,16 @@ pub struct PathEvidence {
     pub min_duplex: u32,
     /// Mean `n_duplex` across all k-mers in the path.
     pub mean_duplex: f32,
-    /// Sum of `n_simplex_fwd` across all k-mers.
-    pub total_simplex_fwd: u32,
-    /// Sum of `n_simplex_rev` across all k-mers.
-    pub total_simplex_rev: u32,
+    /// Minimum `n_simplex_fwd` across all k-mers in the path.
+    ///
+    /// Using the minimum rather than the sum gives a per-molecule count rather
+    /// than a per-k-mer count.  The sum inflates the apparent sample size by
+    /// the number of k-mers in the path (~70 for k=31 on a 100 bp target),
+    /// making Fisher's exact test ~70× too sensitive and causing genuine low-VAF
+    /// variants to be filtered as strand-biased.
+    pub min_simplex_fwd: u32,
+    /// Minimum `n_simplex_rev` across all k-mers in the path.  See `min_simplex_fwd`.
+    pub min_simplex_rev: u32,
     /// Mean of `mean_base_error_prob` across all k-mers.
     pub mean_error_prob: f32,
 }
@@ -128,8 +134,8 @@ pub fn score_path(path: &GraphPath, index: &dyn KmerIndex, k: usize) -> ScoredPa
                 mean_molecules: 0.0,
                 min_duplex: 0,
                 mean_duplex: 0.0,
-                total_simplex_fwd: 0,
-                total_simplex_rev: 0,
+                min_simplex_fwd: 0,
+                min_simplex_rev: 0,
                 mean_error_prob: 0.0,
             },
             weakest_kmer: WeakestKmer {
@@ -158,8 +164,8 @@ pub fn score_path(path: &GraphPath, index: &dyn KmerIndex, k: usize) -> ScoredPa
     let mean_molecules = evidences.iter().map(|e| e.n_molecules as f32).sum::<f32>() / n;
     let min_duplex = evidences.iter().map(|e| e.n_duplex).min().unwrap_or(0);
     let mean_duplex = evidences.iter().map(|e| e.n_duplex as f32).sum::<f32>() / n;
-    let total_simplex_fwd = evidences.iter().map(|e| e.n_simplex_fwd).sum();
-    let total_simplex_rev = evidences.iter().map(|e| e.n_simplex_rev).sum();
+    let min_simplex_fwd = evidences.iter().map(|e| e.n_simplex_fwd).min().unwrap_or(0);
+    let min_simplex_rev = evidences.iter().map(|e| e.n_simplex_rev).min().unwrap_or(0);
     let mean_error_prob = evidences
         .iter()
         .map(|e| e.mean_base_error_prob)
@@ -180,8 +186,8 @@ pub fn score_path(path: &GraphPath, index: &dyn KmerIndex, k: usize) -> ScoredPa
             mean_molecules,
             min_duplex,
             mean_duplex,
-            total_simplex_fwd,
-            total_simplex_rev,
+            min_simplex_fwd,
+            min_simplex_rev,
             mean_error_prob,
         },
         weakest_kmer: WeakestKmer {
@@ -329,8 +335,8 @@ mod tests {
         assert_eq!(scored.aggregate_evidence.mean_molecules, 7.0);
         assert_eq!(scored.aggregate_evidence.min_duplex, 3);
         assert_eq!(scored.aggregate_evidence.mean_duplex, 3.0);
-        assert_eq!(scored.aggregate_evidence.total_simplex_fwd, 2);
-        assert_eq!(scored.aggregate_evidence.total_simplex_rev, 2);
+        assert_eq!(scored.aggregate_evidence.min_simplex_fwd, 2);
+        assert_eq!(scored.aggregate_evidence.min_simplex_rev, 2);
         assert!((scored.aggregate_evidence.mean_error_prob - 0.002).abs() < 1e-6);
     }
 
