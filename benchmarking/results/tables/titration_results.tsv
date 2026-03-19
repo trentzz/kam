@@ -1,25 +1,6 @@
-sample	ng	vaf	molecules	duplex	duplex_pct	variants_called	tp	fp	fn	sensitivity	precision	f1	peak_rss_mb	wall_time_s	exit_code
-Sample_15ng_VAF_0p001pc	15ng	0.001	137332	13	0.009	55	0	43	375	0.0	0.0	0.0	1484.6	9.3	0
-Sample_15ng_VAF_0p01pc	15ng	0.01	141824	27	0.019	33	0	29	375	0.0	0.0	0.0	576.6	6.7	0
-Sample_15ng_VAF_0p1pc	15ng	0.1	134559	19	0.014	58	8	46	367	0.0213	0.1481	0.0373	546.9	6.3	0
-Sample_15ng_VAF_0p25pc	15ng	0.25	142825	21	0.015	80	28	47	347	0.0747	0.3733	0.1244	559.3	6.6	0
-Sample_15ng_VAF_0p5pc	15ng	0.5	134816	21	0.016	110	47	60	328	0.1253	0.4393	0.195	763.9	10.0	0
-Sample_15ng_VAF_0pc	15ng	0.0	135324	20	0.015	45	1	39	374	0.0027	0.025	0.0048	694.8	7.5	0
-Sample_15ng_VAF_1pc	15ng	1.0	137313	19	0.014	205	110	83	265	0.2933	0.5699	0.3873	558.0	6.8	0
-Sample_15ng_VAF_2pc	15ng	2.0	144038	21	0.015	250	148	98	227	0.3947	0.6016	0.4767	574.7	8.3	0
-Sample_30ng_VAF_0p001pc	30ng	0.001	138742	22	0.016	53	0	47	375	0.0	0.0	0.0	568.8	8.7	0
-Sample_30ng_VAF_0p01pc	30ng	0.01	148670	26	0.017	56	0	49	375	0.0	0.0	0.0	718.6	11.1	0
-Sample_30ng_VAF_0p1pc	30ng	0.1	141935	13	0.009	55	9	41	366	0.024	0.18	0.0424	4173.8	21.4	0
-Sample_30ng_VAF_0p25pc	30ng	0.25	137860	18	0.013	74	22	49	353	0.0587	0.3099	0.0987	565.7	6.9	0
-Sample_30ng_VAF_0p5pc	30ng	0.5	143570	20	0.014	137	63	64	312	0.168	0.4961	0.251	2399.6	13.9	0
-Sample_30ng_VAF_0pc	30ng	0.0	140633	17	0.012	48	2	42	373	0.0053	0.0455	0.0095	582.8	8.4	0
-Sample_30ng_VAF_1pc	30ng	1.0	141105	14	0.01	217	117	93	258	0.312	0.5571	0.4	560.2	8.7	0
-Sample_30ng_VAF_2pc	30ng	2.0	141040	17	0.012	255	149	101	226	0.3973	0.596	0.4768	2086.8	15.2	0
-Sample_5ng_VAF_0p001pc	5ng	0.001	143710	29	0.02	23	0	22	375	0.0	0.0	0.0	508.8	3.6	0
-Sample_5ng_VAF_0p01pc	5ng	0.01	148693	31	0.021	20	0	17	375	0.0	0.0	0.0	452.0	3.5	0
-Sample_5ng_VAF_0p1pc	5ng	0.1	146632	20	0.014	28	2	23	373	0.0053	0.08	0.01	524.2	3.9	0
-Sample_5ng_VAF_0p25pc	5ng	0.25	145846	30	0.021	55	15	37	360	0.04	0.2885	0.0703	525.3	3.7	0
-Sample_5ng_VAF_0p5pc	5ng	0.5	145098	27	0.019	74	31	42	344	0.0827	0.4247	0.1384	508.1	3.7	0
-Sample_5ng_VAF_0pc	5ng	0.0	141604	17	0.012	28	0	26	375	0.0	0.0	0.0	431.2	3.2	0
-Sample_5ng_VAF_1pc	5ng	1.0	144548	32	0.022	105	57	46	318	0.152	0.5534	0.2385	507.9	3.7	0
-Sample_5ng_VAF_2pc	5ng	2.0	142495	17	0.012	184	113	69	262	0.3013	0.6209	0.4057	498.5	3.6	0
+sample	ng	vaf	molecules	duplex	duplex_pct	variants_called	tp	fp	fn	tn	sensitivity	precision	specificity	fpr	fdr	fnr	f1	snv_tp	snv_fp	snv_fn	snv_sensitivity	snv_precision	snv_specificity	snv_fpr	indel_tp	indel_fp	indel_fn	indel_sensitivity	indel_precision	indel_specificity	indel_fpr	t_assemble_ms	t_index_ms	t_pathfind_ms	t_call_ms	t_output_ms	rss_assemble_mb	rss_index_mb	rss_pathfind_mb	rss_call_mb	rss_output_mb	cpu_assemble_pct	cpu_index_pct	cpu_pathfind_pct	cpu_call_pct	cpu_output_pct	peak_rss_mb	wall_time_s	exit_code
+Sample_15ng_VAF_0p001pc	15ng	0.001																																															-1
+Sample_15ng_VAF_0p01pc	15ng	0.01																																															-1
+Sample_15ng_VAF_0p1pc	15ng	0.1																																															-1
+Sample_15ng_VAF_0p25pc	15ng	0.25																																															-1
+Sample_15ng_VAF_0p5pc	15ng	0.5																																															-1
