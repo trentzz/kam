@@ -37,8 +37,10 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir_all(&args.output_dir)?;
 
     let k = args.kmer_size as usize;
+    let t_total = std::time::Instant::now();
 
     // ── Stage 1: Assemble ─────────────────────────────────────────────────────
+    let t_assemble = std::time::Instant::now();
     let parser_config = ParserConfig {
         min_template_length: args.min_template_length.map(|v| v as usize),
         min_umi_quality: if args.min_umi_quality == 0 {
@@ -89,11 +91,14 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     };
     write_qc(&args.output_dir.join("assembly_qc.json"), &assembly_qc)?;
     eprintln!(
-        "[run/assemble] molecules={} duplex={}",
-        n_molecules, assembly_stats.n_duplex
+        "[run/assemble] molecules={} duplex={} time_ms={}",
+        n_molecules,
+        assembly_stats.n_duplex,
+        t_assemble.elapsed().as_millis()
     );
 
     // ── Stage 2: Index ────────────────────────────────────────────────────────
+    let t_index = std::time::Instant::now();
     let targets = read_fasta(&args.targets)?;
     let target_slices: Vec<&[u8]> = targets.iter().map(|(_id, seq)| seq.as_slice()).collect();
     let allowlist = build_allowlist(&target_slices, k);
@@ -166,11 +171,14 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     };
     write_qc(&args.output_dir.join("index_qc.json"), &index_qc)?;
     eprintln!(
-        "[run/index] target_kmers={} observed={}",
-        n_target_kmers, n_kmers_observed
+        "[run/index] target_kmers={} observed={} time_ms={}",
+        n_target_kmers,
+        n_kmers_observed,
+        t_index.elapsed().as_millis()
     );
 
     // ── Stage 3: Pathfind ─────────────────────────────────────────────────────
+    let t_pathfind = std::time::Instant::now();
     // Build the de Bruijn graph ONCE from raw (non-canonical) k-mers.
     // Raw k-mers preserve suffix/prefix overlap relationships needed for edges.
     // Building once rather than once-per-target avoids redundant construction
@@ -245,11 +253,14 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     };
     write_qc(&args.output_dir.join("pathfind_qc.json"), &pathfind_qc)?;
     eprintln!(
-        "[run/pathfind] targets={} with_variants={}",
-        n_targets_queried, n_targets_with_variants
+        "[run/pathfind] targets={} with_variants={} time_ms={}",
+        n_targets_queried,
+        n_targets_with_variants,
+        t_pathfind.elapsed().as_millis()
     );
 
     // ── Stage 4: Call ─────────────────────────────────────────────────────────
+    let t_call = std::time::Instant::now();
     let caller_config = CallerConfig {
         min_confidence: args
             .min_confidence
@@ -309,11 +320,15 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     };
     write_qc(&args.output_dir.join("call_qc.json"), &call_qc)?;
     eprintln!(
-        "[run/call] variants={} pass={} filtered={}",
-        n_variants_called, n_pass, n_filtered
+        "[run/call] variants={} pass={} filtered={} time_ms={}",
+        n_variants_called,
+        n_pass,
+        n_filtered,
+        t_call.elapsed().as_millis()
     );
 
     // ── Write final variant output ────────────────────────────────────────────
+    let t_output = std::time::Instant::now();
     let formats = parse_output_formats(&args.output_format)?;
     let base_path = args.output_dir.join("variants");
 
@@ -333,6 +348,11 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    eprintln!(
+        "[run] output time_ms={} total_ms={}",
+        t_output.elapsed().as_millis(),
+        t_total.elapsed().as_millis()
+    );
     eprintln!(
         "[run] pipeline complete — output in {}",
         args.output_dir.display()

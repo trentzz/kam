@@ -22,7 +22,7 @@ def parse_args() -> argparse.Namespace:
         default=os.path.join(
             os.path.dirname(__file__),
             "../../..",
-            "/mnt/tzeng-local/tzeng-thesis/titration.probes.QC.pass.tsv",
+            os.environ.get("KAM_PROBES_TSV", "titration.probes.QC.pass.tsv"),
         ),
         help="Path to input TSV file",
     )

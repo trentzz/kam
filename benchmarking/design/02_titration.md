@@ -24,11 +24,11 @@ These paths are on the local analysis machine (`twz-minipc1`) and are not commit
 
 | Resource | Path |
 |---|---|
-| Raw FASTQ files | `/mnt/tzeng-local/tzeng-thesis/titration-nondedup/fastqs/` |
-| Truth variant set | `/mnt/tzeng-local/tzeng-thesis/titration.probes.QC.pass.tsv` |
-| Target sequences | `/mnt/tzeng-local/tzeng-thesis/titration-target-sequences/` |
-| Panel BED file | `/mnt/tzeng-local/tzeng-thesis/titration-dedup/bams/panel.bed` |
-| Reference genome | `/mnt/tzeng-local/tzeng-thesis/data/ref/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna` |
+| Raw FASTQ files | `$KAM_FASTQ_DIR` (set via environment variable; see `benchmarking/scripts/run_titration_batch.py`) |
+| Truth variant set | `benchmarking/scripts/truth_variants.vcf` (pre-generated; source TSV via `$KAM_PROBES_TSV`) |
+| Target sequences | `benchmarking/scripts/targets_100bp.fa` |
+| Panel BED file | available from the Twist Biosciences Alliance cfDNA Standard v2 panel |
+| Reference genome | GRCh38 no-alt analysis set (GCA_000001405.15) |
 
 FASTQ file SHA-256 checksums are recorded in `docs/benchmarking/data/titration_fastq_checksums.tsv`.
 

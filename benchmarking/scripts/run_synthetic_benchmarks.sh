@@ -14,13 +14,14 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-VARFORGE=/tmp/varforge/target/release/varforge
-KAM=/home/trent/tfiles/code/kam/target/release/kam
-TARGETS=/home/trent/tfiles/code/kam/benchmarking/scripts/targets_100bp.fa
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+VARFORGE="${VARFORGE_BIN:-/tmp/varforge/target/release/varforge}"
+KAM="${REPO}/target/release/kam"
+TARGETS="${REPO}/benchmarking/scripts/targets_100bp.fa"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_DIR="${SCRIPT_DIR}/configs"
-RESULTS_DIR=/home/trent/tfiles/code/kam/benchmarking/results/tables
-SYNTHETIC_DIR=/home/trent/tfiles/code/kam/benchmarking/synthetic_data
+RESULTS_DIR="${REPO}/benchmarking/results/tables"
+SYNTHETIC_DIR="${REPO}/benchmarking/synthetic_data"
 SCORE_PY="${SCRIPT_DIR}/score_variants.py"
 TRUTH_VCF="${SCRIPT_DIR}/truth_variants.vcf"
 
@@ -42,7 +43,7 @@ fi
 if [[ ! -f "$TRUTH_VCF" ]]; then
     echo "[INFO] truth_variants.vcf not found; generating from TSV..." >&2
     python3 "${SCRIPT_DIR}/tsv_to_vcf.py" \
-        --input /mnt/tzeng-local/tzeng-thesis/titration.probes.QC.pass.tsv \
+        --input "${KAM_PROBES_TSV:-titration.probes.QC.pass.tsv}" \
         --output "$TRUTH_VCF"
 fi
 
