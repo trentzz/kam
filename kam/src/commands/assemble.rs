@@ -37,8 +37,7 @@ pub fn run_assemble(args: AssembleArgs) -> Result<(), Box<dyn std::error::Error>
     };
 
     // ── 3. Read FASTQ pairs ───────────────────────────────────────────────────
-    let (read_pairs, parse_stats) =
-        read_fastq_pairs(&args.r1, &args.r2, &parser_config)?;
+    let (read_pairs, parse_stats) = read_fastq_pairs(&args.r1, &args.r2, &parser_config)?;
 
     // ── 4. Assemble molecules ─────────────────────────────────────────────────
     let (molecules, mut assembly_stats) = assemble_molecules(read_pairs, &assembler_config);
@@ -151,8 +150,8 @@ mod tests {
 
         // Verify QC JSON is valid JSON.
         let qc_text = std::fs::read_to_string(&qc_path).unwrap();
-        let _v: serde_json::Value = serde_json::from_str(&qc_text)
-            .expect("assembly_qc.json should be valid JSON");
+        let _v: serde_json::Value =
+            serde_json::from_str(&qc_text).expect("assembly_qc.json should be valid JSON");
     }
 
     /// Empty FASTQ input produces valid (empty) output.

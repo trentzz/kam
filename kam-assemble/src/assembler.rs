@@ -25,7 +25,7 @@ use kam_core::molecule::{CanonicalUmiPair, ConsensusRead, FamilyType, Molecule, 
 use crate::clustering::cluster_umi_pairs;
 use crate::consensus::{single_strand_consensus, ConsensusConfig, DisagreementStrategy};
 use crate::fingerprint::{compute_endpoint_fingerprint, fingerprints_compatible};
-use crate::parser::{ParsedReadPair, ParseStats};
+use crate::parser::{ParseStats, ParsedReadPair};
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -184,20 +184,16 @@ pub fn assemble_molecules(
             .collect();
 
         // ── Step 3: Sub-group by fingerprint compatibility ─────────────────
-        let fingerprint_groups =
-            split_by_fingerprint(&cluster_read_indices, &read_pairs);
+        let fingerprint_groups = split_by_fingerprint(&cluster_read_indices, &read_pairs);
 
         // Count extra splits as collisions.
         if fingerprint_groups.len() > 1 {
-            stats.n_umi_collisions_detected +=
-                (fingerprint_groups.len() - 1) as u64;
+            stats.n_umi_collisions_detected += (fingerprint_groups.len() - 1) as u64;
         }
 
         // ── Step 4: Build a molecule for each fingerprint sub-group ────────
         for group_indices in fingerprint_groups {
-            if let Some(mol) =
-                build_molecule(&group_indices, &read_pairs, config, &mut stats)
-            {
+            if let Some(mol) = build_molecule(&group_indices, &read_pairs, config, &mut stats) {
                 molecules.push(mol);
             }
         }
@@ -220,10 +216,7 @@ pub fn assemble_molecules(
 /// Uses a greedy approach: each read is added to the first existing group whose
 /// representative fingerprint is compatible with the read's fingerprint; if none
 /// is found, a new group is started.
-fn split_by_fingerprint(
-    indices: &[usize],
-    read_pairs: &[ParsedReadPair],
-) -> Vec<Vec<usize>> {
+fn split_by_fingerprint(indices: &[usize], read_pairs: &[ParsedReadPair]) -> Vec<Vec<usize>> {
     // (representative_fingerprint, members)
     let mut groups: Vec<(u64, Vec<usize>)> = Vec::new();
 
@@ -298,9 +291,7 @@ fn build_molecule(
     };
 
     // ── Duplex consensus ───────────────────────────────────────────────────
-    let duplex_consensus = if n_fwd >= config.min_duplex_reads
-        && n_rev >= config.min_duplex_reads
-    {
+    let duplex_consensus = if n_fwd >= config.min_duplex_reads && n_rev >= config.min_duplex_reads {
         match (&consensus_fwd, &consensus_rev) {
             (Some(fwd_cr), Some(rev_cr)) => {
                 // Re-derive ConsensusBase vecs by re-calling SSC (we need
@@ -309,30 +300,27 @@ fn build_molecule(
                 let rev_bases = call_ssc_bases(&rev_reads, config);
                 match (fwd_bases, rev_bases) {
                     (Some(fb), Some(rb)) => {
-                        crate::consensus::duplex_consensus(
-                            &fb,
-                            &rb,
-                            config.disagreement_strategy,
-                        )
-                        .map(|duplex_bases| {
-                            let sequence: Vec<u8> = duplex_bases.iter().map(|d| d.base).collect();
-                            let per_base_error_prob: Vec<f32> =
-                                duplex_bases.iter().map(|d| d.error_prob).collect();
-                            // Both fwd and rev depths per position.
-                            let per_base_strand_support: Vec<(u8, u8)> = duplex_bases
-                                .iter()
-                                .map(|d| (d.fwd_depth, d.rev_depth))
-                                .collect();
-                            // Suppress unused variable warnings — fwd_cr and
-                            // rev_cr are used only to confirm both SSCs succeeded.
-                            let _ = (fwd_cr, rev_cr);
-                            ConsensusRead {
-                                sequence,
-                                per_base_error_prob,
-                                per_base_strand_support,
-                                family_size: (n_fwd, n_rev),
-                            }
-                        })
+                        crate::consensus::duplex_consensus(&fb, &rb, config.disagreement_strategy)
+                            .map(|duplex_bases| {
+                                let sequence: Vec<u8> =
+                                    duplex_bases.iter().map(|d| d.base).collect();
+                                let per_base_error_prob: Vec<f32> =
+                                    duplex_bases.iter().map(|d| d.error_prob).collect();
+                                // Both fwd and rev depths per position.
+                                let per_base_strand_support: Vec<(u8, u8)> = duplex_bases
+                                    .iter()
+                                    .map(|d| (d.fwd_depth, d.rev_depth))
+                                    .collect();
+                                // Suppress unused variable warnings — fwd_cr and
+                                // rev_cr are used only to confirm both SSCs succeeded.
+                                let _ = (fwd_cr, rev_cr);
+                                ConsensusRead {
+                                    sequence,
+                                    per_base_error_prob,
+                                    per_base_strand_support,
+                                    family_size: (n_fwd, n_rev),
+                                }
+                            })
                     }
                     _ => None,
                 }
@@ -458,17 +446,13 @@ fn hash_umi_pair(pair: &CanonicalUmiPair) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::{parse_read_pair, ParserConfig, ParseResult};
+    use crate::parser::{parse_read_pair, ParseResult, ParserConfig};
 
     /// Build a [`ParsedReadPair`] with the given UMIs and template sequences.
     ///
     /// Template length must be at least 8 bases so fingerprinting is
     /// meaningful.  Both templates are set to the same value for simplicity.
-    fn make_pair(
-        umi_r1: &[u8; 5],
-        umi_r2: &[u8; 5],
-        template: &[u8],
-    ) -> ParsedReadPair {
+    fn make_pair(umi_r1: &[u8; 5], umi_r2: &[u8; 5], template: &[u8]) -> ParsedReadPair {
         let mut r1_seq = Vec::new();
         r1_seq.extend_from_slice(umi_r1);
         r1_seq.extend_from_slice(b"TG"); // skip
@@ -521,7 +505,10 @@ mod tests {
         let mol = &molecules[0];
         assert!(mol.consensus_fwd.is_some(), "expected forward consensus");
         assert!(mol.consensus_rev.is_none(), "no reverse reads");
-        assert!(mol.duplex_consensus.is_none(), "cannot be duplex with one strand");
+        assert!(
+            mol.duplex_consensus.is_none(),
+            "cannot be duplex with one strand"
+        );
         assert_eq!(stats.n_simplex_fwd, 1);
         assert_eq!(stats.n_duplex, 0);
     }
@@ -535,8 +522,7 @@ mod tests {
         // Reverse strand read: R1 UMI = canonical umi_b = TGCAT
         let rev = make_pair(b"TGCAT", b"ACGTA", b"ACGTACGTACGTACGTACGT");
 
-        let (molecules, stats) =
-            assemble_molecules(vec![fwd, rev], &AssemblerConfig::default());
+        let (molecules, stats) = assemble_molecules(vec![fwd, rev], &AssemblerConfig::default());
 
         assert_eq!(molecules.len(), 1, "should collapse to one molecule");
         let mol = &molecules[0];
@@ -557,10 +543,13 @@ mod tests {
         let p_a = make_pair(b"ACGTA", b"TGCAT", b"AAAAAAAAAAAAAAAAAAAAAAAAA");
         let p_b = make_pair(b"ACGTA", b"TGCAT", b"TTTTTTTTTTTTTTTTTTTTTTTTT");
 
-        let (molecules, stats) =
-            assemble_molecules(vec![p_a, p_b], &AssemblerConfig::default());
+        let (molecules, stats) = assemble_molecules(vec![p_a, p_b], &AssemblerConfig::default());
 
-        assert_eq!(molecules.len(), 2, "fingerprint split should yield two molecules");
+        assert_eq!(
+            molecules.len(),
+            2,
+            "fingerprint split should yield two molecules"
+        );
         assert_eq!(stats.n_umi_collisions_detected, 1);
     }
 
@@ -573,7 +562,10 @@ mod tests {
         let p1 = make_pair(b"ACGTA", b"TGCAT", b"AAAAAAAAAAAAAAAAAAAAAAAAA");
         let p2 = make_pair(b"ACGTT", b"TGCAT", b"AAAAAAAAAAAAAAAAAAAAAAAAA");
 
-        let config = AssemblerConfig { max_hamming_distance: 1, ..AssemblerConfig::default() };
+        let config = AssemblerConfig {
+            max_hamming_distance: 1,
+            ..AssemblerConfig::default()
+        };
         let (molecules, _stats) = assemble_molecules(vec![p1, p2], &config);
 
         // Both reads carry "AAAA..." templates → same fingerprint group → one molecule.
@@ -588,10 +580,17 @@ mod tests {
         let p2 = make_pair(b"GGGGG", b"CCCCC", b"NNNNNNNNNNNNNNNNNNNNNNNNNN");
 
         // min_family_size = 2 → both singletons should be dropped.
-        let config = AssemblerConfig { min_family_size: 2, ..AssemblerConfig::default() };
+        let config = AssemblerConfig {
+            min_family_size: 2,
+            ..AssemblerConfig::default()
+        };
         let (molecules, stats) = assemble_molecules(vec![p1, p2], &config);
 
-        assert_eq!(molecules.len(), 0, "both families are below min_family_size=2");
+        assert_eq!(
+            molecules.len(),
+            0,
+            "both families are below min_family_size=2"
+        );
         assert_eq!(stats.n_families_below_min_size, 2);
     }
 
@@ -617,8 +616,10 @@ mod tests {
         // Note: "AAAAA" < "CCCCC" so canonical is (AAAAA, CCCCC);
         // R1=CCCCC → Reverse strand → singleton on rev.
 
-        let (molecules, stats) =
-            assemble_molecules(vec![d_fwd, d_rev, s1, s2, single], &AssemblerConfig::default());
+        let (molecules, stats) = assemble_molecules(
+            vec![d_fwd, d_rev, s1, s2, single],
+            &AssemblerConfig::default(),
+        );
 
         assert_eq!(molecules.len(), 3, "expected 3 molecules");
         assert_eq!(stats.n_molecules, 3);
@@ -631,8 +632,7 @@ mod tests {
 
     #[test]
     fn empty_input_returns_empty() {
-        let (molecules, stats) =
-            assemble_molecules(vec![], &AssemblerConfig::default());
+        let (molecules, stats) = assemble_molecules(vec![], &AssemblerConfig::default());
         assert!(molecules.is_empty());
         assert_eq!(stats.n_molecules, 0);
         assert_eq!(stats.n_duplex, 0);

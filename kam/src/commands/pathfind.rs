@@ -70,8 +70,7 @@ pub fn run_pathfind(args: PathfindArgs) -> Result<(), Box<dyn std::error::Error>
         n_targets_queried += 1;
 
         // Validate anchors.
-        let anchor_result =
-            validate_anchors(target_seq, k, &index, DEFAULT_ANCHOR_THRESHOLD);
+        let anchor_result = validate_anchors(target_seq, k, &index, DEFAULT_ANCHOR_THRESHOLD);
 
         let anchors = match anchor_result {
             Some(a) => a,
@@ -105,8 +104,7 @@ pub fn run_pathfind(args: PathfindArgs) -> Result<(), Box<dyn std::error::Error>
         );
 
         // Score and rank paths.
-        let scored: Vec<ScoredPath> =
-            score_and_rank_paths(paths, &index, target_seq, k);
+        let scored: Vec<ScoredPath> = score_and_rank_paths(paths, &index, target_seq, k);
 
         let has_variant = scored.iter().any(|p| !p.is_reference);
         if has_variant {
@@ -184,11 +182,11 @@ mod tests {
     use std::path::PathBuf;
 
     use kam_assemble::assembler::{assemble_molecules, AssemblerConfig};
-    use kam_assemble::parser::{parse_read_pair, ParserConfig, ParseResult};
+    use kam_assemble::parser::{parse_read_pair, ParseResult, ParserConfig};
     use kam_core::serialize::{write_bincode, FileType};
 
-    use crate::commands::index::run_index;
     use crate::cli::IndexArgs;
+    use crate::commands::index::run_index;
 
     fn write_fasta(path: &PathBuf, records: &[(&str, &str)]) {
         let mut f = std::fs::File::create(path).expect("create fasta");
@@ -209,11 +207,7 @@ mod tests {
         }
     }
 
-    fn build_test_index(
-        dir: &std::path::Path,
-        target_seq: &str,
-        k: u32,
-    ) -> (PathBuf, PathBuf) {
+    fn build_test_index(dir: &std::path::Path, target_seq: &str, k: u32) -> (PathBuf, PathBuf) {
         // Build a molecule whose consensus contains the target sequence.
         let template = target_seq.as_bytes();
         let mut r1_seq = b"ACGTATG".to_vec();
@@ -230,11 +224,13 @@ mod tests {
         let (molecules, _) = assemble_molecules(vec![pair], &AssemblerConfig::default());
 
         let molecules_path = dir.join("molecules.bin");
-        write_bincode(&molecules_path, FileType::Molecules, &molecules)
-            .expect("write molecules");
+        write_bincode(&molecules_path, FileType::Molecules, &molecules).expect("write molecules");
 
         let targets_path = dir.join("targets.fa");
-        write_fasta(&targets_path.to_path_buf().clone().into(), &[("t1", target_seq)]);
+        write_fasta(
+            &targets_path.to_path_buf().clone().into(),
+            &[("t1", target_seq)],
+        );
 
         let index_path = dir.join("index.bin");
         let idx_args = IndexArgs {
@@ -254,8 +250,7 @@ mod tests {
         let target = "ACGTACGTACGTACGTACGTACGTACGT";
         let k = 8u32;
 
-        let (index_path, targets_path) =
-            build_test_index(dir.path(), target, k);
+        let (index_path, targets_path) = build_test_index(dir.path(), target, k);
 
         let output_path = dir.path().join("paths.bin");
 

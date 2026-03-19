@@ -1,0 +1,24 @@
+Detecting somatic variants at sub-1\% allele frequency in liquid biopsy samples
+requires accurate UMI-based error suppression and sensitive variant calling.
+Current pipelines chain several tools that discard molecule-level information
+between steps, making per-molecule strand bias and duplex evidence unavailable
+at the calling stage.
+
+We present kam, an alignment-free variant detection pipeline for Twist duplex
+UMI panel sequencing. kam assembles duplex molecules directly from raw FASTQ,
+indexes k-mers with per-molecule provenance, builds a de Bruijn graph over all
+observed k-mers, and calls variants by scoring alternative paths against the
+reference path using molecule counts and strand composition. No reference
+alignment is performed.
+
+We evaluate kam on the Twist cfDNA Pan-Cancer Reference Standard v2 titration
+series (375 truth variants, 24 samples, 5--30\,ng input DNA, VAF 0\%--2\%).
+Using 200,000 read pairs per sample, kam detects 40--48\% of truth variants
+at 2\% VAF with precision of 0.60, running end-to-end in under 25 seconds per
+sample. Sensitivity is currently limited by two implementation issues: a duplex
+orientation comparison bug that suppresses duplex identification, and a
+quadratic UMI grouping step that restricts input depth. Both have clear fixes.
+At corrected depth with duplex signal restored, we project detection sensitivity
+extending to the 0.1--0.5\% VAF range.
+
+kam is implemented in Rust and is available as an open-source workspace.

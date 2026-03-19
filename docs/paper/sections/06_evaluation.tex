@@ -1,0 +1,82 @@
+\section{Evaluation}
+\label{sec:evaluation}
+
+The benchmark results reveal three substantial limitations in the current
+implementation that bound sensitivity and memory use. We discuss each in turn,
+along with the current workarounds.
+
+% ── Duplex identification ─────────────────────────────────────────────────────
+\subsection{Duplex identification failure}
+\label{sec:eval:duplex}
+
+Across all 24 samples, the duplex identification rate was below 0.025\%. The
+design intent is for the endpoint fingerprint comparison to match forward and
+reverse template reads from the same DNA fragment. In practice, the comparison
+fails because the two templates are reverse complements: the XOR Hamming distance
+between a forward-strand fingerprint and its reverse complement is approximately
+32 bits (near-maximum for a 32-bit fingerprint), far above the identity threshold
+of 4 bits used to define a match.
+
+The consequence is that almost all molecules are classified as simplex. The strand
+bias filter in the caller (Fisher's exact test on simplex forward and reverse
+counts) still operates but has less power: duplex molecules provide the strongest
+evidence against strand artefacts, and losing them pushes the confidence model
+toward classifying borderline calls as low confidence.
+
+The fix requires comparing the forward fingerprint against the \emph{reverse
+complement} of the reverse fingerprint (or equivalently, canonicalising both
+before comparison). This is a single-line change in the assembly stage and is
+the highest-priority correctness issue to resolve before any production use.
+
+% ── Sensitivity ceiling ───────────────────────────────────────────────────────
+\subsection{Sensitivity ceiling at 200K reads}
+\label{sec:eval:sensitivity}
+
+The 200K read limit imposed for memory safety caps sensitivity at the sub-1\%
+VAF regime. At 0.1\% VAF, a 200K-read sample contains on average 20 variant
+read pairs targeting each 100\,bp window—after UMI grouping into molecules and
+further compression by duplex collapsing, approximately 2–5 variant molecules
+are expected per target. The current minimum alt molecule threshold is 2, so
+borderline targets will be dropped. At 0.01\% VAF, fewer than one variant
+molecule is expected in 200K reads: the assay simply cannot detect at this
+depth.
+
+The underlying bottleneck is the O($n^2$) UMI grouping step, which compares
+all UMI pairs within a sample. For 1 million read pairs the peak RSS reaches
+1.6\,GB; for 2 million it is estimated above 4\,GB. Switching to a hash-partition
+strategy (group reads by UMI prefix, then compare within partitions) would reduce
+this to O($n$) expected memory and allow millions of read pairs to be processed
+without memory pressure.
+
+% ── Graph coverage and false positives ───────────────────────────────────────
+\subsection{Graph coverage and false positives}
+\label{sec:eval:graph}
+
+The pathfind stage identified variant paths for 258 of 375 targets (68.8\%) in
+the 2\% VAF samples. The remaining 117 targets produced no alternative path.
+Most of these are likely targets with very low coverage in the 200K-read subset,
+or targets where the variant k-mer is present but the graph walk exhausts its
+depth limit before finding a valid end anchor.
+
+False positives (98--101 per sample at 2\% VAF) arise mainly from spurious
+paths: the de Bruijn graph contains k-mer paths that differ from the reference
+but arise from sequencing error clusters or from reads spanning nearby germline
+variants. Raising the minimum alt molecule count from 2 to 3 would reduce false
+positives at the cost of some true positive sensitivity; this trade-off is
+sample-depth-dependent and could be tuned per application.
+
+% ── Overall assessment ────────────────────────────────────────────────────────
+\subsection{Overall assessment}
+
+At 2\% VAF with 200K reads, kam detects 40--48\% of truth variants with
+precision of 0.60. This is a meaningful baseline for an alignment-free approach
+on a 375-target panel without any alignment step. The dominant loss factors
+are duplex orientation (causing near-total loss of duplex signal), shallow
+depth (200K reads is insufficient for sub-1\% VAF), and k-mer graph artefacts.
+
+Fixing the duplex orientation bug is expected to substantially improve both
+sensitivity (more molecules passing the duplex threshold) and precision
+(fewer strand-biased artefacts passing the strand-bias filter). Increasing
+input read depth to 1 million or more reads, achievable once the O($n^2$) memory
+issue is resolved, would extend detection to 0.1--0.5\% VAF. These are the two
+highest-priority improvements before a production evaluation.

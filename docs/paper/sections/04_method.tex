@@ -1,0 +1,345 @@
+\section{Method}
+\label{sec:method}
+
+\subsection{Overview}
+\label{sec:method:overview}
+
+kam processes paired-end FASTQ files through six stages.
+Stage~1 (\textbf{Parse}) extracts UMIs, skip bases, and template sequences from raw reads.
+Stage~2 (\textbf{Assemble}) groups reads into molecule families by canonical UMI pair, detects UMI collisions via endpoint fingerprinting, and calls single-strand and duplex consensus sequences.
+Stage~3 (\textbf{Index}) encodes consensus sequences as 2-bit k-mers and builds a molecule-level k-mer index.
+Stage~4 (\textbf{Pathfind}) constructs a de~Bruijn graph from the index and enumerates all paths between reference anchor k-mers.
+Stage~5 (\textbf{Call}) scores each path using molecule evidence, estimates variant allele frequency (VAF) with credible intervals, and applies strand bias and confidence filters.
+Stage~6 (\textbf{Output}) emits called variants in VCF, TSV, and JSON formats with full provenance.
+
+All stages operate on molecules as the atomic unit of evidence.
+A k-mer supported by 100 PCR duplicates of one molecule contributes $n_\text{molecules} = 1$, not 100.
+This distinction is the foundation of kam's error model.
+
+% Figure~\ref{fig:pipeline} would show a horizontal flow diagram:
+% FASTQ → Parse → Assemble → Index → Pathfind → Call → VCF
+% with data types annotated on each arrow (ReadPair, Molecule, KmerIndex,
+% GraphPath, ScoredPath, VariantCall).
+
+\subsection{Read Parsing and UMI Extraction}
+\label{sec:method:parsing}
+
+kam targets Twist Biosciences duplex UMI chemistry~\autocite{Twist22cfdna}.
+Both R1 and R2 follow read structure \texttt{5M2S+T} in fgbio notation~\autocite{fgbio}:
+
+\begin{itemize}
+  \item Positions 0--4: 5\,bp molecular barcode (UMI).
+  \item Positions 5--6: 2\,bp skip/spacer (monotemplate, not biological).
+  \item Position 7 onward: template (genomic) sequence.
+\end{itemize}
+
+Let $U_\text{R1}$ and $U_\text{R2}$ denote the 5\,bp UMIs extracted from R1 and R2.
+The canonical UMI pair is:
+
+\begin{equation}
+  \label{eq:canonical-umi}
+  (U_a, U_b) = \begin{cases}
+    (U_\text{R1}, U_\text{R2}) & \text{if } U_\text{R1} \le U_\text{R2} \text{ lexicographically,} \\
+    (U_\text{R2}, U_\text{R1}) & \text{otherwise.}
+  \end{cases}
+\end{equation}
+
+Canonical pairing ensures that reads from opposite strands of the same molecule map to the same key.
+In duplex sequencing, a forward-strand read pair carries $(U_\text{R1}, U_\text{R2}) = (\texttt{ACGTA}, \texttt{TGCAT})$, while the reverse-strand read pair from the same molecule carries $(\texttt{TGCAT}, \texttt{ACGTA})$.
+Both produce the identical canonical pair $(\texttt{ACGTA}, \texttt{TGCAT})$.
+
+If R1's UMI equals $U_a$, the read is classified as forward-strand. Otherwise it is reverse-strand. This strand assignment is used throughout consensus calling and variant scoring.
+
+The 2\,bp skip bases serve as a quality-control signal.
+Because the skip sequence is fixed within an adapter lot, reads whose skip bases deviate from the expected sequence are flagged.
+
+\subsection{Molecule Assembly}
+\label{sec:method:assembly}
+
+Molecule assembly converts raw read pairs into consensus sequences in three steps: UMI grouping, collision detection, and consensus calling.
+
+\subsubsection{UMI Grouping}
+
+Reads are grouped by their canonical UMI pair (Equation~\ref{eq:canonical-umi}).
+To tolerate sequencing errors in the UMI itself, kam applies directional Hamming clustering with distance threshold $d = 1$~\autocite{Smith17umitools}.
+UMI groups within Hamming distance 1 are merged when one group's count is at least twice the other's, following the directional adjacency method of UMI-tools.
+
+With 5\,bp random UMIs, there are $4^5 = 1{,}024$ possible values.
+This limited diversity makes UMI collisions likely at high sequencing depths.
+
+\subsubsection{Endpoint Fingerprinting}
+
+To detect collisions where unrelated molecules share the same canonical UMI, kam computes a 64-bit endpoint fingerprint for each read pair.
+The fingerprint encodes the first and last 8 bases of the template from both R1 and R2 using 2-bit encoding ($\texttt{A}=00$, $\texttt{C}=01$, $\texttt{G}=10$, $\texttt{T}=11$):
+
+\begin{equation}
+  \label{eq:fingerprint}
+  F = \text{R1}_\text{first\,8} \| \text{R1}_\text{last\,8} \| \text{R2}_\text{first\,8} \| \text{R2}_\text{last\,8}
+\end{equation}
+
+\noindent where $\|$ denotes concatenation of 2-bit encoded subsequences.
+Four endpoints at 8 bases each, 2 bits per base, fills exactly 64 bits, requiring no hashing.
+Comparison is a single integer equality or XOR-plus-popcount operation.
+
+Read pairs within the same UMI group whose fingerprints differ by more than 4 bits (approximately 2 base sequencing errors across all endpoints) are split into separate molecule families.
+This threshold tolerates realistic error rates ($< 1\%$ family splitting at Q20) while catching genuine collisions.
+
+\subsubsection{Single-Strand Consensus}
+\label{sec:method:ssc}
+
+Given a family of $n$ reads from one strand of a molecule, kam calls a per-position consensus using quality-weighted majority vote.
+
+At position $i$, let $Q_{i,j}$ be the Phred quality of the $j$-th read.
+The error probability is:
+
+\begin{equation}
+  \label{eq:phred-to-prob}
+  p_{i,j} = 10^{-Q_{i,j}/10}
+\end{equation}
+
+The weight assigned to read $j$'s base call at position $i$ is $w_{i,j} = 1 - p_{i,j}$.
+Bases with $Q_{i,j}$ below a minimum threshold (default: $Q = 10$) are excluded.
+For each candidate base $b \in \{A, C, G, T\}$, the total weight is:
+
+\begin{equation}
+  \label{eq:weight-sum}
+  W_b(i) = \sum_{\substack{j=1 \\ \text{base}_{i,j} = b}}^{n} w_{i,j}
+\end{equation}
+
+The consensus base at position $i$ is:
+
+\begin{equation}
+  \label{eq:consensus-base}
+  \hat{b}(i) = \operatorname*{argmax}_{b} \; W_b(i)
+\end{equation}
+
+The estimated error probability of the consensus at position $i$ is:
+
+\begin{equation}
+  \label{eq:consensus-error}
+  \hat{p}_\text{SSC}(i) = 1 - \frac{W_{\hat{b}(i)}(i)}{\sum_{b} W_b(i)}
+\end{equation}
+
+If all bases at a position fall below the quality threshold, the position is called as N with $\hat{p}_\text{SSC}(i) = 1.0$.
+Output consensus quality is capped at a configurable maximum (default: Q60).
+
+\subsubsection{Duplex Consensus}
+\label{sec:method:duplex}
+
+The duplex consensus combines the forward-strand SSC and the reverse-strand SSC.
+At each position $i$, let $\hat{b}_\text{fwd}(i)$ and $\hat{b}_\text{rev}(i)$ be the single-strand consensus bases, with error probabilities $\hat{p}_\text{fwd}(i)$ and $\hat{p}_\text{rev}(i)$.
+
+When both strands agree ($\hat{b}_\text{fwd}(i) = \hat{b}_\text{rev}(i)$), the errors are independent, so:
+
+\begin{equation}
+  \label{eq:duplex-error}
+  \hat{p}_\text{duplex}(i) = \hat{p}_\text{fwd}(i) \times \hat{p}_\text{rev}(i)
+\end{equation}
+
+This multiplication yields error rates near $10^{-7}$ for typical input qualities~\autocite{Schmitt12duplex}, which is what makes detection at 0.1\% VAF feasible.
+
+When the strands disagree ($\hat{b}_\text{fwd}(i) \neq \hat{b}_\text{rev}(i)$), the default behaviour picks the base from whichever SSC had lower error probability and marks the position as non-duplex.
+A strict mode (\texttt{-{}-strict-duplex}) masks the position as N.
+In either case, the position does not receive duplex-level confidence.
+
+Each assembled molecule carries a \texttt{MoleculeEvidence} record that tracks the number of forward-strand reads, reverse-strand reads, and whether the molecule has duplex support.
+This record propagates through all downstream stages.
+
+\subsection{K-mer Indexing}
+\label{sec:method:index}
+
+The k-mer index maps each k-mer observed in the consensus sequences to its molecule-level evidence.
+
+\subsubsection{2-Bit Encoding}
+
+Each DNA base is encoded as 2 bits: $\texttt{A}=00$, $\texttt{C}=01$, $\texttt{G}=10$, $\texttt{T}=11$.
+A k-mer of length $k$ occupies $2k$ bits in a \texttt{u64}, supporting $k \le 31$.
+Bases are packed left-to-right, with the first base in the most significant bit pair.
+
+\subsubsection{Canonical K-mers}
+
+Because a molecule's sequence can be observed from either strand, kam stores k-mers in canonical form:
+
+\begin{equation}
+  \label{eq:canonical-kmer}
+  \text{canonical}(s) = \min\bigl(s, \;\overline{s}^{\,R}\bigr)
+\end{equation}
+
+\noindent where $\overline{s}^{\,R}$ denotes the reverse complement of $s$.
+In 2-bit encoding, the complement of each base is obtained by XOR with \texttt{0b11}, and the base order is reversed.
+
+\subsubsection{Sliding Window}
+
+K-mers are extracted using a sliding window that shifts left by 2 bits and ORs in the new base for each position, giving $O(1)$ cost per k-mer after the initial window fill.
+When an ambiguous base (N) is encountered, the window resets and skips forward until $k$ consecutive valid bases are available.
+
+\subsubsection{Molecule-Level Accumulation}
+
+For each canonical k-mer, the index stores a \texttt{MoleculeEvidence} record:
+
+\begin{itemize}
+  \item $n_\text{molecules}$: number of distinct molecules carrying this k-mer.
+  \item $n_\text{duplex}$: of those, how many have duplex support.
+  \item $n_\text{simplex\_fwd}$, $n_\text{simplex\_rev}$: molecules with only forward or reverse strand support.
+  \item $\bar{p}_\text{error}$: mean per-base error probability across supporting molecules.
+\end{itemize}
+
+Each unique molecule contributes 1 to $n_\text{molecules}$ regardless of how many PCR duplicates it produced.
+In targeted mode, only k-mers matching an allowlist (derived from reference and expected variant sequences, padded by $k-1$ bases) are indexed.
+
+\subsection{De Bruijn Graph Construction and Path Walking}
+\label{sec:method:pathfind}
+
+\subsubsection{Graph Construction}
+
+kam builds a de~Bruijn graph~\autocite{Iqbal12cortex} from the k-mer index.
+Nodes are canonical k-mers.
+A directed edge from node $A$ to node $B$ exists when the $(k{-}1)$-base suffix of $A$ equals the $(k{-}1)$-base prefix of $B$:
+
+\begin{equation}
+  \label{eq:edge-condition}
+  A[1{:}k{-}1] = B[0{:}k{-}2]
+\end{equation}
+
+In 2-bit encoding, this is:
+
+\begin{equation}
+  \label{eq:edge-2bit}
+  (A \;\texttt{AND}\; M_{k-1}) = (B \gg 2)
+\end{equation}
+
+\noindent where $M_{k-1} = 2^{2(k-1)} - 1$ is the bitmask for the lower $2(k{-}1)$ bits and $\gg$ denotes right shift.
+
+\subsubsection{Anchor K-mers}
+
+For each target, the first and last k-mers of the reference sequence serve as start and end anchors.
+All paths are enumerated from the start anchor to the end anchor.
+The reference path passes through all k-mers of the wildtype sequence.
+Variant paths diverge from the reference at the site of the mutation.
+
+\subsubsection{Path Walking}
+
+Algorithm~\ref{alg:bfs} describes the BFS path enumeration.
+
+\begin{algorithm}
+\caption{BFS path enumeration between anchor k-mers.}
+\label{alg:bfs}
+\begin{algorithmic}[1]
+\Require{Graph $G$, start anchor $s$, end anchor $t$, max path length $L$, max paths $P$}
+\Ensure{Set of paths $\mathcal{P}$ from $s$ to $t$}
+\State $\mathcal{P} \gets \emptyset$
+\State $Q \gets$ queue containing $\{[s]\}$
+\While{$Q$ is not empty \textbf{and} $|\mathcal{P}| < P$}
+  \State $\pi \gets Q.\text{dequeue}()$
+  \State $v \gets \text{last}(\pi)$
+  \For{each successor $u$ of $v$ in $G$}
+    \If{$u \in \pi$} \Comment{Per-path cycle detection}
+      \State \textbf{continue}
+    \EndIf
+    \State $\pi' \gets \pi \cup \{u\}$
+    \If{$|\pi'| > L$}
+      \State \textbf{continue}
+    \EndIf
+    \If{$u = t$}
+      \State $\mathcal{P} \gets \mathcal{P} \cup \{\pi'\}$
+    \Else
+      \State $Q.\text{enqueue}(\pi')$
+    \EndIf
+  \EndFor
+\EndWhile
+\State \Return $\mathcal{P}$
+\end{algorithmic}
+\end{algorithm}
+
+Each path maintains its own visited set, so the same k-mer can appear in different paths but not twice within a single path.
+The default bounds are $L = 500$ k-mers and $P = 100$ paths.
+
+Sequences are reconstructed from paths by taking all $k$ bases from the first k-mer and appending the last base of each subsequent k-mer, yielding a sequence of length $k + |\pi| - 1$ from a path of $|\pi|$ k-mers.
+
+\subsection{Statistical Variant Calling}
+\label{sec:method:calling}
+
+\subsubsection{Path Scoring}
+
+Each path is scored by looking up the \texttt{MoleculeEvidence} for every constituent k-mer.
+The aggregate statistics are:
+
+\begin{itemize}
+  \item $n_\text{min}$: minimum $n_\text{molecules}$ across all k-mers in the path.
+  \item $\bar{n}$: mean $n_\text{molecules}$ across all k-mers in the path.
+  \item $d_\text{min}$: minimum $n_\text{duplex}$ across all k-mers.
+  \item Total forward and reverse simplex molecule counts (summed across k-mers).
+\end{itemize}
+
+The weakest k-mer (lowest $n_\text{molecules}$) identifies the bottleneck supporting the call.
+The path whose reconstructed sequence matches the reference is marked as the reference path.
+
+\subsubsection{VAF Estimation}
+
+Let $k$ be the number of molecules supporting the alternate path (from $n_\text{min}$ of the alt path) and $M$ be the total molecules ($n_\text{min,ref} + n_\text{min,alt}$).
+The point estimate of VAF is:
+
+\begin{equation}
+  \label{eq:vaf}
+  \hat{f} = \frac{k}{M}
+\end{equation}
+
+The 95\% credible interval uses the conjugate Beta posterior with a uniform prior $\text{Beta}(1, 1)$.
+Observing $k$ successes in $M$ trials yields posterior $\text{Beta}(k + 1, M - k + 1)$:
+
+\begin{equation}
+  \label{eq:vaf-ci}
+  \text{CI}_{95\%} = \bigl[q_{0.025}, \; q_{0.975}\bigr]
+  \quad \text{where} \quad
+  q_\alpha = F^{-1}_{\text{Beta}(k+1, \, M-k+1)}(\alpha)
+\end{equation}
+
+\noindent and $F^{-1}$ is the inverse CDF (quantile function) of the Beta distribution.
+
+\subsubsection{Strand Bias}
+
+kam tests for strand bias using Fisher's exact test on a $2 \times 2$ contingency table.
+Let $a$, $b$ be the number of forward and reverse simplex molecules supporting the alternate allele, and $c$, $d$ be the corresponding counts for the reference allele:
+
+\begin{equation}
+  \label{eq:strand-bias-table}
+  \begin{array}{c|cc}
+    & \text{Forward} & \text{Reverse} \\ \hline
+    \text{Alt}  & a & b \\
+    \text{Ref}  & c & d
+  \end{array}
+\end{equation}
+
+The two-tailed p-value is computed by summing all hypergeometric probability masses $\le$ the observed table's probability, given fixed marginals.
+Variants with $p < 0.01$ are flagged as strand-biased.
+
+\subsubsection{Confidence Score}
+
+The posterior probability that the variant is real (versus background noise) uses a binomial likelihood ratio.
+Under equal priors, the posterior is:
+
+\begin{equation}
+  \label{eq:confidence}
+  P(\text{signal} \mid \text{data}) = \frac{L(\hat{f})}{L(\hat{f}) + L(\varepsilon)}
+\end{equation}
+
+\noindent where $L(p) = p^k (1 - p)^{M - k}$ is the binomial likelihood and $\varepsilon$ is the per-site background error rate (default: $10^{-4}$).
+Variants require a posterior probability $\ge 0.99$ to pass the confidence filter.
+
+\subsubsection{Variant Classification}
+
+Variant type is determined by comparing the reconstructed reference and alternate path sequences.
+Let $|R|$ and $|A|$ denote their lengths:
+
+\begin{itemize}
+  \item $|R| = |A|$ with exactly 1 differing base: SNV.
+  \item $|R| = |A|$ with $>1$ differing bases: MNV.
+  \item $|R| > |A|$: deletion.
+  \item $|R| < |A|$: insertion.
+\end{itemize}
+
+\subsubsection{Filter Assignment}
+
+Each variant receives one of five filter labels.
+A variant passes all filters when: the posterior confidence $\ge 0.99$, the strand bias p-value $\ge 0.01$, the alt molecule count $\ge 2$ (configurable), and the duplex alt molecule count meets the minimum threshold (default: 0).
+Variants failing any criterion are labelled with the corresponding filter (\texttt{LowConfidence}, \texttt{StrandBias}, \texttt{LowDuplex}, or \texttt{CollisionRisk}).

@@ -14,11 +14,11 @@ use kam_assemble::io::read_fastq_pairs;
 use kam_assemble::parser::ParserConfig;
 use kam_call::caller::{call_variant, CallerConfig};
 use kam_call::output::{write_variants, OutputFormat};
-use kam_core::qc::{write_qc, AssemblyQc, CallQc, IndexQc, PathfindQc};
 use kam_core::kmer::KmerIndex;
+use kam_core::qc::{write_qc, AssemblyQc, CallQc, IndexQc, PathfindQc};
 use kam_index::allowlist::build_allowlist;
-use kam_index::encode::{canonical, KmerIterator};
-use kam_index::extract::{extract_all, ConsensusReadInfo};
+use kam_index::encode::{canonical, encode_kmer, reverse_complement, KmerIterator};
+use kam_index::extract::ConsensusReadInfo;
 use kam_index::HashKmerIndex;
 use kam_pathfind::anchor::{validate_anchors, DEFAULT_ANCHOR_THRESHOLD};
 use kam_pathfind::graph::DeBruijnGraph;
@@ -99,24 +99,62 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     let allowlist = build_allowlist(&target_slices, k);
     let n_target_kmers = allowlist.len() as u64;
 
-    let mut raw_index = HashKmerIndex::new();
+    // Two-pass indexing: include ALL k-mers from molecules that overlap a
+    // target region, not just exact target k-mers.
+    //
+    // Pass 1 (allowlist check): a molecule "overlaps a target" if ANY of its
+    //   k-mers is in the allowlist.  This identifies on-target molecules.
+    //
+    // Pass 2 (full extraction): index every k-mer from on-target molecules,
+    //   including variant k-mers that differ from the reference.  These
+    //   non-allowlist k-mers are essential for de Bruijn graph variant paths.
+    //
+    // Off-target molecules (no k-mer in allowlist) are skipped for efficiency.
     let reads: Vec<ConsensusReadInfo> = molecules_to_consensus_reads(&molecules);
-    extract_all(&reads, k, &mut raw_index);
-
-    // Filter to allowlist in-place by rebuilding.
     let mut index = HashKmerIndex::new();
-    for (&kmer, ev) in raw_index.iter() {
-        if allowlist.contains(&kmer) {
-            index.insert(kmer, ev.clone());
+    for read in &reads {
+        let overlaps_target = KmerIterator::new(&read.sequence, k)
+            .any(|(_, km)| allowlist.contains(&canonical(km, k)));
+        if overlaps_target {
+            kam_index::extract::extract_and_index(read, k, &mut index);
         }
     }
 
     let n_kmers_observed = index.len() as u64;
     let mean_molecule_depth = if n_kmers_observed > 0 {
-        index.iter().map(|(_, ev)| ev.n_molecules as f64).sum::<f64>() / n_kmers_observed as f64
+        index
+            .iter()
+            .map(|(_, ev)| ev.n_molecules as f64)
+            .sum::<f64>()
+            / n_kmers_observed as f64
     } else {
         0.0
     };
+
+    // Build a raw (non-canonical) k-mer index for de Bruijn graph construction.
+    //
+    // The canonical index stores min(kmer, rev_comp(kmer)) for evidence
+    // aggregation.  This is correct for counting but breaks the de Bruijn
+    // graph: two consecutive k-mers from a sequence share a (k-1)-base overlap
+    // only when both are in their original orientation.  After canonicalization
+    // one or both can be flipped to their reverse complement, destroying the
+    // suffix/prefix relationship and preventing edge formation.
+    //
+    // The raw index stores k-mers in the original orientation AND their reverse
+    // complements so that every read direction is represented.  The graph is
+    // then built from this raw index; scoring still uses the canonical index.
+    let mut raw_graph_index = HashKmerIndex::new();
+    for read in &reads {
+        let overlaps_target = KmerIterator::new(&read.sequence, k)
+            .any(|(_, km)| allowlist.contains(&canonical(km, k)));
+        if overlaps_target {
+            for (_, raw_km) in KmerIterator::new(&read.sequence, k) {
+                let ev = kam_core::kmer::MoleculeEvidence::default();
+                raw_graph_index.insert(raw_km, ev.clone());
+                raw_graph_index.insert(reverse_complement(raw_km, k), ev);
+            }
+        }
+    }
 
     let index_qc = IndexQc {
         stage: "kmer_indexing".to_string(),
@@ -133,6 +171,13 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // ── Stage 3: Pathfind ─────────────────────────────────────────────────────
+    // Build the de Bruijn graph ONCE from raw (non-canonical) k-mers.
+    // Raw k-mers preserve suffix/prefix overlap relationships needed for edges.
+    // Building once rather than once-per-target avoids redundant construction
+    // and includes variant k-mers discovered in the reads.
+    let all_raw_kmers: Vec<u64> = raw_graph_index.iter().map(|(&km, _)| km).collect();
+    let graph = DeBruijnGraph::from_index(&raw_graph_index, k, &all_raw_kmers);
+
     let mut all_scored: Vec<(String, Vec<ScoredPath>)> = Vec::new();
     let mut n_targets_queried: u64 = 0;
     let mut n_targets_with_variants: u64 = 0;
@@ -143,15 +188,14 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     for (target_id, target_seq) in &targets {
         n_targets_queried += 1;
 
-        let anchor_result =
-            validate_anchors(target_seq, k, &index, DEFAULT_ANCHOR_THRESHOLD);
+        // validate_anchors checks canonical anchor uniqueness in the canonical
+        // evidence index — used to warn about repeat regions.
+        let anchor_result = validate_anchors(target_seq, k, &index, DEFAULT_ANCHOR_THRESHOLD);
 
         let anchors = match anchor_result {
             Some(a) => a,
             None => {
-                eprintln!(
-                    "[run/pathfind] target {target_id}: too short for k={k}, skipping"
-                );
+                eprintln!("[run/pathfind] target {target_id}: too short for k={k}, skipping");
                 continue;
             }
         };
@@ -160,19 +204,28 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             n_anchors_non_unique += 1;
         }
 
-        let target_kmers: Vec<u64> = KmerIterator::new(target_seq, k)
-            .map(|(_, km)| canonical(km, k))
-            .collect();
+        // Use raw (non-canonical) anchors from the forward strand of the target
+        // sequence for BFS.  The graph is built from raw k-mers so BFS must
+        // also start and end on raw k-mer nodes.
+        let start_raw = match encode_kmer(&target_seq[..k]) {
+            Some(km) => km,
+            None => {
+                eprintln!("[run/pathfind] target {target_id}: start anchor contains N, skipping");
+                continue;
+            }
+        };
+        let end_raw = match encode_kmer(&target_seq[target_seq.len() - k..]) {
+            Some(km) => km,
+            None => {
+                eprintln!("[run/pathfind] target {target_id}: end anchor contains N, skipping");
+                continue;
+            }
+        };
 
-        let graph = DeBruijnGraph::from_index(&index, k, &target_kmers);
+        let paths = kam_pathfind::walk::walk_paths(&graph, start_raw, end_raw, &walk_config);
 
-        let paths = kam_pathfind::walk::walk_paths(
-            &graph,
-            anchors.start_kmer,
-            anchors.end_kmer,
-            &walk_config,
-        );
-
+        // Score against the canonical evidence index; score_path canonicalizes
+        // each raw path k-mer before the lookup.
         let scored = score_and_rank_paths(paths, &index, target_seq, k);
         let has_variant = scored.iter().any(|p| !p.is_reference);
         if has_variant {
@@ -212,8 +265,10 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     let mut n_filtered: u64 = 0;
 
     // Build a map from target_id → target_seq for reference lookup.
-    let target_map: HashMap<&str, &[u8]> =
-        targets.iter().map(|(id, seq)| (id.as_str(), seq.as_slice())).collect();
+    let target_map: HashMap<&str, &[u8]> = targets
+        .iter()
+        .map(|(id, seq)| (id.as_str(), seq.as_slice()))
+        .collect();
 
     for (target_id, scored_paths) in &all_scored {
         let ref_path = scored_paths.iter().find(|p| p.is_reference);
@@ -278,7 +333,10 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    eprintln!("[run] pipeline complete — output in {}", args.output_dir.display());
+    eprintln!(
+        "[run] pipeline complete — output in {}",
+        args.output_dir.display()
+    );
 
     Ok(())
 }
@@ -383,14 +441,25 @@ mod tests {
         run_pipeline(args).expect("run_pipeline should succeed");
 
         // Check all QC files exist.
-        assert!(output_dir.join("assembly_qc.json").exists(), "assembly_qc.json");
+        assert!(
+            output_dir.join("assembly_qc.json").exists(),
+            "assembly_qc.json"
+        );
         assert!(output_dir.join("index_qc.json").exists(), "index_qc.json");
-        assert!(output_dir.join("pathfind_qc.json").exists(), "pathfind_qc.json");
+        assert!(
+            output_dir.join("pathfind_qc.json").exists(),
+            "pathfind_qc.json"
+        );
         assert!(output_dir.join("call_qc.json").exists(), "call_qc.json");
         assert!(output_dir.join("variants.tsv").exists(), "variants.tsv");
 
         // Verify QC JSONs are valid.
-        for name in &["assembly_qc.json", "index_qc.json", "pathfind_qc.json", "call_qc.json"] {
+        for name in &[
+            "assembly_qc.json",
+            "index_qc.json",
+            "pathfind_qc.json",
+            "call_qc.json",
+        ] {
             let text = std::fs::read_to_string(output_dir.join(name)).unwrap();
             let _v: serde_json::Value = serde_json::from_str(&text)
                 .unwrap_or_else(|e| panic!("{name} is not valid JSON: {e}"));

@@ -1,0 +1,92 @@
+# twist_depth_comparison.yaml — Twist duplex UMI coverage depth comparison
+#
+# Compares kam and competing tools at four sequencing depths (200x, 500x,
+# 1000x, 2000x) with a fixed VAF of 0.1%.  Isolates the effect of raw coverage
+# on duplex consensus yield and variant detection performance.
+#
+# At 0.1% VAF with diploid purity=1.0 and CCF=1.0:
+#   effective VAF = tumour_fraction / ploidy = 0.002 / 2 = 0.001 = 0.1%
+#   → tumour_fraction: 0.002 for all samples.
+#
+# Coverage progression:
+#   200x  — lower bound; tests duplex family formation at minimal depth
+#   500x  — typical clinical panel depth
+#   1000x — reference condition matching the real titration data
+#   2000x — high-depth; approaches practical upper limit for capture panels
+#
+# Run:
+#   varforge simulate --config benchmarking/scripts/configs/twist_depth_comparison.yaml
+
+reference: /mnt/tzeng-local/tzeng-thesis/data/ref/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna
+
+output:
+  directory: benchmarking/synthetic_data/twist_depth
+  fastq: true
+  bam: false
+  truth_vcf: true
+  manifest: true
+
+fragment:
+  model: cfda
+  mean: 167.0
+  sd: 20.0
+
+quality:
+  mean_quality: 37
+  tail_decay: 0.002
+
+tumour:
+  purity: 1.0
+  ploidy: 2
+  clones:
+    - id: founding
+      ccf: 1.0
+
+# 50 random mutations.  The effective per-molecule VAF is controlled by
+# tumour_fraction (0.002) rather than the vaf_min/vaf_max range, so the
+# range is set tight around 0.1% (0.001–0.002) to keep all injected
+# mutations in the low-VAF regime being benchmarked.
+mutations:
+  random:
+    count: 50
+    vaf_min: 0.001
+    vaf_max: 0.002
+    snv_fraction: 0.80
+    indel_fraction: 0.15
+    mnv_fraction: 0.05
+
+umi:
+  length: 5
+  duplex: true
+  pcr_cycles: 10
+  family_size_mean: 4.0
+  family_size_sd: 1.5
+  inline: true
+
+capture:
+  enabled: true
+  targets_bed: /mnt/tzeng-local/tzeng-thesis/titration-dedup/bams/panel.bed
+  off_target_fraction: 0.03
+  coverage_uniformity: 0.25
+  edge_dropoff_bases: 30
+
+# tumour_fraction = 0.002 holds VAF fixed at 0.1% across all depth levels.
+samples:
+  - name: depth_200x
+    coverage: 200.0
+    tumour_fraction: 0.002
+
+  - name: depth_500x
+    coverage: 500.0
+    tumour_fraction: 0.002
+
+  - name: depth_1000x
+    coverage: 1000.0
+    tumour_fraction: 0.002
+
+  - name: depth_2000x
+    coverage: 2000.0
+    tumour_fraction: 0.002
+
+seed: 42
+threads: 16

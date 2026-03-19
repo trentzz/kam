@@ -205,17 +205,22 @@ pub fn parse_read_pair(
             r2_seq.len(),
             tmpl_start
         );
-        return ParseResult::Dropped { reason: DropReason::ReadTooShort, detail };
+        return ParseResult::Dropped {
+            reason: DropReason::ReadTooShort,
+            detail,
+        };
     }
 
     // ── 2. Extract UMI, skip, template ───────────────────────────────────
     let umi_r1: [u8; 5] = r1_seq[..umi_len].try_into().expect("umi_length==5");
     let umi_r2: [u8; 5] = r2_seq[..umi_len].try_into().expect("umi_length==5");
 
-    let skip_r1: [u8; 2] =
-        r1_seq[umi_len..tmpl_start].try_into().expect("skip_length==2");
-    let skip_r2: [u8; 2] =
-        r2_seq[umi_len..tmpl_start].try_into().expect("skip_length==2");
+    let skip_r1: [u8; 2] = r1_seq[umi_len..tmpl_start]
+        .try_into()
+        .expect("skip_length==2");
+    let skip_r2: [u8; 2] = r2_seq[umi_len..tmpl_start]
+        .try_into()
+        .expect("skip_length==2");
 
     let template_r1 = r1_seq[tmpl_start..].to_vec();
     let template_r2 = r2_seq[tmpl_start..].to_vec();
@@ -231,10 +236,11 @@ pub fn parse_read_pair(
         let t1 = template_r1.len();
         let t2 = template_r2.len();
         if t1 < min_tmpl || t2 < min_tmpl {
-            let detail = format!(
-                "r1_template={t1}bp,r2_template={t2}bp,min={min_tmpl}"
-            );
-            return ParseResult::Dropped { reason: DropReason::TemplateTooShort, detail };
+            let detail = format!("r1_template={t1}bp,r2_template={t2}bp,min={min_tmpl}");
+            return ParseResult::Dropped {
+                reason: DropReason::TemplateTooShort,
+                detail,
+            };
         }
     }
 
@@ -246,20 +252,22 @@ pub fn parse_read_pair(
         for (i, &raw) in umi_qual_r1.iter().enumerate() {
             let phred = raw.saturating_sub(33);
             if phred < min_q {
-                let detail = format!(
-                    "r1_umi_base={i},quality={phred},min={min_q}"
-                );
-                return ParseResult::Dropped { reason: DropReason::LowUmiQuality, detail };
+                let detail = format!("r1_umi_base={i},quality={phred},min={min_q}");
+                return ParseResult::Dropped {
+                    reason: DropReason::LowUmiQuality,
+                    detail,
+                };
             }
         }
         // Check R2 UMI qualities
         for (i, &raw) in umi_qual_r2.iter().enumerate() {
             let phred = raw.saturating_sub(33);
             if phred < min_q {
-                let detail = format!(
-                    "r2_umi_base={i},quality={phred},min={min_q}"
-                );
-                return ParseResult::Dropped { reason: DropReason::LowUmiQuality, detail };
+                let detail = format!("r2_umi_base={i},quality={phred},min={min_q}");
+                return ParseResult::Dropped {
+                    reason: DropReason::LowUmiQuality,
+                    detail,
+                };
             }
         }
     }
@@ -356,10 +364,15 @@ mod tests {
         let r1_qual = b"IIII";
         let r2_seq = b"TGCATAGNNNNNNNNNN";
         let r2_qual = b"IIIIIIIIIIIIIIIII";
-        let result =
-            parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &default_config());
+        let result = parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &default_config());
         assert!(
-            matches!(result, ParseResult::Dropped { reason: DropReason::ReadTooShort, .. }),
+            matches!(
+                result,
+                ParseResult::Dropped {
+                    reason: DropReason::ReadTooShort,
+                    ..
+                }
+            ),
             "Expected ReadTooShort"
         );
     }
@@ -378,7 +391,10 @@ mod tests {
         assert!(
             matches!(
                 result,
-                ParseResult::Dropped { reason: DropReason::TemplateTooShort, .. }
+                ParseResult::Dropped {
+                    reason: DropReason::TemplateTooShort,
+                    ..
+                }
             ),
             "Expected TemplateTooShort"
         );
@@ -456,8 +472,7 @@ mod tests {
         let r1_qual = b"IIIIIIIIIIIIIIIIII";
         let r2_seq = b"TGCATACGGGGGGGGGGG";
         let r2_qual = b"IIIIIIIIIIIIIIIIII";
-        let result =
-            parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &default_config());
+        let result = parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &default_config());
         match result {
             ParseResult::Ok(p) => {
                 assert_eq!(p.template_r1, b"CCCCCCCCCCC");
@@ -545,7 +560,10 @@ mod tests {
         assert!(
             matches!(
                 result,
-                ParseResult::Dropped { reason: DropReason::LowUmiQuality, .. }
+                ParseResult::Dropped {
+                    reason: DropReason::LowUmiQuality,
+                    ..
+                }
             ),
             "Expected LowUmiQuality drop"
         );
@@ -559,8 +577,7 @@ mod tests {
         let r1_qual = b"II#IIIIIIIIIIIIII";
         let r2_seq = b"TGCATAGNNNNNNNNNN";
         let r2_qual = b"IIIIIIIIIIIIIIIII";
-        let result =
-            parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &default_config());
+        let result = parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &default_config());
         assert!(matches!(result, ParseResult::Ok(_)), "Expected Ok");
     }
 
@@ -575,9 +592,18 @@ mod tests {
             ..ParserConfig::default()
         };
         match parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &config) {
-            ParseResult::Dropped { reason: DropReason::TemplateTooShort, detail } => {
-                assert!(detail.contains("10"), "detail should mention template length: {detail}");
-                assert!(detail.contains("20"), "detail should mention minimum: {detail}");
+            ParseResult::Dropped {
+                reason: DropReason::TemplateTooShort,
+                detail,
+            } => {
+                assert!(
+                    detail.contains("10"),
+                    "detail should mention template length: {detail}"
+                );
+                assert!(
+                    detail.contains("20"),
+                    "detail should mention minimum: {detail}"
+                );
             }
             other => panic!("Expected TemplateTooShort, got: {other:?}"),
         }
@@ -592,9 +618,15 @@ mod tests {
             ..ParserConfig::default()
         };
         match parse_read_pair(r1_seq2, r1_qual2, r2_seq2, r2_qual2, &config2) {
-            ParseResult::Dropped { reason: DropReason::LowUmiQuality, detail } => {
+            ParseResult::Dropped {
+                reason: DropReason::LowUmiQuality,
+                detail,
+            } => {
                 // detail should mention the quality value and the minimum
-                assert!(detail.contains("min=30"), "detail should mention min quality: {detail}");
+                assert!(
+                    detail.contains("min=30"),
+                    "detail should mention min quality: {detail}"
+                );
             }
             other => panic!("Expected LowUmiQuality, got: {other:?}"),
         }
@@ -604,10 +636,25 @@ mod tests {
         let short_qual = b"IIII";
         let long_seq = b"TGCATAGNNNNNNNNNN";
         let long_qual = b"IIIIIIIIIIIIIIIII";
-        match parse_read_pair(short_seq, short_qual, long_seq, long_qual, &default_config()) {
-            ParseResult::Dropped { reason: DropReason::ReadTooShort, detail } => {
-                assert!(detail.contains('4'), "detail should mention short read length: {detail}");
-                assert!(detail.contains('7'), "detail should mention min length: {detail}");
+        match parse_read_pair(
+            short_seq,
+            short_qual,
+            long_seq,
+            long_qual,
+            &default_config(),
+        ) {
+            ParseResult::Dropped {
+                reason: DropReason::ReadTooShort,
+                detail,
+            } => {
+                assert!(
+                    detail.contains('4'),
+                    "detail should mention short read length: {detail}"
+                );
+                assert!(
+                    detail.contains('7'),
+                    "detail should mention min length: {detail}"
+                );
             }
             other => panic!("Expected ReadTooShort, got: {other:?}"),
         }

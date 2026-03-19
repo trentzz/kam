@@ -5,24 +5,35 @@
 //! counts, duplex fractions) summarise path confidence, and the weakest k-mer
 //! identifies the bottleneck supporting the call.
 //!
+//! Path k-mers are raw (non-canonical) because the de Bruijn graph is built
+//! from raw k-mers to preserve suffix/prefix overlap relationships. Before
+//! each index lookup, the raw k-mer is canonicalized so it matches the
+//! canonical evidence index entries.
+//!
 //! # Example
 //! ```
 //! use kam_pathfind::walk::GraphPath;
 //! use kam_pathfind::score::{score_path, ScoredPath};
 //! use kam_index::HashKmerIndex;
+//! use kam_index::encode::{encode_kmer, canonical};
 //! use kam_core::kmer::{KmerIndex, MoleculeEvidence};
 //!
 //! let mut index = HashKmerIndex::new();
-//! index.insert(1, MoleculeEvidence { n_molecules: 10, n_duplex: 5, ..Default::default() });
-//! index.insert(2, MoleculeEvidence { n_molecules: 8,  n_duplex: 4, ..Default::default() });
+//! // Insert under canonical keys.
+//! let k = 4;
+//! let km1 = encode_kmer(b"ACGT").unwrap();
+//! let km2 = encode_kmer(b"CGTA").unwrap();
+//! index.insert(canonical(km1, k), MoleculeEvidence { n_molecules: 10, n_duplex: 5, ..Default::default() });
+//! index.insert(canonical(km2, k), MoleculeEvidence { n_molecules: 8,  n_duplex: 4, ..Default::default() });
 //!
-//! let path = GraphPath { kmers: vec![1, 2], sequence: vec![], length: 2 };
-//! let scored = score_path(&path, &index);
+//! // Path stores raw k-mers.
+//! let path = GraphPath { kmers: vec![km1, km2], sequence: vec![], length: 2 };
+//! let scored = score_path(&path, &index, k);
 //! assert_eq!(scored.aggregate_evidence.min_molecules, 8);
-//! assert_eq!(scored.weakest_kmer.kmer, 2);
 //! ```
 
 use kam_core::kmer::{KmerIndex, MoleculeEvidence};
+use kam_index::encode::canonical;
 
 use crate::walk::GraphPath;
 
@@ -73,27 +84,41 @@ pub struct WeakestKmer {
 
 /// Score a single path against the k-mer index.
 ///
-/// Every k-mer in the path is looked up in `index`. K-mers absent from the
-/// index are treated as having zero evidence (default [`MoleculeEvidence`]).
-/// An empty path returns a default [`ScoredPath`] with all-zero statistics and
+/// Every k-mer in the path is canonicalized before the index lookup because
+/// the de Bruijn graph stores raw (non-canonical) k-mers while the evidence
+/// index stores canonical k-mers.  K-mers absent from the index are treated
+/// as having zero evidence (default [`MoleculeEvidence`]).  An empty path
+/// returns a default [`ScoredPath`] with all-zero statistics and
 /// `weakest_kmer.kmer == 0`.
+///
+/// # Arguments
+///
+/// - `path`: path through the raw de Bruijn graph
+/// - `index`: canonical k-mer evidence index
+/// - `k`: k-mer length (required to compute the canonical form)
 ///
 /// # Example
 /// ```
 /// use kam_pathfind::walk::GraphPath;
 /// use kam_pathfind::score::score_path;
 /// use kam_index::HashKmerIndex;
+/// use kam_index::encode::{encode_kmer, canonical};
 /// use kam_core::kmer::{KmerIndex, MoleculeEvidence};
 ///
-/// let mut index = HashKmerIndex::new();
-/// index.insert(10, MoleculeEvidence { n_molecules: 5, ..Default::default() });
+/// let k = 4;
+/// let raw_km = encode_kmer(b"TTTT").unwrap();
+/// let can_km = canonical(raw_km, k); // AAAA (the smaller form)
 ///
-/// let path = GraphPath { kmers: vec![10], sequence: b"ACGT".to_vec(), length: 1 };
-/// let scored = score_path(&path, &index);
+/// let mut index = HashKmerIndex::new();
+/// index.insert(can_km, MoleculeEvidence { n_molecules: 5, ..Default::default() });
+///
+/// // Path uses the raw k-mer; score_path canonicalizes before lookup.
+/// let path = GraphPath { kmers: vec![raw_km], sequence: b"TTTT".to_vec(), length: 1 };
+/// let scored = score_path(&path, &index, k);
 /// assert_eq!(scored.aggregate_evidence.min_molecules, 5);
 /// assert_eq!(scored.aggregate_evidence.mean_molecules, 5.0);
 /// ```
-pub fn score_path(path: &GraphPath, index: &dyn KmerIndex) -> ScoredPath {
+pub fn score_path(path: &GraphPath, index: &dyn KmerIndex, k: usize) -> ScoredPath {
     if path.kmers.is_empty() {
         let default_ev = MoleculeEvidence::default();
         return ScoredPath {
@@ -117,14 +142,13 @@ pub fn score_path(path: &GraphPath, index: &dyn KmerIndex) -> ScoredPath {
     }
 
     // Collect evidence for every k-mer.
+    // Path k-mers are raw (non-canonical); canonicalize before the index lookup.
     let evidences: Vec<MoleculeEvidence> = path
         .kmers
         .iter()
         .map(|&kmer| {
-            index
-                .get(kmer)
-                .cloned()
-                .unwrap_or_default()
+            let canon = canonical(kmer, k);
+            index.get(canon).cloned().unwrap_or_default()
         })
         .collect();
 
@@ -136,8 +160,11 @@ pub fn score_path(path: &GraphPath, index: &dyn KmerIndex) -> ScoredPath {
     let mean_duplex = evidences.iter().map(|e| e.n_duplex as f32).sum::<f32>() / n;
     let total_simplex_fwd = evidences.iter().map(|e| e.n_simplex_fwd).sum();
     let total_simplex_rev = evidences.iter().map(|e| e.n_simplex_rev).sum();
-    let mean_error_prob =
-        evidences.iter().map(|e| e.mean_base_error_prob).sum::<f32>() / n;
+    let mean_error_prob = evidences
+        .iter()
+        .map(|e| e.mean_base_error_prob)
+        .sum::<f32>()
+        / n;
 
     // Find the weakest k-mer (lowest n_molecules; ties broken by first occurrence).
     let (weakest_idx, weakest_ev) = evidences
@@ -169,40 +196,45 @@ pub fn score_path(path: &GraphPath, index: &dyn KmerIndex) -> ScoredPath {
 /// Score all paths, mark the reference path, and sort by evidence strength.
 ///
 /// The reference path is determined by comparing each path's reconstructed
-/// `sequence` against k-mers derived from `reference_seq` using a sliding
-/// window of length `k`. A path is considered the reference if its `sequence`
-/// equals `reference_seq` (byte-for-byte).
+/// `sequence` against `reference_seq` (byte-for-byte).
 ///
 /// Paths are sorted by `min_molecules` descending (strongest evidence first).
 /// Ties are broken by `mean_molecules` descending, then by path index for
 /// determinism.
+///
+/// The `k` parameter is passed to [`score_path`] so it can canonicalize raw
+/// path k-mers before looking them up in the canonical evidence index.
 ///
 /// # Example
 /// ```
 /// use kam_pathfind::walk::GraphPath;
 /// use kam_pathfind::score::score_and_rank_paths;
 /// use kam_index::HashKmerIndex;
+/// use kam_index::encode::{encode_kmer, canonical};
 /// use kam_core::kmer::{KmerIndex, MoleculeEvidence};
 ///
+/// let k = 4;
+/// let km1 = encode_kmer(b"ACGT").unwrap();
+/// let km2 = encode_kmer(b"ACTT").unwrap();
 /// let mut index = HashKmerIndex::new();
-/// index.insert(1, MoleculeEvidence { n_molecules: 10, ..Default::default() });
-/// index.insert(2, MoleculeEvidence { n_molecules: 2, ..Default::default() });
+/// index.insert(canonical(km1, k), MoleculeEvidence { n_molecules: 10, ..Default::default() });
+/// index.insert(canonical(km2, k), MoleculeEvidence { n_molecules: 2, ..Default::default() });
 ///
-/// let strong = GraphPath { kmers: vec![1], sequence: b"ACGT".to_vec(), length: 1 };
-/// let weak   = GraphPath { kmers: vec![2], sequence: b"ACTT".to_vec(), length: 1 };
+/// let strong = GraphPath { kmers: vec![km1], sequence: b"ACGT".to_vec(), length: 1 };
+/// let weak   = GraphPath { kmers: vec![km2], sequence: b"ACTT".to_vec(), length: 1 };
 ///
-/// let ranked = score_and_rank_paths(vec![weak, strong], &index, b"ACGT", 4);
+/// let ranked = score_and_rank_paths(vec![weak, strong], &index, b"ACGT", k);
 /// assert_eq!(ranked[0].aggregate_evidence.min_molecules, 10); // strong first
 /// ```
 pub fn score_and_rank_paths(
     paths: Vec<GraphPath>,
     index: &dyn KmerIndex,
     reference_seq: &[u8],
-    _k: usize,
+    k: usize,
 ) -> Vec<ScoredPath> {
     let mut scored: Vec<ScoredPath> = paths
         .into_iter()
-        .map(|p| score_path(&p, index))
+        .map(|p| score_path(&p, index, k))
         .collect();
 
     // Mark the reference path.
@@ -233,7 +265,11 @@ pub fn score_and_rank_paths(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kam_index::encode::{canonical, encode_kmer};
     use kam_index::HashKmerIndex;
+
+    // k used across most tests.
+    const K: usize = 4;
 
     fn ev(n_molecules: u32, n_duplex: u32) -> MoleculeEvidence {
         MoleculeEvidence {
@@ -245,24 +281,49 @@ mod tests {
 
     fn simple_path(kmers: Vec<u64>, sequence: Vec<u8>) -> GraphPath {
         let length = kmers.len();
-        GraphPath { kmers, sequence, length }
+        GraphPath {
+            kmers,
+            sequence,
+            length,
+        }
+    }
+
+    // Convenience: encode a 4-base k-mer sequence.
+    fn enc(seq: &[u8]) -> u64 {
+        encode_kmer(seq).unwrap()
+    }
+
+    // Convenience: canonical form of a 4-base k-mer sequence.
+    fn can(seq: &[u8]) -> u64 {
+        canonical(enc(seq), K)
     }
 
     // Test 1: Single k-mer path → evidence equals that k-mer's evidence.
+    // The path stores the raw k-mer; the index stores its canonical form.
+    // score_path must canonicalize before the lookup.
     #[test]
     fn single_kmer_path_evidence_matches() {
-        let mut index = HashKmerIndex::new();
-        index.insert(42, MoleculeEvidence {
-            n_molecules: 7,
-            n_duplex: 3,
-            n_simplex_fwd: 2,
-            n_simplex_rev: 2,
-            min_base_error_prob: 0.001,
-            mean_base_error_prob: 0.002,
-        });
+        // TTTT → canonical is AAAA (the smaller value).
+        let raw = enc(b"TTTT");
+        let canon = can(b"TTTT");
+        assert_ne!(raw, canon, "TTTT should not be its own canonical form");
 
-        let path = simple_path(vec![42], b"ACGT".to_vec());
-        let scored = score_path(&path, &index);
+        let mut index = HashKmerIndex::new();
+        index.insert(
+            canon,
+            MoleculeEvidence {
+                n_molecules: 7,
+                n_duplex: 3,
+                n_simplex_fwd: 2,
+                n_simplex_rev: 2,
+                min_base_error_prob: 0.001,
+                mean_base_error_prob: 0.002,
+            },
+        );
+
+        // Path carries the raw k-mer (as the graph would).
+        let path = simple_path(vec![raw], b"TTTT".to_vec());
+        let scored = score_path(&path, &index, K);
 
         assert_eq!(scored.aggregate_evidence.min_molecules, 7);
         assert_eq!(scored.aggregate_evidence.mean_molecules, 7.0);
@@ -274,15 +335,22 @@ mod tests {
     }
 
     // Test 2: Multi-kmer path → min_molecules is the minimum across k-mers.
+    // Use raw k-mers in the path and canonical k-mers in the index.
     #[test]
     fn multi_kmer_min_is_minimum() {
-        let mut index = HashKmerIndex::new();
-        index.insert(1, ev(10, 5));
-        index.insert(2, ev(3, 1));
-        index.insert(3, ev(8, 4));
+        // Three raw k-mers from a linear sequence ACGTACGTA (k=4).
+        // ACGT, CGTA, GTAC
+        let raw1 = enc(b"ACGT");
+        let raw2 = enc(b"CGTA");
+        let raw3 = enc(b"GTAC");
 
-        let path = simple_path(vec![1, 2, 3], b"ACGTA".to_vec());
-        let scored = score_path(&path, &index);
+        let mut index = HashKmerIndex::new();
+        index.insert(canonical(raw1, K), ev(10, 5));
+        index.insert(canonical(raw2, K), ev(3, 1));
+        index.insert(canonical(raw3, K), ev(8, 4));
+
+        let path = simple_path(vec![raw1, raw2, raw3], b"ACGTACGTA".to_vec());
+        let scored = score_path(&path, &index, K);
 
         assert_eq!(scored.aggregate_evidence.min_molecules, 3);
         // mean = (10 + 3 + 8) / 3 = 7.0
@@ -292,15 +360,20 @@ mod tests {
     // Test 3: Weakest k-mer identified correctly.
     #[test]
     fn weakest_kmer_identified() {
+        let raw1 = enc(b"AAAC");
+        let raw2 = enc(b"TTTT"); // weakest — lowest molecule count
+        let raw3 = enc(b"CCCC");
+
         let mut index = HashKmerIndex::new();
-        index.insert(10, ev(15, 7));
-        index.insert(20, ev(2, 0)); // weakest
-        index.insert(30, ev(12, 6));
+        index.insert(canonical(raw1, K), ev(15, 7));
+        index.insert(canonical(raw2, K), ev(2, 0));
+        index.insert(canonical(raw3, K), ev(12, 6));
 
-        let path = simple_path(vec![10, 20, 30], b"ACGTA".to_vec());
-        let scored = score_path(&path, &index);
+        let path = simple_path(vec![raw1, raw2, raw3], b"AAACTTTTCCCC".to_vec());
+        let scored = score_path(&path, &index, K);
 
-        assert_eq!(scored.weakest_kmer.kmer, 20);
+        // Weakest k-mer is raw2 (TTTT), which should be at index 1.
+        assert_eq!(scored.weakest_kmer.kmer, raw2);
         assert_eq!(scored.weakest_kmer.position_in_path, 1);
         assert_eq!(scored.weakest_kmer.evidence.n_molecules, 2);
     }
@@ -311,33 +384,42 @@ mod tests {
         let ref_seq = b"ACGTACGT";
         let k = 4;
 
-        let mut index = HashKmerIndex::new();
-        index.insert(1, ev(10, 5));
-        index.insert(2, ev(10, 5));
+        let raw_ref = enc(b"ACGT");
+        let raw_alt = enc(b"TTTT");
 
-        let ref_path = simple_path(vec![1], ref_seq.to_vec());
-        let alt_path = simple_path(vec![2], b"ACTTACGT".to_vec());
+        let mut index = HashKmerIndex::new();
+        index.insert(canonical(raw_ref, k), ev(10, 5));
+        index.insert(canonical(raw_alt, k), ev(10, 5));
+
+        let ref_path = simple_path(vec![raw_ref], ref_seq.to_vec());
+        let alt_path = simple_path(vec![raw_alt], b"TTTTACGT".to_vec());
 
         let ranked = score_and_rank_paths(vec![alt_path, ref_path], &index, ref_seq, k);
 
         let ref_count = ranked.iter().filter(|p| p.is_reference).count();
         assert_eq!(ref_count, 1);
-        assert!(ranked.iter().any(|p| p.is_reference && p.path.sequence == ref_seq));
+        assert!(ranked
+            .iter()
+            .any(|p| p.is_reference && p.path.sequence == ref_seq));
     }
 
     // Test 5: Paths sorted by evidence strength.
     #[test]
     fn paths_sorted_strongest_first() {
+        let raw_weak = enc(b"TTTT");
+        let raw_strong = enc(b"AAAC");
+        let raw_medium = enc(b"CCCC");
+
         let mut index = HashKmerIndex::new();
-        index.insert(1, ev(1, 0));   // weak
-        index.insert(2, ev(50, 25)); // strong
-        index.insert(3, ev(10, 5));  // medium
+        index.insert(canonical(raw_weak, K), ev(1, 0));
+        index.insert(canonical(raw_strong, K), ev(50, 25));
+        index.insert(canonical(raw_medium, K), ev(10, 5));
 
-        let weak   = simple_path(vec![1], b"TTTT".to_vec());
-        let strong = simple_path(vec![2], b"ACGT".to_vec());
-        let medium = simple_path(vec![3], b"CCCC".to_vec());
+        let weak = simple_path(vec![raw_weak], b"TTTT".to_vec());
+        let strong = simple_path(vec![raw_strong], b"AAAC".to_vec());
+        let medium = simple_path(vec![raw_medium], b"CCCC".to_vec());
 
-        let ranked = score_and_rank_paths(vec![weak, strong, medium], &index, b"ACGT", 4);
+        let ranked = score_and_rank_paths(vec![weak, strong, medium], &index, b"AAAC", K);
 
         assert_eq!(ranked[0].aggregate_evidence.min_molecules, 50);
         assert_eq!(ranked[1].aggregate_evidence.min_molecules, 10);
@@ -348,9 +430,9 @@ mod tests {
     #[test]
     fn missing_kmer_has_zero_evidence() {
         let index = HashKmerIndex::new(); // empty index
-
-        let path = simple_path(vec![99999], b"ACGT".to_vec());
-        let scored = score_path(&path, &index);
+        let raw = enc(b"ACGT");
+        let path = simple_path(vec![raw], b"ACGT".to_vec());
+        let scored = score_path(&path, &index, K);
 
         assert_eq!(scored.aggregate_evidence.min_molecules, 0);
         assert_eq!(scored.aggregate_evidence.mean_molecules, 0.0);
@@ -362,7 +444,7 @@ mod tests {
     fn empty_path_graceful() {
         let index = HashKmerIndex::new();
         let path = simple_path(vec![], vec![]);
-        let scored = score_path(&path, &index);
+        let scored = score_path(&path, &index, K);
 
         assert_eq!(scored.aggregate_evidence.min_molecules, 0);
         assert_eq!(scored.aggregate_evidence.mean_molecules, 0.0);

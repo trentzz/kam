@@ -210,15 +210,15 @@ mod tests {
         let qual = qual_str(seq.len());
 
         // R1 has 2 records, R2 has 1.
-        write_fastq(
-            &r1_path,
-            &[("read1", &seq, &qual), ("read2", &seq, &qual)],
-        );
+        write_fastq(&r1_path, &[("read1", &seq, &qual), ("read2", &seq, &qual)]);
         write_fastq(&r2_path, &[("read1", &seq, &qual)]);
 
         let config = ParserConfig::default();
         let result = read_fastq_pairs(&r1_path, &r2_path, &config);
-        assert!(result.is_err(), "expected error for mismatched record counts");
+        assert!(
+            result.is_err(),
+            "expected error for mismatched record counts"
+        );
         let msg = result.unwrap_err().to_string();
         assert!(
             msg.contains("mismatched"),
@@ -336,14 +336,63 @@ mod tests {
 
         // R1 has 1 record, R2 has 2.
         write_fastq(&r1_path, &[("read1", &seq, &qual)]);
-        write_fastq(
-            &r2_path,
-            &[("read1", &seq, &qual), ("read2", &seq, &qual)],
-        );
+        write_fastq(&r2_path, &[("read1", &seq, &qual), ("read2", &seq, &qual)]);
 
         let config = ParserConfig::default();
         let result = read_fastq_pairs(&r1_path, &r2_path, &config);
-        assert!(result.is_err(), "expected error for mismatched record counts");
+        assert!(
+            result.is_err(),
+            "expected error for mismatched record counts"
+        );
+    }
+
+    // ── Test 7: Gzip-compressed FASTQ pair parses correctly ───────────────
+
+    #[test]
+    fn gzip_fastq_pair_parses_correctly() {
+        use flate2::write::GzEncoder;
+        use flate2::Compression;
+        use std::io::Write as IoWrite2;
+
+        let dir = tempdir();
+        let r1_gz_path = dir.join("R1.fastq.gz");
+        let r2_gz_path = dir.join("R2.fastq.gz");
+
+        let r1_seq = make_read_str("ACGTA", "TG", "NNNNNNNNNNNNNNNNNNNN");
+        let r2_seq = make_read_str("TGCAT", "AC", "NNNNNNNNNNNNNNNNNNNN");
+        let r1_qual = qual_str(r1_seq.len());
+        let r2_qual = qual_str(r2_seq.len());
+
+        // Write gzip-compressed FASTQ for R1.
+        {
+            let f = fs::File::create(&r1_gz_path).expect("create R1.fastq.gz");
+            let mut gz = GzEncoder::new(f, Compression::default());
+            write!(gz, "@read1\n{r1_seq}\n+\n{r1_qual}\n").unwrap();
+            gz.finish().expect("finish R1 gzip");
+        }
+
+        // Write gzip-compressed FASTQ for R2.
+        {
+            let f = fs::File::create(&r2_gz_path).expect("create R2.fastq.gz");
+            let mut gz = GzEncoder::new(f, Compression::default());
+            write!(gz, "@read1\n{r2_seq}\n+\n{r2_qual}\n").unwrap();
+            gz.finish().expect("finish R2 gzip");
+        }
+
+        let config = ParserConfig::default();
+        let (pairs, stats) = read_fastq_pairs(&r1_gz_path, &r2_gz_path, &config).unwrap();
+
+        assert_eq!(pairs.len(), 1, "expected one parsed pair from gzip input");
+        assert_eq!(stats.n_processed, 1);
+        assert_eq!(stats.n_passed, 1);
+
+        let p = &pairs[0];
+        assert_eq!(p.umi_r1, *b"ACGTA");
+        assert_eq!(p.umi_r2, *b"TGCAT");
+        assert_eq!(p.skip_r1, *b"TG");
+        assert_eq!(p.skip_r2, *b"AC");
+        assert_eq!(p.template_r1.len(), 20);
+        assert_eq!(p.template_r2.len(), 20);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────

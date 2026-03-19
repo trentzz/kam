@@ -27,12 +27,17 @@ pub fn run_call(args: CallArgs) -> Result<(), Box<dyn std::error::Error>> {
     // ── 2. Group paths by target ──────────────────────────────────────────────
     let mut by_target: HashMap<String, Vec<ScoredPathRecord>> = HashMap::new();
     for rec in records {
-        by_target.entry(rec.target_id.clone()).or_default().push(rec);
+        by_target
+            .entry(rec.target_id.clone())
+            .or_default()
+            .push(rec);
     }
 
     // ── 3. Build caller config from args ──────────────────────────────────────
     let caller_config = CallerConfig {
-        min_confidence: args.min_confidence.unwrap_or(CallerConfig::default().min_confidence),
+        min_confidence: args
+            .min_confidence
+            .unwrap_or(CallerConfig::default().min_confidence),
         strand_bias_threshold: args
             .strand_bias_threshold
             .unwrap_or(CallerConfig::default().strand_bias_threshold),
@@ -145,9 +150,7 @@ fn record_to_path_evidence(rec: &ScoredPathRecord) -> kam_pathfind::score::PathE
 }
 
 /// Parse a comma-separated list of format names into [`OutputFormat`] values.
-fn parse_output_formats(
-    s: &str,
-) -> Result<Vec<OutputFormat>, Box<dyn std::error::Error>> {
+fn parse_output_formats(s: &str) -> Result<Vec<OutputFormat>, Box<dyn std::error::Error>> {
     let mut formats = Vec::new();
     for token in s.split(',') {
         let fmt = match token.trim().to_ascii_lowercase().as_str() {
@@ -245,8 +248,7 @@ mod tests {
 
         let paths_path = dir.path().join("paths.bin");
         let empty: Vec<ScoredPathRecord> = vec![];
-        write_bincode(&paths_path, FileType::ScoredPaths, &empty)
-            .expect("write empty paths");
+        write_bincode(&paths_path, FileType::ScoredPaths, &empty).expect("write empty paths");
 
         let output_path = dir.path().join("variants.tsv");
 

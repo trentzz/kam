@@ -117,9 +117,7 @@ pub type FastaRecord = (String, Vec<u8>);
 /// Read a FASTA file and return `(id, sequence)` pairs.
 ///
 /// Sequence bytes are uppercased on read.
-pub fn read_fasta(
-    path: &std::path::Path,
-) -> Result<Vec<FastaRecord>, Box<dyn std::error::Error>> {
+pub fn read_fasta(path: &std::path::Path) -> Result<Vec<FastaRecord>, Box<dyn std::error::Error>> {
     let mut records = Vec::new();
     let mut reader = needletail::parse_fastx_file(path)?;
     while let Some(result) = reader.next() {
@@ -195,7 +193,7 @@ mod tests {
     use std::path::PathBuf;
 
     use kam_assemble::assembler::{assemble_molecules, AssemblerConfig};
-    use kam_assemble::parser::{parse_read_pair, ParserConfig, ParseResult};
+    use kam_assemble::parser::{parse_read_pair, ParseResult, ParserConfig};
     use kam_core::serialize::write_bincode;
 
     fn make_molecule() -> Molecule {
@@ -232,7 +230,10 @@ mod tests {
         write_bincode(&molecules_path, FileType::Molecules, &[mol]).expect("write molecules");
 
         let targets_path = dir.path().join("targets.fa");
-        write_fasta(&targets_path, &[("target1", "ACGTACGTACGTACGTACGTACGTACGT")]);
+        write_fasta(
+            &targets_path,
+            &[("target1", "ACGTACGTACGTACGTACGTACGTACGT")],
+        );
 
         let output_path = dir.path().join("index.bin");
 

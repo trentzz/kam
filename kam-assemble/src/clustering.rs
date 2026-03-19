@@ -115,7 +115,10 @@ pub fn cluster_umi_pairs(pairs: &[(CanonicalUmiPair, u32)], max_distance: u32) -
         }
     }
 
-    clusters.into_iter().map(|(_seed, members)| members).collect()
+    clusters
+        .into_iter()
+        .map(|(_seed, members)| members)
+        .collect()
 }
 
 #[cfg(test)]
@@ -199,11 +202,7 @@ mod tests {
         let low = pair(b"ACGTT", b"TGCAT"); // 1 mismatch from high  → absorbed by high
         let other = pair(b"AAAAA", b"CCCCC"); // far from high, far from low
 
-        let pairs = vec![
-            (high.clone(), 20_u32),
-            (low, 3_u32),
-            (other, 1_u32),
-        ];
+        let pairs = vec![(high.clone(), 20_u32), (low, 3_u32), (other, 1_u32)];
         let groups = cluster_umi_pairs(&pairs, 1);
 
         // Cluster with seed 0 (high) should contain indices 0 and 1.
@@ -211,11 +210,20 @@ mod tests {
         assert_eq!(groups.len(), 2);
 
         // Find the group that contains index 0.
-        let group_of_high = groups.iter().find(|g| g.contains(&0)).expect("high must be in a group");
+        let group_of_high = groups
+            .iter()
+            .find(|g| g.contains(&0))
+            .expect("high must be in a group");
         assert!(group_of_high.contains(&1), "low should be absorbed by high");
-        assert!(!group_of_high.contains(&2), "other should not be in high's group");
+        assert!(
+            !group_of_high.contains(&2),
+            "other should not be in high's group"
+        );
 
-        let group_of_other = groups.iter().find(|g| g.contains(&2)).expect("other must be in a group");
+        let group_of_other = groups
+            .iter()
+            .find(|g| g.contains(&2))
+            .expect("other must be in a group");
         assert_eq!(group_of_other.len(), 1);
     }
 
@@ -233,20 +241,28 @@ mod tests {
         let b_pair = pair(b"AAAAC", b"TTTTT"); // distance(A,B)=1
         let c = pair(b"AAACC", b"TTTTT"); // distance(A,C)=2, distance(B,C)=1
 
-        let pairs = vec![
-            (a, 100_u32),
-            (b_pair, 10_u32),
-            (c, 5_u32),
-        ];
+        let pairs = vec![(a, 100_u32), (b_pair, 10_u32), (c, 5_u32)];
         let groups = cluster_umi_pairs(&pairs, 1);
 
         assert_eq!(groups.len(), 2, "A+B in one cluster, C alone");
 
-        let group_of_a = groups.iter().find(|g| g.contains(&0)).expect("A must be in a group");
-        assert!(group_of_a.contains(&1), "B should be absorbed into A's cluster");
-        assert!(!group_of_a.contains(&2), "C must NOT be absorbed transitively");
+        let group_of_a = groups
+            .iter()
+            .find(|g| g.contains(&0))
+            .expect("A must be in a group");
+        assert!(
+            group_of_a.contains(&1),
+            "B should be absorbed into A's cluster"
+        );
+        assert!(
+            !group_of_a.contains(&2),
+            "C must NOT be absorbed transitively"
+        );
 
-        let group_of_c = groups.iter().find(|g| g.contains(&2)).expect("C must be in a group");
+        let group_of_c = groups
+            .iter()
+            .find(|g| g.contains(&2))
+            .expect("C must be in a group");
         assert_eq!(group_of_c.len(), 1);
     }
 

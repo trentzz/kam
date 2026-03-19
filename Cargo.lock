@@ -306,6 +306,7 @@ dependencies = [
 name = "kam-assemble"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "kam-core",
  "log",
  "needletail",

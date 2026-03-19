@@ -211,7 +211,10 @@ mod tests {
 
     fn tmp_path(name: &str) -> std::path::PathBuf {
         let mut p = std::env::temp_dir();
-        p.push(format!("kam_core_serialize_test_{name}_{}", std::process::id()));
+        p.push(format!(
+            "kam_core_serialize_test_{name}_{}",
+            std::process::id()
+        ));
         p
     }
 

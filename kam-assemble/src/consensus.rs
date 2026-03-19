@@ -414,15 +414,19 @@ mod tests {
         let cfg = ConsensusConfig::default();
         let seq = b"AAAA";
         // Q=30 → p=0.001 each
-        let qual = b"????" ; // '?' = Phred+33 → Q=30
-        let seqs  = &[seq.as_ref(); 3];
+        let qual = b"????"; // '?' = Phred+33 → Q=30
+        let seqs = &[seq.as_ref(); 3];
         let quals = &[qual.as_ref(); 3];
         let result = single_strand_consensus(seqs, quals, &cfg).unwrap();
         // Three agreeing reads: winner_weight = 3*(1-0.001)=2.997, total=2.997
         // error_prob ~ 0 → quality should be at or near max.
         for base_res in &result {
             assert_eq!(base_res.base, b'A');
-            assert!(base_res.error_prob < 0.001, "error_prob={}", base_res.error_prob);
+            assert!(
+                base_res.error_prob < 0.001,
+                "error_prob={}",
+                base_res.error_prob
+            );
         }
     }
 
@@ -430,7 +434,7 @@ mod tests {
     fn majority_wins_over_low_quality_disagreement() {
         let cfg = ConsensusConfig::default();
         // Two reads say 'A' at high quality; one says 'T' at low quality.
-        let seqs  = &[b"A".as_ref(), b"A".as_ref(), b"T".as_ref()];
+        let seqs = &[b"A".as_ref(), b"A".as_ref(), b"T".as_ref()];
         // '?' = Q30, '+' = Phred+33 → Q=10 (just at threshold), '#' = Q=2 (below threshold)
         let quals = &[b"?".as_ref(), b"?".as_ref(), b"+".as_ref()];
         let result = single_strand_consensus(seqs, quals, &cfg).unwrap();
@@ -441,19 +445,25 @@ mod tests {
     fn two_equal_quality_reads_disagree_low_confidence() {
         let cfg = ConsensusConfig::default();
         // One 'A' and one 'T' at equal quality — picks one but confidence is low.
-        let seqs  = &[b"A".as_ref(), b"T".as_ref()];
+        let seqs = &[b"A".as_ref(), b"T".as_ref()];
         let quals = &[b"?".as_ref(), b"?".as_ref()]; // same Q=30
         let result = single_strand_consensus(seqs, quals, &cfg).unwrap();
         // Winner gets 50 % of weight → error_prob = 0.5
-        assert!(result[0].error_prob >= 0.4 && result[0].error_prob <= 0.6,
-            "expected ~0.5, got {}", result[0].error_prob);
+        assert!(
+            result[0].error_prob >= 0.4 && result[0].error_prob <= 0.6,
+            "expected ~0.5, got {}",
+            result[0].error_prob
+        );
     }
 
     #[test]
     fn base_below_min_quality_excluded() {
-        let cfg = ConsensusConfig { min_base_quality: 10, max_consensus_quality: 60 };
+        let cfg = ConsensusConfig {
+            min_base_quality: 10,
+            max_consensus_quality: 60,
+        };
         // One 'A' at Q=30; one 'T' at Q=2 (below threshold) — T vote must be excluded.
-        let seqs  = &[b"A".as_ref(), b"T".as_ref()];
+        let seqs = &[b"A".as_ref(), b"T".as_ref()];
         // '#' = Q=2 (Phred+33: '#' is ASCII 35, 35-33=2)
         let quals = &[b"?".as_ref(), b"#".as_ref()];
         let result = single_strand_consensus(seqs, quals, &cfg).unwrap();
@@ -469,9 +479,12 @@ mod tests {
 
     #[test]
     fn all_bases_masked_gives_n_and_error_one() {
-        let cfg = ConsensusConfig { min_base_quality: 20, max_consensus_quality: 60 };
+        let cfg = ConsensusConfig {
+            min_base_quality: 20,
+            max_consensus_quality: 60,
+        };
         // Both reads have quality Q=2 (below threshold of 20).
-        let seqs  = &[b"A".as_ref(), b"A".as_ref()];
+        let seqs = &[b"A".as_ref(), b"A".as_ref()];
         let quals = &[b"#".as_ref(), b"#".as_ref()]; // '#' = Q=2
         let result = single_strand_consensus(seqs, quals, &cfg).unwrap();
         assert_eq!(result[0].base, b'N');
@@ -483,7 +496,7 @@ mod tests {
     #[test]
     fn duplex_all_agree_is_duplex() {
         let cfg = ConsensusConfig::default();
-        let seqs  = &[b"ACGT".as_ref()];
+        let seqs = &[b"ACGT".as_ref()];
         let quals = &[b"IIII".as_ref()]; // Q=40
         let fwd = single_strand_consensus(seqs, quals, &cfg).unwrap();
         let rev = single_strand_consensus(seqs, quals, &cfg).unwrap();
@@ -516,20 +529,40 @@ mod tests {
 
     #[test]
     fn duplex_disagreement_pick_best() {
-        let fwd_base = ConsensusBase { base: b'A', error_prob: 0.01, depth: 2, votes: [2000, 0, 0, 0] };
-        let rev_base = ConsensusBase { base: b'T', error_prob: 0.05, depth: 2, votes: [0, 0, 0, 2000] };
+        let fwd_base = ConsensusBase {
+            base: b'A',
+            error_prob: 0.01,
+            depth: 2,
+            votes: [2000, 0, 0, 0],
+        };
+        let rev_base = ConsensusBase {
+            base: b'T',
+            error_prob: 0.05,
+            depth: 2,
+            votes: [0, 0, 0, 2000],
+        };
         let fwd = vec![fwd_base];
         let rev = vec![rev_base];
         let duplex = duplex_consensus(&fwd, &rev, DisagreementStrategy::PickBest).unwrap();
-        assert_eq!(duplex[0].base, b'A');      // fwd has lower error
+        assert_eq!(duplex[0].base, b'A'); // fwd has lower error
         assert_eq!(duplex[0].error_prob, 0.01);
         assert!(!duplex[0].is_duplex);
     }
 
     #[test]
     fn duplex_disagreement_mask_as_n() {
-        let fwd_base = ConsensusBase { base: b'A', error_prob: 0.01, depth: 2, votes: [2000, 0, 0, 0] };
-        let rev_base = ConsensusBase { base: b'T', error_prob: 0.05, depth: 2, votes: [0, 0, 0, 2000] };
+        let fwd_base = ConsensusBase {
+            base: b'A',
+            error_prob: 0.01,
+            depth: 2,
+            votes: [2000, 0, 0, 0],
+        };
+        let rev_base = ConsensusBase {
+            base: b'T',
+            error_prob: 0.05,
+            depth: 2,
+            votes: [0, 0, 0, 2000],
+        };
         let fwd = vec![fwd_base];
         let rev = vec![rev_base];
         let duplex = duplex_consensus(&fwd, &rev, DisagreementStrategy::MaskAsN).unwrap();
@@ -548,7 +581,12 @@ mod tests {
     #[test]
     #[should_panic(expected = "same length")]
     fn duplex_mismatched_lengths_panics() {
-        let base = ConsensusBase { base: b'A', error_prob: 0.001, depth: 1, votes: [1000, 0, 0, 0] };
+        let base = ConsensusBase {
+            base: b'A',
+            error_prob: 0.001,
+            depth: 1,
+            votes: [1000, 0, 0, 0],
+        };
         let fwd = vec![base.clone(), base.clone()];
         let rev = vec![base];
         duplex_consensus(&fwd, &rev, DisagreementStrategy::PickBest);
@@ -556,9 +594,20 @@ mod tests {
 
     #[test]
     fn duplex_depths_propagated() {
-        let fwd_base = ConsensusBase { base: b'A', error_prob: 0.001, depth: 5, votes: [5000, 0, 0, 0] };
-        let rev_base = ConsensusBase { base: b'A', error_prob: 0.001, depth: 3, votes: [3000, 0, 0, 0] };
-        let duplex = duplex_consensus(&[fwd_base], &[rev_base], DisagreementStrategy::PickBest).unwrap();
+        let fwd_base = ConsensusBase {
+            base: b'A',
+            error_prob: 0.001,
+            depth: 5,
+            votes: [5000, 0, 0, 0],
+        };
+        let rev_base = ConsensusBase {
+            base: b'A',
+            error_prob: 0.001,
+            depth: 3,
+            votes: [3000, 0, 0, 0],
+        };
+        let duplex =
+            duplex_consensus(&[fwd_base], &[rev_base], DisagreementStrategy::PickBest).unwrap();
         assert_eq!(duplex[0].fwd_depth, 5);
         assert_eq!(duplex[0].rev_depth, 3);
     }

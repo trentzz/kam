@@ -174,7 +174,10 @@ mod tests {
         assert!(result.end_unique);
         assert!(result.warning.is_some());
         let w = result.warning.unwrap();
-        assert!(w.contains("Start anchor"), "warning should mention Start anchor: {w}");
+        assert!(
+            w.contains("Start anchor"),
+            "warning should mention Start anchor: {w}"
+        );
     }
 
     // Test 3: Non-unique end anchor → end_unique false, warning present.
@@ -189,7 +192,10 @@ mod tests {
         assert!(!result.end_unique);
         assert!(result.warning.is_some());
         let w = result.warning.unwrap();
-        assert!(w.contains("End anchor"), "warning should mention End anchor: {w}");
+        assert!(
+            w.contains("End anchor"),
+            "warning should mention End anchor: {w}"
+        );
     }
 
     // Test 4: Both non-unique → both false, warning mentions both.
@@ -241,13 +247,25 @@ mod tests {
         let index = make_index(&[(start, 100), (end, 100)]);
         // count=100 with threshold=101 → unique (100 < 101)
         let result = validate_anchors(b"ACGGTA", k, &index, 101).unwrap();
-        assert!(result.start_unique, "count=100 < threshold=101 should be unique");
-        assert!(result.end_unique, "count=100 < threshold=101 should be unique");
+        assert!(
+            result.start_unique,
+            "count=100 < threshold=101 should be unique"
+        );
+        assert!(
+            result.end_unique,
+            "count=100 < threshold=101 should be unique"
+        );
         assert!(result.warning.is_none());
 
         // count=100 with threshold=100 → NOT unique (100 is not < 100)
         let result2 = validate_anchors(b"ACGGTA", k, &index, 100).unwrap();
-        assert!(!result2.start_unique, "count=100 >= threshold=100 should be non-unique");
-        assert!(!result2.end_unique, "count=100 >= threshold=100 should be non-unique");
+        assert!(
+            !result2.start_unique,
+            "count=100 >= threshold=100 should be non-unique"
+        );
+        assert!(
+            !result2.end_unique,
+            "count=100 >= threshold=100 should be non-unique"
+        );
     }
 }

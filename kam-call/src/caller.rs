@@ -169,13 +169,7 @@ pub fn call_variant(
     let n_duplex_alt = alt_evidence.min_duplex;
     let n_simplex_alt = k.saturating_sub(n_duplex_alt);
 
-    let filter = assign_filter(
-        confidence,
-        strand_bias_p,
-        k,
-        n_duplex_alt,
-        config,
-    );
+    let filter = assign_filter(confidence, strand_bias_p, k, n_duplex_alt, config);
 
     VariantCall {
         target_id: target_id.to_owned(),
@@ -244,12 +238,7 @@ pub fn estimate_vaf(k: u32, m: u32) -> (f64, f64, f64) {
 /// let p_biased = strand_bias_test(20, 0, 100, 100);
 /// assert!(p_biased < 0.01);
 /// ```
-pub fn strand_bias_test(
-    alt_fwd: u32,
-    alt_rev: u32,
-    ref_fwd: u32,
-    ref_rev: u32,
-) -> f64 {
+pub fn strand_bias_test(alt_fwd: u32, alt_rev: u32, ref_fwd: u32, ref_rev: u32) -> f64 {
     // 2×2 table:
     //   a = alt_fwd,  b = alt_rev   row1 = a+b
     //   c = ref_fwd,  d = ref_rev   row2 = c+d
@@ -336,12 +325,13 @@ fn log_binom(n: i64, k: i64) -> f64 {
     log_factorial(n) - log_factorial(k) - log_factorial(n - k)
 }
 
-/// Natural log of n! computed via the sum of ln(i).
+/// Natural log of n! computed via the lgamma function (O(1)).
 fn log_factorial(n: i64) -> f64 {
     if n <= 1 {
         return 0.0;
     }
-    (2..=n).map(|i| (i as f64).ln()).sum()
+    // ln(n!) = ln(Gamma(n+1)); statrs ln_gamma is O(1) via Lanczos approximation.
+    statrs::function::gamma::ln_gamma(n as f64 + 1.0)
 }
 
 /// Posterior probability that the variant is real (vs background error).
@@ -375,10 +365,18 @@ fn compute_confidence(k: u32, m: u32, background_error_rate: f64) -> f64 {
 /// Log-likelihood of `k` successes in `m` Bernoulli trials with probability `p`.
 fn log_binomial_likelihood(k: u32, m: u32, p: f64) -> f64 {
     if p <= 0.0 {
-        if k == 0 { return 0.0; } else { return f64::NEG_INFINITY; }
+        if k == 0 {
+            return 0.0;
+        } else {
+            return f64::NEG_INFINITY;
+        }
     }
     if p >= 1.0 {
-        if k == m { return 0.0; } else { return f64::NEG_INFINITY; }
+        if k == m {
+            return 0.0;
+        } else {
+            return f64::NEG_INFINITY;
+        }
     }
     let k_f = k as f64;
     let m_f = m as f64;
@@ -415,12 +413,7 @@ mod tests {
     use super::*;
     use kam_pathfind::score::PathEvidence;
 
-    fn make_path_evidence(
-        min_molecules: u32,
-        min_duplex: u32,
-        fwd: u32,
-        rev: u32,
-    ) -> PathEvidence {
+    fn make_path_evidence(min_molecules: u32, min_duplex: u32, fwd: u32, rev: u32) -> PathEvidence {
         PathEvidence {
             min_molecules,
             mean_molecules: min_molecules as f32,

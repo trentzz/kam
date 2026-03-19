@@ -1,0 +1,16 @@
+# LaTeX build artefacts
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.log
+*.out
+*.run.xml
+*.toc
+*.fls
+*.fdb_latexmk
+# Raw PDFs in the paper root (versioned copies go in pdfs/)
+main.pdf
+main_normal.pdf
+main_normal_2col.pdf
+main_2p.pdf

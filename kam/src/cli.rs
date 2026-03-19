@@ -15,7 +15,10 @@ use clap::{Parser, Subcommand};
 
 /// Alignment-free variant detection for duplex UMI sequencing.
 #[derive(Parser, Debug)]
-#[command(name = "kam", about = "Alignment-free variant detection for duplex UMI sequencing")]
+#[command(
+    name = "kam",
+    about = "Alignment-free variant detection for duplex UMI sequencing"
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -231,10 +234,14 @@ mod tests {
     #[test]
     fn assemble_parses_required_args() {
         let cli = Cli::try_parse_from([
-            "kam", "assemble",
-            "--r1", "r1.fq",
-            "--r2", "r2.fq",
-            "--output", "molecules.bin",
+            "kam",
+            "assemble",
+            "--r1",
+            "r1.fq",
+            "--r2",
+            "r2.fq",
+            "--output",
+            "molecules.bin",
         ])
         .expect("assemble with required args should parse");
         let Commands::Assemble(args) = cli.command else {
@@ -249,10 +256,14 @@ mod tests {
     #[test]
     fn assemble_defaults() {
         let cli = Cli::try_parse_from([
-            "kam", "assemble",
-            "--r1", "r1.fq",
-            "--r2", "r2.fq",
-            "--output", "molecules.bin",
+            "kam",
+            "assemble",
+            "--r1",
+            "r1.fq",
+            "--r2",
+            "r2.fq",
+            "--output",
+            "molecules.bin",
         ])
         .expect("assemble defaults should parse");
         let Commands::Assemble(args) = cli.command else {
@@ -271,10 +282,14 @@ mod tests {
     #[test]
     fn index_parses_required_args() {
         let cli = Cli::try_parse_from([
-            "kam", "index",
-            "--input", "molecules.bin",
-            "--targets", "targets.fa",
-            "--output", "index.bin",
+            "kam",
+            "index",
+            "--input",
+            "molecules.bin",
+            "--targets",
+            "targets.fa",
+            "--output",
+            "index.bin",
         ])
         .expect("index with required args should parse");
         let Commands::Index(args) = cli.command else {
@@ -289,10 +304,14 @@ mod tests {
     #[test]
     fn index_defaults() {
         let cli = Cli::try_parse_from([
-            "kam", "index",
-            "--input", "molecules.bin",
-            "--targets", "targets.fa",
-            "--output", "index.bin",
+            "kam",
+            "index",
+            "--input",
+            "molecules.bin",
+            "--targets",
+            "targets.fa",
+            "--output",
+            "index.bin",
         ])
         .expect("index defaults should parse");
         let Commands::Index(args) = cli.command else {
@@ -305,10 +324,14 @@ mod tests {
     #[test]
     fn pathfind_parses_required_args() {
         let cli = Cli::try_parse_from([
-            "kam", "pathfind",
-            "--index", "index.bin",
-            "--targets", "targets.fa",
-            "--output", "paths.bin",
+            "kam",
+            "pathfind",
+            "--index",
+            "index.bin",
+            "--targets",
+            "targets.fa",
+            "--output",
+            "paths.bin",
         ])
         .expect("pathfind with required args should parse");
         let Commands::Pathfind(args) = cli.command else {
@@ -323,9 +346,12 @@ mod tests {
     #[test]
     fn call_parses_required_args() {
         let cli = Cli::try_parse_from([
-            "kam", "call",
-            "--paths", "paths.bin",
-            "--output", "variants.tsv",
+            "kam",
+            "call",
+            "--paths",
+            "paths.bin",
+            "--output",
+            "variants.tsv",
         ])
         .expect("call with required args should parse");
         let Commands::Call(args) = cli.command else {
@@ -339,9 +365,12 @@ mod tests {
     #[test]
     fn call_defaults() {
         let cli = Cli::try_parse_from([
-            "kam", "call",
-            "--paths", "paths.bin",
-            "--output", "variants.tsv",
+            "kam",
+            "call",
+            "--paths",
+            "paths.bin",
+            "--output",
+            "variants.tsv",
         ])
         .expect("call defaults should parse");
         let Commands::Call(args) = cli.command else {
@@ -356,11 +385,16 @@ mod tests {
     #[test]
     fn run_parses_required_args() {
         let cli = Cli::try_parse_from([
-            "kam", "run",
-            "--r1", "r1.fq",
-            "--r2", "r2.fq",
-            "--targets", "targets.fa",
-            "--output-dir", "outdir",
+            "kam",
+            "run",
+            "--r1",
+            "r1.fq",
+            "--r2",
+            "r2.fq",
+            "--targets",
+            "targets.fa",
+            "--output-dir",
+            "outdir",
         ])
         .expect("run with required args should parse");
         let Commands::Run(args) = cli.command else {
@@ -376,11 +410,16 @@ mod tests {
     #[test]
     fn run_defaults() {
         let cli = Cli::try_parse_from([
-            "kam", "run",
-            "--r1", "r1.fq",
-            "--r2", "r2.fq",
-            "--targets", "targets.fa",
-            "--output-dir", "outdir",
+            "kam",
+            "run",
+            "--r1",
+            "r1.fq",
+            "--r2",
+            "r2.fq",
+            "--targets",
+            "targets.fa",
+            "--output-dir",
+            "outdir",
         ])
         .expect("run defaults should parse");
         let Commands::Run(args) = cli.command else {
@@ -398,19 +437,28 @@ mod tests {
     #[test]
     fn assemble_missing_required_arg_errors() {
         let result = Cli::try_parse_from(["kam", "assemble", "--r1", "r1.fq"]);
-        assert!(result.is_err(), "missing --r2 and --output should be an error");
+        assert!(
+            result.is_err(),
+            "missing --r2 and --output should be an error"
+        );
     }
 
     /// Verify repeatable --log flag accumulates values.
     #[test]
     fn assemble_log_flag_repeatable() {
         let cli = Cli::try_parse_from([
-            "kam", "assemble",
-            "--r1", "r1.fq",
-            "--r2", "r2.fq",
-            "--output", "molecules.bin",
-            "--log", "umi",
-            "--log", "family",
+            "kam",
+            "assemble",
+            "--r1",
+            "r1.fq",
+            "--r2",
+            "r2.fq",
+            "--output",
+            "molecules.bin",
+            "--log",
+            "umi",
+            "--log",
+            "family",
         ])
         .expect("repeatable --log should parse");
         let Commands::Assemble(args) = cli.command else {

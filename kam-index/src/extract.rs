@@ -109,8 +109,8 @@ pub fn extract_and_index(read: &ConsensusReadInfo, k: usize, index: &mut dyn Kme
                 ev.min_base_error_prob = mean_err;
             }
             // Running average: new_mean = (old_mean * n + new_val) / (n + 1)
-            ev.mean_base_error_prob = (ev.mean_base_error_prob * prev_count as f32 + mean_err)
-                / ev.n_molecules as f32;
+            ev.mean_base_error_prob =
+                (ev.mean_base_error_prob * prev_count as f32 + mean_err) / ev.n_molecules as f32;
         }
 
         index.insert(canon, ev);
@@ -158,7 +158,9 @@ fn kmer_mean_error_prob(error_probs: &[f32], start: usize, k: usize) -> f32 {
     if k == 0 {
         return 0.0;
     }
-    let sum: f32 = (start..start + k).map(|i| error_probs.get(i).copied().unwrap_or(0.0)).sum();
+    let sum: f32 = (start..start + k)
+        .map(|i| error_probs.get(i).copied().unwrap_or(0.0))
+        .sum();
     sum / k as f32
 }
 
@@ -193,8 +195,8 @@ mod tests {
         assert!(!idx.is_empty());
 
         // Count unique canonical k-mers from the sequence to verify exactly.
-        use std::collections::HashSet;
         use crate::encode::KmerIterator;
+        use std::collections::HashSet;
         let unique_canonical: HashSet<u64> = KmerIterator::new(seq, k)
             .map(|(_, km)| canonical(km, k))
             .collect();
@@ -266,7 +268,11 @@ mod tests {
         extract_and_index(&r3, k, &mut idx);
 
         let ev = idx.get(kmer).unwrap();
-        assert!((ev.min_base_error_prob - 0.001).abs() < 1e-6, "min was {}", ev.min_base_error_prob);
+        assert!(
+            (ev.min_base_error_prob - 0.001).abs() < 1e-6,
+            "min was {}",
+            ev.min_base_error_prob
+        );
     }
 
     // Test 6: K-mers with N bases are skipped.
@@ -282,7 +288,10 @@ mod tests {
         // Only "ACN" and "CNT" contain N; "ACN" fails (N at pos 2) and "CNT" fails.
         // In reality KmerIterator resets at N, so no k-mer of length 3 can complete.
         // ACN: N at pos 2 → window reset. CNT: pos 1=C, pos 2=N → reset. NT: only 2 chars.
-        assert!(idx.is_empty(), "no k-mers should be indexed when N prevents full windows");
+        assert!(
+            idx.is_empty(),
+            "no k-mers should be indexed when N prevents full windows"
+        );
     }
 
     // Test 7: Empty sequence produces no k-mers.

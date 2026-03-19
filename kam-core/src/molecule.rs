@@ -73,9 +73,15 @@ impl CanonicalUmiPair {
     /// ```
     pub fn new(umi_r1: [u8; 5], umi_r2: [u8; 5]) -> Self {
         if umi_r1 <= umi_r2 {
-            Self { umi_a: umi_r1, umi_b: umi_r2 }
+            Self {
+                umi_a: umi_r1,
+                umi_b: umi_r2,
+            }
         } else {
-            Self { umi_a: umi_r2, umi_b: umi_r1 }
+            Self {
+                umi_a: umi_r2,
+                umi_b: umi_r1,
+            }
         }
     }
 

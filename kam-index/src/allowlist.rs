@@ -125,7 +125,10 @@ impl<T: KmerIndex> FilteredKmerIndex<T> {
     /// assert_eq!(index.observed_count(), 1);
     /// ```
     pub fn observed_count(&self) -> usize {
-        self.allowlist.iter().filter(|&&k| self.inner.contains(k)).count()
+        self.allowlist
+            .iter()
+            .filter(|&&k| self.inner.contains(k))
+            .count()
     }
 
     /// Return `true` if `kmer` is in the allowlist, regardless of whether it
@@ -185,7 +188,10 @@ mod tests {
     use kam_core::kmer::KmerIndex;
 
     fn ev(n: u32) -> MoleculeEvidence {
-        MoleculeEvidence { n_molecules: n, ..Default::default() }
+        MoleculeEvidence {
+            n_molecules: n,
+            ..Default::default()
+        }
     }
 
     // Test 1: build_allowlist from a simple target produces expected k-mers.
@@ -233,7 +239,9 @@ mod tests {
         let mut idx = FilteredKmerIndex::new(HashKmerIndex::new(), al);
 
         idx.insert(100, ev(3));
-        let got = idx.get(100).expect("should have evidence for allowed k-mer");
+        let got = idx
+            .get(100)
+            .expect("should have evidence for allowed k-mer");
         assert_eq!(got.n_molecules, 3);
     }
 

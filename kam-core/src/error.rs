@@ -48,7 +48,10 @@ mod tests {
 
     #[test]
     fn read_too_short_message_contains_lengths() {
-        let err = KamError::ReadTooShort { expected: 10, actual: 3 };
+        let err = KamError::ReadTooShort {
+            expected: 10,
+            actual: 3,
+        };
         let msg = err.to_string();
         assert!(msg.contains("10"), "expected '10' in: {msg}");
         assert!(msg.contains("3"), "expected '3' in: {msg}");

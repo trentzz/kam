@@ -225,7 +225,11 @@ mod tests {
         let (g, kmers) = linear_graph(seq, k);
         // Ensure all k-mers are distinct (required for cycle-free linear path).
         let unique: std::collections::HashSet<u64> = kmers.iter().copied().collect();
-        assert_eq!(unique.len(), kmers.len(), "test sequence must have unique k-mers");
+        assert_eq!(
+            unique.len(),
+            kmers.len(),
+            "test sequence must have unique k-mers"
+        );
         let paths = walk_paths(&g, kmers[0], *kmers.last().unwrap(), &WalkConfig::default());
         assert_eq!(paths.len(), 1);
         assert_eq!(paths[0].kmers, kmers);
@@ -310,8 +314,7 @@ mod tests {
         assert_eq!(paths.len(), 2);
 
         // One path should be length 2 (direct), one length 3 (through CGT).
-        let lengths: std::collections::BTreeSet<usize> =
-            paths.iter().map(|p| p.length).collect();
+        let lengths: std::collections::BTreeSet<usize> = paths.iter().map(|p| p.length).collect();
         assert!(lengths.contains(&2));
         assert!(lengths.contains(&3));
     }
@@ -340,8 +343,7 @@ mod tests {
         let paths = walk_paths(&g, start, end, &WalkConfig::default());
         assert_eq!(paths.len(), 2);
 
-        let lengths: std::collections::BTreeSet<usize> =
-            paths.iter().map(|p| p.length).collect();
+        let lengths: std::collections::BTreeSet<usize> = paths.iter().map(|p| p.length).collect();
         assert!(lengths.contains(&3)); // short path
         assert!(lengths.contains(&4)); // long path
     }

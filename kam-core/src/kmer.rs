@@ -90,7 +90,11 @@ mod tests {
     #[test]
     fn kmer_index_insert_get_contains() {
         let mut idx = SimpleIndex(std::collections::HashMap::new());
-        let ev = MoleculeEvidence { n_molecules: 3, n_duplex: 2, ..Default::default() };
+        let ev = MoleculeEvidence {
+            n_molecules: 3,
+            n_duplex: 2,
+            ..Default::default()
+        };
         idx.insert(42_u64, ev.clone());
 
         assert!(idx.contains(42));
@@ -107,7 +111,13 @@ mod tests {
     #[test]
     fn kmer_index_molecule_count_present() {
         let mut idx = SimpleIndex(std::collections::HashMap::new());
-        idx.insert(1, MoleculeEvidence { n_molecules: 5, ..Default::default() });
+        idx.insert(
+            1,
+            MoleculeEvidence {
+                n_molecules: 5,
+                ..Default::default()
+            },
+        );
         assert_eq!(idx.molecule_count(1), 5);
     }
 }

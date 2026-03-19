@@ -107,8 +107,7 @@ pub fn write_csv(calls: &[VariantCall], writer: &mut dyn Write) -> io::Result<()
 /// ```
 pub fn write_json(calls: &[VariantCall], writer: &mut dyn Write) -> io::Result<()> {
     let items: Vec<Value> = calls.iter().map(call_to_json).collect();
-    let serialised = serde_json::to_string_pretty(&items)
-        .map_err(io::Error::other)?;
+    let serialised = serde_json::to_string_pretty(&items).map_err(io::Error::other)?;
     writeln!(writer, "{serialised}")
 }
 
@@ -130,20 +129,59 @@ pub fn write_vcf(calls: &[VariantCall], writer: &mut dyn Write) -> io::Result<()
     // VCF header
     writeln!(writer, "##fileformat=VCFv4.3")?;
     writeln!(writer, "##source=kam-call")?;
-    writeln!(writer, "##INFO=<ID=VAF,Number=1,Type=Float,Description=\"Variant allele frequency\">")?;
-    writeln!(writer, "##INFO=<ID=VAF_LO,Number=1,Type=Float,Description=\"VAF 95% CI lower\">")?;
-    writeln!(writer, "##INFO=<ID=VAF_HI,Number=1,Type=Float,Description=\"VAF 95% CI upper\">")?;
-    writeln!(writer, "##INFO=<ID=NREF,Number=1,Type=Integer,Description=\"Molecules supporting REF\">")?;
-    writeln!(writer, "##INFO=<ID=NALT,Number=1,Type=Integer,Description=\"Molecules supporting ALT\">")?;
-    writeln!(writer, "##INFO=<ID=NDUPALT,Number=1,Type=Integer,Description=\"Duplex molecules supporting ALT\">")?;
+    writeln!(
+        writer,
+        "##INFO=<ID=VAF,Number=1,Type=Float,Description=\"Variant allele frequency\">"
+    )?;
+    writeln!(
+        writer,
+        "##INFO=<ID=VAF_LO,Number=1,Type=Float,Description=\"VAF 95% CI lower\">"
+    )?;
+    writeln!(
+        writer,
+        "##INFO=<ID=VAF_HI,Number=1,Type=Float,Description=\"VAF 95% CI upper\">"
+    )?;
+    writeln!(
+        writer,
+        "##INFO=<ID=NREF,Number=1,Type=Integer,Description=\"Molecules supporting REF\">"
+    )?;
+    writeln!(
+        writer,
+        "##INFO=<ID=NALT,Number=1,Type=Integer,Description=\"Molecules supporting ALT\">"
+    )?;
+    writeln!(
+        writer,
+        "##INFO=<ID=NDUPALT,Number=1,Type=Integer,Description=\"Duplex molecules supporting ALT\">"
+    )?;
     writeln!(writer, "##INFO=<ID=NSIMALT,Number=1,Type=Integer,Description=\"Simplex molecules supporting ALT\">")?;
-    writeln!(writer, "##INFO=<ID=SBP,Number=1,Type=Float,Description=\"Strand bias Fisher p-value\">")?;
-    writeln!(writer, "##INFO=<ID=CONF,Number=1,Type=Float,Description=\"Posterior confidence\">")?;
-    writeln!(writer, "##FILTER=<ID=PASS,Description=\"All filters passed\">")?;
-    writeln!(writer, "##FILTER=<ID=StrandBias,Description=\"Strand bias detected\">")?;
-    writeln!(writer, "##FILTER=<ID=LowConfidence,Description=\"Low posterior confidence\">")?;
-    writeln!(writer, "##FILTER=<ID=LowDuplex,Description=\"Insufficient duplex support\">")?;
-    writeln!(writer, "##FILTER=<ID=CollisionRisk,Description=\"UMI collision risk\">")?;
+    writeln!(
+        writer,
+        "##INFO=<ID=SBP,Number=1,Type=Float,Description=\"Strand bias Fisher p-value\">"
+    )?;
+    writeln!(
+        writer,
+        "##INFO=<ID=CONF,Number=1,Type=Float,Description=\"Posterior confidence\">"
+    )?;
+    writeln!(
+        writer,
+        "##FILTER=<ID=PASS,Description=\"All filters passed\">"
+    )?;
+    writeln!(
+        writer,
+        "##FILTER=<ID=StrandBias,Description=\"Strand bias detected\">"
+    )?;
+    writeln!(
+        writer,
+        "##FILTER=<ID=LowConfidence,Description=\"Low posterior confidence\">"
+    )?;
+    writeln!(
+        writer,
+        "##FILTER=<ID=LowDuplex,Description=\"Insufficient duplex support\">"
+    )?;
+    writeln!(
+        writer,
+        "##FILTER=<ID=CollisionRisk,Description=\"UMI collision risk\">"
+    )?;
     writeln!(writer, "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO")?;
 
     for call in calls {
@@ -325,10 +363,7 @@ mod tests {
         let text = String::from_utf8(buf).unwrap();
         assert!(text.contains("##fileformat=VCFv4.3"));
         assert!(text.contains("#CHROM\tPOS\t"));
-        let data_lines: Vec<&str> = text
-            .lines()
-            .filter(|l| !l.starts_with('#'))
-            .collect();
+        let data_lines: Vec<&str> = text.lines().filter(|l| !l.starts_with('#')).collect();
         assert_eq!(data_lines.len(), 1);
         assert!(data_lines[0].starts_with("TP53_exon7\t1\t"));
     }
@@ -368,7 +403,11 @@ mod tests {
         write_json(&calls, &mut json_buf).unwrap();
         let json_text = String::from_utf8(json_buf).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json_text).unwrap();
-        assert_eq!(parsed.as_array().unwrap().len(), 0, "JSON: empty array expected");
+        assert_eq!(
+            parsed.as_array().unwrap().len(),
+            0,
+            "JSON: empty array expected"
+        );
 
         let mut vcf_buf = Vec::new();
         write_vcf(&calls, &mut vcf_buf).unwrap();

@@ -1,0 +1,108 @@
+# twist_titration_series.yaml — Twist duplex UMI titration series
+#
+# Simulates the same conditions as the real Twist cfDNA liquid biopsy titration
+# data: 1000x coverage, cfDNA fragment model, duplex UMI (5-mer, inline),
+# targeted to the panel BED, with mutations spiked in from the titration truth
+# set at seven VAF levels.
+#
+# The truth variants come from:
+#   /mnt/tzeng-local/tzeng-thesis/titration.probes.QC.pass.tsv
+# That TSV (columns: Number, Chromosome, Position, Ref, Alt, Type) must be
+# converted to a bgzipped, tabix-indexed VCF before running this config.
+# A conversion script is at benchmarking/scripts/tsv_to_vcf.py.
+#
+# VAF is controlled via tumour_fraction with purity=1.0 and a single clone at
+# CCF=1.0, so effective VAF = tumour_fraction / ploidy = tumour_fraction / 2.
+# The tumour_fraction values below are set to 2× the target VAF accordingly:
+#   0.001% VAF  → tumour_fraction: 0.00002
+#   0.01%  VAF  → tumour_fraction: 0.0002
+#   0.1%   VAF  → tumour_fraction: 0.002
+#   0.25%  VAF  → tumour_fraction: 0.005
+#   0.5%   VAF  → tumour_fraction: 0.01
+#   1%     VAF  → tumour_fraction: 0.02
+#   2%     VAF  → tumour_fraction: 0.04
+#
+# Run:
+#   varforge simulate --config benchmarking/scripts/configs/twist_titration_series.yaml
+
+reference: /mnt/tzeng-local/tzeng-thesis/data/ref/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna
+
+output:
+  directory: benchmarking/synthetic_data/twist_titration
+  fastq: true
+  bam: false
+  truth_vcf: true
+  manifest: true
+
+# Fragment model: cfDNA nucleosomal (mean 167 bp, sd 20 bp).
+fragment:
+  model: cfda
+  mean: 167.0
+  sd: 20.0
+
+quality:
+  mean_quality: 37
+  tail_decay: 0.002
+
+# purity: 1.0 + single founding clone means effective VAF = tumour_fraction / 2.
+tumour:
+  purity: 1.0
+  ploidy: 2
+  clones:
+    - id: founding
+      ccf: 1.0
+
+# Spike in the panel truth variants from the titration experiment.
+# Convert titration.probes.QC.pass.tsv to VCF first (see note above).
+mutations:
+  vcf: /mnt/tzeng-local/tzeng-thesis/titration.probes.QC.pass.vcf.gz
+
+# Twist duplex UMI chemistry: 5-mer inline UMI, duplex mode.
+# Read structure 5M2S+T — the UMI is the first 5 bases of each read.
+umi:
+  length: 5
+  duplex: true
+  pcr_cycles: 10
+  family_size_mean: 4.0
+  family_size_sd: 1.5
+  inline: true
+
+capture:
+  enabled: true
+  targets_bed: /mnt/tzeng-local/tzeng-thesis/titration-dedup/bams/panel.bed
+  off_target_fraction: 0.03
+  coverage_uniformity: 0.25
+  edge_dropoff_bases: 30
+
+# One sample per VAF level.  tumour_fraction = 2 × target_VAF (diploid, CCF 1).
+samples:
+  - name: vaf_0.001pct
+    coverage: 1000.0
+    tumour_fraction: 0.00002
+
+  - name: vaf_0.01pct
+    coverage: 1000.0
+    tumour_fraction: 0.0002
+
+  - name: vaf_0.1pct
+    coverage: 1000.0
+    tumour_fraction: 0.002
+
+  - name: vaf_0.25pct
+    coverage: 1000.0
+    tumour_fraction: 0.005
+
+  - name: vaf_0.5pct
+    coverage: 1000.0
+    tumour_fraction: 0.01
+
+  - name: vaf_1pct
+    coverage: 1000.0
+    tumour_fraction: 0.02
+
+  - name: vaf_2pct
+    coverage: 1000.0
+    tumour_fraction: 0.04
+
+seed: 42
+threads: 16

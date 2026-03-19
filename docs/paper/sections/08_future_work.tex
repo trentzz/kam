@@ -1,0 +1,49 @@
+\section{Future Work}
+\label{sec:future}
+
+Three fixes are required before a production evaluation is meaningful.
+
+\paragraph{Fix duplex orientation comparison.}
+The endpoint fingerprint comparison must canonicalise both fingerprints before
+the XOR Hamming distance test. The forward fingerprint should be compared
+against the reverse complement of the reverse fingerprint. This is a
+single-line change in \texttt{kam-assemble}. Once fixed, duplex rates should
+reach the 5--15\% range expected for this chemistry and depth, which will
+substantially improve both confidence scores and strand bias power.
+
+\paragraph{Replace O($n^2$) UMI grouping with hash partitioning.}
+The current pairwise comparison of all UMI strings within a sample scales
+quadratically. Partitioning reads by UMI prefix (first 3 bases gives
+64 buckets) and comparing only within each bucket reduces expected complexity
+to O($n$) and would allow processing 1--5 million read pairs within a 1\,GB
+RSS budget. This would extend the detectable VAF range to 0.1\% and below.
+
+\paragraph{Tune the calling thresholds.}
+With duplex signal and greater depth, the minimum alt molecule threshold and
+the posterior confidence threshold can be re-calibrated on a held-out truth set.
+The current defaults (min 2 alt molecules, min 0.99 posterior confidence) were
+set conservatively without calibration data; tuned thresholds will improve the
+sensitivity-precision trade-off.
+
+Beyond correctness fixes, the following extensions are planned.
+
+\paragraph{De novo variant discovery.}
+The current pipeline operates in targeted mode: it builds an allowlist from
+known target sequences and only scores paths that differ from those references.
+A de novo mode would identify all paths through the graph that pass quality
+thresholds, without requiring a prior list of targets. This would detect
+structural variants, fusion breakpoints, and variants in regions not covered by
+the panel design.
+
+\paragraph{Nextflow integration.}
+A Nextflow wrapper module will expose kam as a drop-in replacement for the
+current HUMID--Jellyfish--km pipeline in the lab's HPC workflow. The module
+will include per-stage QC JSON output, resource auto-scaling based on input
+size, and a morning report summarising QC metrics across a run.
+
+\paragraph{Head-to-head comparison.}
+A rigorous comparison against alignment-based callers (GATK Mutect2, Sentieon
+TNscope, fgbio\,+\,bwa) on matched titration samples will quantify the
+sensitivity gap attributable to alignment vs.\ the gap attributable to depth.
+This comparison is deferred until the duplex orientation and memory issues are
+resolved.

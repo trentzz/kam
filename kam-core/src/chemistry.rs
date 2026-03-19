@@ -44,7 +44,10 @@ impl ReadStructure {
     /// assert_eq!(rs.skip_length, 2);
     /// ```
     pub fn twist_umi_duplex() -> Self {
-        Self { umi_length: 5, skip_length: 2 }
+        Self {
+            umi_length: 5,
+            skip_length: 2,
+        }
     }
 
     /// Return the byte offset at which the template sequence begins within a
@@ -84,7 +87,10 @@ mod tests {
 
     #[test]
     fn custom_read_structure_template_start() {
-        let rs = ReadStructure { umi_length: 8, skip_length: 3 };
+        let rs = ReadStructure {
+            umi_length: 8,
+            skip_length: 3,
+        };
         assert_eq!(rs.template_start(), 11);
     }
 }
