@@ -4,24 +4,45 @@
 kam demonstrates that alignment-free variant detection is feasible for Twist
 duplex UMI panel sequencing. The pipeline preserves molecule-level information
 from raw FASTQ to variant call without any alignment step, and detects
-40--48\% of truth variants at 2\% VAF with precision above 0.60. The pipeline
-runs end-to-end in under 25 seconds per sample on a single core at 200K read
-pairs.
+56--59\% of truth variants at 2\% VAF with precision of 0.72--0.84 using 2M
+read pairs. The pipeline runs end-to-end in under 35 seconds per sample on a
+single core.
 
 The primary result is proof of concept: k-mer-based de Bruijn graph traversal
-can recover somatic variants from duplex UMI panel data without reference
-alignment. The sensitivity numbers reported here are not representative of the
-pipeline's upper bound; they reflect two implementation bugs (duplex orientation
-comparison) and one hardware constraint (200K read limit for memory safety),
-both of which are tractable to fix.
+can recover somatic variants, including both SNVs and indels, from duplex UMI
+panel data without reference alignment. The sensitivity numbers reported here
+are not the pipeline's upper bound; one implementation issue (the duplex
+fingerprint orientation comparison) and one scaling constraint (O($n^2$) UMI
+grouping limiting practical depth) both have tractable fixes.
+
+\paragraph{SNV and indel calling.}
+Indel sensitivity at 2M reads ranges from 32\% to 36\% at 2\% VAF, compared to
+75--79\% for SNVs. The gap is expected: insertions and deletions shift the
+position of end-anchor k-mers relative to the reference, requiring those
+shifted k-mers to be covered by sequencing reads for a walk to complete. This
+anchor coverage requirement is more likely to be satisfied as depth increases.
+The left-normalisation step ensures that called indel positions match the
+convention used by GATK, bcftools, and standard truth sets~\autocite{tan2015},
+enabling direct comparison against VCF truth files.
+
+\paragraph{Depth scaling.}
+Sensitivity grows with read depth across the full 250K--2M range tested.
+Gains are largest from 250K to 1M reads; returns diminish above 1M at the
+high-VAF end. This behaviour is consistent with a model where the most
+abundant variant molecules are covered first, and rarer variants require
+proportionally more reads. Sub-0.1\% VAF detection requires either deeper
+sequencing or a reduced minimum alt molecule threshold, both of which are
+feasible once the O($n^2$) UMI grouping bottleneck is resolved.
 
 \paragraph{Comparison to alignment-based approaches.}
 Alignment-based pipelines for ctDNA variant calling typically report sensitivity
 of 80--95\% at 1--2\% VAF with comparable panel sizes, using millions of
 read pairs~\autocite{Twist22cfdna}. The gap between those numbers and the
-40--48\% reported here is entirely explained by depth (200K vs.\ $>$1M reads)
-and by the loss of duplex signal. At matching depth with duplex orientation
-corrected, we expect sensitivity to increase substantially, though a full head-to-head comparison is left to future work.
+56--59\% reported here is explained by two factors: loss of duplex signal
+(the orientation bug reduces duplex rates below expected), and the anchor
+coverage limitation for indels. At matching depth with duplex orientation
+corrected, we expect overall sensitivity to increase further, though a full
+head-to-head comparison is left to future work.
 
 \paragraph{Information preservation.}
 The key architectural advantage of kam over the km/Jellyfish pipeline is that

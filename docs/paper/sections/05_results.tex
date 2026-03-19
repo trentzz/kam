@@ -4,87 +4,129 @@
 We evaluated kam on the Twist cfDNA Pan-Cancer Reference Standard v2 titration
 series, a set of 24 samples spanning three input masses (5\,ng, 15\,ng, 30\,ng)
 and eight VAF levels (0\%, 0.001\%, 0.01\%, 0.1\%, 0.25\%, 0.5\%, 1\%, 2\%).
-The truth set contains 375 validated somatic variants across 84 cancer genes on
-GRCh38. All benchmarks used 200,000 read pairs per sample to keep peak memory
-within 500\,MB on a single workstation.
+The truth set contains 375 validated somatic variants (346 SNVs, 29 indels)
+across 84 cancer genes on GRCh38. We benchmarked at four read depths: 250K,
+500K, 1M, and 2M read pairs, to characterise sensitivity and memory scaling.
 
 % ── Molecule assembly ─────────────────────────────────────────────────────────
 \subsection{Molecule assembly}
 
-The assembly stage consistently yielded 130,000–150,000 molecules per sample
-from 200,000 read pairs, reflecting a raw-to-molecule compression ratio of
-approximately 1.4:1. The low ratio is expected for non-deduplicated input: many
-PCR duplicates share the same UMI and are collapsed into a single molecule.
+At 2M read pairs the assembly stage produced 367K--717K molecules per sample,
+giving a raw-to-molecule compression ratio of 2.8--5.5:1. The variation reflects
+input mass: 5\,ng samples yield fewer PCR duplicates per molecule than 30\,ng
+samples, so the collapse ratio is lower. Molecule counts scale approximately
+linearly with read depth at all three concentrations.
 
-Duplex identification remained low across all samples (0.009\%–0.021\%), with
-15\,ng and 30\,ng samples showing slightly higher duplex rates than 5\,ng.
-The low duplex yield is a known issue: the current endpoint fingerprinting
-comparison fails for duplex pairs because the forward and reverse template reads
-are reverse complements of each other, causing XOR Hamming distances to exceed
-the identity threshold. This is discussed further in Section~\ref{sec:evaluation}.
+Duplex identification at 2M reads ranged from 2.9\% to 5.1\% of molecules,
+well above the near-zero rates observed at 200K reads in earlier evaluations.
+The improvement is a depth effect: duplex molecules require both strands of the
+same fragment to be sampled, so duplex yield grows roughly linearly with
+sequencing depth until the available fragments are saturated. The current
+duplex rates fall at the low end of the 5--15\% range expected for this
+chemistry; a known bug in the endpoint fingerprint orientation comparison
+(described in Section~\ref{sec:evaluation}) accounts for the remaining gap.
 
 % ── Variant detection ─────────────────────────────────────────────────────────
 \subsection{Variant detection}
 
-Figure~\ref{fig:sensitivity} shows sensitivity across the VAF titration series
-for each input concentration. At the lowest VAF levels (0.001\% and 0.01\%),
-sensitivity is zero for all concentrations, consistent with the expectation that
-at 200,000 read pairs fewer than one variant molecule on average will be present
-per target. Sensitivity rises steeply from 0.1\% VAF and reaches 39\%--48\% at
-2\% VAF.
+Figure~\ref{fig:sensitivity} shows sensitivity at 2M read pairs across the VAF
+titration series for each input concentration.
+At the lowest VAF levels (0.001\% and 0.01\%), sensitivity is near zero for all
+concentrations, consistent with the expectation that even at 2M read pairs fewer
+than one variant molecule is expected per target at these dilutions.
+Sensitivity rises from 0.1\% VAF and reaches 56\%--59\% at 2\% VAF.
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{figures/sensitivity_vs_vaf.pdf}
-  \caption{Sensitivity by VAF and input mass. Each point shows sensitivity
-    against the 375-variant truth set using 200K read pairs. Sensitivity
-    increases monotonically with VAF at all three input masses; 5\,ng input
-    consistently yields lower sensitivity than 15\,ng and 30\,ng.}
+  \caption{Sensitivity by VAF and input mass at 2M read pairs. Each point shows
+    sensitivity against the 375-variant truth set. Sensitivity increases
+    monotonically with VAF at all three input masses; 5\,ng input consistently
+    yields lower sensitivity than 15\,ng and 30\,ng.}
   \label{fig:sensitivity}
 \end{figure}
+
+At 2\% VAF, the 15\,ng and 30\,ng samples achieve sensitivity of 59.2\% and
+57.9\%, respectively, with precision of 0.72 and 0.78.
+The 5\,ng sample achieves 55.5\% sensitivity with precision of 0.84.
+The difference between concentrations is most pronounced at 0.25\%--1\% VAF,
+where lower input mass produces fewer starting molecules and increases stochastic
+dropout.
+
+Precision remains consistently high (above 0.55 wherever calls are made,
+Figure~\ref{fig:precision_recall}). False positives arise from two main
+sources: (1) k-mer path artefacts where alternative paths through the de Bruijn
+graph do not correspond to real variants, and (2) positions where the 100\,bp
+target window covers a germline polymorphism not present in the reference
+sequence used to build the allowlist.
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{figures/precision_recall.pdf}
   \caption{Precision vs sensitivity across all VAF/concentration combinations
     where at least one true positive was called. Each point is annotated with
-    its VAF level. Precision is consistently above 0.37 wherever calls are
+    its VAF level. Precision is consistently above 0.55 wherever calls are
     made.}
   \label{fig:precision_recall}
 \end{figure}
 
-At 2\% VAF, the 15\,ng and 30\,ng samples achieve sensitivity of 39.5\% and
-39.7\%, respectively, with precision of 0.60 and 0.60. The 5\,ng sample achieves
-40.6\% sensitivity at 2\% VAF with precision of 0.62. The difference in
-sensitivity between concentrations is most pronounced at intermediate VAF levels
-(0.25\%–1\%), where lower input mass produces fewer starting molecules and
-increases stochastic dropout.
+% ── SNV vs indel sensitivity ──────────────────────────────────────────────────
+\subsection{SNV and indel sensitivity}
 
-Precision remains consistently high (0.37–0.62) wherever true positives are
-called (Figure~\ref{fig:precision_recall}). False positives arise from two main
-sources: (1) k-mer path artefacts where alternative paths through the de Bruijn
-graph do not correspond to real variants, and (2) positions where the 100\,bp
-target window covers a germline polymorphism not present in the reference
-sequence used to build the allowlist.
+Figure~\ref{fig:sensitivity_by_type} shows sensitivity broken down by variant
+type at 2M read pairs. At 2\% VAF, SNV sensitivity ranges from 75\% to 79\%
+across the three concentrations. Indel sensitivity is lower, ranging from 32\%
+to 36\%. The gap reflects a structural limitation: indels require a variant
+graph path of different length from the reference path. Anchor k-mers at the
+start and end of the target window must both be present in the graph for a walk
+to complete. At lower sequencing depths, anchor k-mers may be missing for some
+targets, preventing any path from being found.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/sensitivity_by_type.pdf}
+  \caption{SNV sensitivity (left) and indel sensitivity (right) by VAF and
+    input mass at 2M read pairs. Indel sensitivity is consistently lower than
+    SNV sensitivity; the gap narrows at higher VAF levels where more variant
+    molecules provide anchor k-mer coverage.}
+  \label{fig:sensitivity_by_type}
+\end{figure}
+
+% ── Effect of read depth ───────────────────────────────────────────────────────
+\subsection{Effect of read depth}
+
+Figure~\ref{fig:compare_sensitivity} shows how sensitivity scales with read
+depth from 250K to 2M pairs. Sensitivity gains are largest moving from 250K to
+500K reads. Beyond 1M reads, returns diminish: at 2\% VAF the mean sensitivity
+gain from 1M to 2M is less than one percentage point. This reflects two
+saturation effects: first, the most abundant variant molecules are already
+covered at 1M reads; second, the O($n^2$) UMI grouping step introduces
+backpressure that limits effective depth (Section~\ref{sec:evaluation}).
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/compare_sensitivity_vs_vaf.pdf}
+  \caption{Overall sensitivity (mean across three concentrations) at four read
+    depths. Each line represents one read depth. Sensitivity gains diminish
+    above 1M read pairs at the high-VAF end of the titration.}
+  \label{fig:compare_sensitivity}
+\end{figure}
 
 % ── Negative control ──────────────────────────────────────────────────────────
 \subsection{Negative control}
 
-The 0\% VAF samples (no spiked variants) produced 23–48 PASS variant calls per
-sample with 0–2 true positives. The very low true-positive count in the
-negative control is an artefact of the scoring scheme: because some PASS calls
-share genomic coordinates with truth variants by coincidence (e.g.\ a common
-germline SNP at the same position), the scoring labels them as true positives
-even though they are not somatic. The false positive count in the negative
-control (26–42) gives an upper bound on the background artefact rate: roughly
-30–45 per panel per sample at this sequencing depth.
+The 0\% VAF samples produced 0--3 true positive calls and 25--55 false positive
+calls per sample at 2M reads. The small number of apparent true positives in
+the negative control are artefacts of the scoring: some calls share genomic
+coordinates with truth variants by coincidence (e.g.\ a germline SNP at the
+same position). The false positive count gives an upper bound on the background
+artefact rate: roughly 30--50 per panel per sample at this depth.
 
 % ── Runtime and memory ────────────────────────────────────────────────────────
 \subsection{Runtime and memory}
 
-Pipeline wall-clock time ranged from 3.5\,s to 21.4\,s per sample at 200K read
-pairs on a single core. Peak RSS ranged from 450\,MB to 4.2\,GB, with most
-samples under 600\,MB. Two outliers (30\,ng 0.1\% and 30\,ng 0.5\%) reached
-4.2\,GB and 2.4\,GB respectively; these coincide with samples producing
-particularly large de Bruijn graphs before path enumeration. Memory scaling is
-a known issue discussed in Section~\ref{sec:evaluation}.
+At 2M read pairs, wall-clock time ranged from 19.5\,s to 34.2\,s per sample on
+a single core. Peak RSS ranged from 1.9\,GB to 2.4\,GB, with all samples well
+within a 4\,GB budget. This is a substantial improvement over earlier
+evaluations where certain samples at 200K reads reached 4.2\,GB; the improved
+memory footprint reflects refinements to the pathfind stage path enumeration.

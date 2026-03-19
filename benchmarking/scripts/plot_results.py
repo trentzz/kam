@@ -115,9 +115,20 @@ def load_results(path):
                     "indel_fn": int(row["indel_fn"]),
                     "indel_sensitivity": float(row["indel_sensitivity"]),
                     "indel_precision": float(row["indel_precision"]),
-                    # runtime
+                    # runtime summary
                     "peak_rss_mb": float(row["peak_rss_mb"]),
                     "wall_time_s": float(row["wall_time_s"]),
+                    # per-stage timing (ms) and RSS (MB)
+                    "t_assemble_ms":  float(row.get("t_assemble_ms",  0) or 0),
+                    "t_index_ms":     float(row.get("t_index_ms",     0) or 0),
+                    "t_pathfind_ms":  float(row.get("t_pathfind_ms",  0) or 0),
+                    "t_call_ms":      float(row.get("t_call_ms",      0) or 0),
+                    "t_output_ms":    float(row.get("t_output_ms",    0) or 0),
+                    "rss_assemble_mb": float(row.get("rss_assemble_mb", 0) or 0),
+                    "rss_index_mb":    float(row.get("rss_index_mb",    0) or 0),
+                    "rss_pathfind_mb": float(row.get("rss_pathfind_mb", 0) or 0),
+                    "rss_call_mb":     float(row.get("rss_call_mb",     0) or 0),
+                    "rss_output_mb":   float(row.get("rss_output_mb",   0) or 0),
                 })
             except (ValueError, KeyError):
                 continue

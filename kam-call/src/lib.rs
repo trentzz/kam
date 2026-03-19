@@ -4,5 +4,6 @@
 //! evidence from the de Bruijn graph to produce calibrated variant calls
 //! with posterior credible intervals and strand-bias filters.
 
+pub mod allele;
 pub mod caller;
 pub mod output;

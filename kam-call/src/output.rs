@@ -7,6 +7,7 @@ use std::io::{self, Write};
 
 use serde_json::{json, Value};
 
+use crate::allele::extract_minimal_allele;
 use crate::caller::{VariantCall, VariantFilter, VariantType};
 
 // ─── Public types ─────────────────────────────────────────────────────────────
@@ -185,8 +186,6 @@ pub fn write_vcf(calls: &[VariantCall], writer: &mut dyn Write) -> io::Result<()
     writeln!(writer, "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO")?;
 
     for call in calls {
-        let ref_str = bytes_to_str(&call.ref_sequence);
-        let alt_str = bytes_to_str(&call.alt_sequence);
         let filter_str = filter_to_str(call.filter);
         let info = format!(
             "VAF={:.6};VAF_LO={:.6};VAF_HI={:.6};NREF={};NALT={};NDUPALT={};NSIMALT={};SBP={:.6};CONF={:.6}",
@@ -200,11 +199,28 @@ pub fn write_vcf(calls: &[VariantCall], writer: &mut dyn Write) -> io::Result<()
             call.strand_bias_p,
             call.confidence,
         );
-        writeln!(
-            writer,
-            "{}\t1\t.\t{}\t{}\t.\t{}\t{}",
-            call.target_id, ref_str, alt_str, filter_str, info
-        )?;
+
+        // When target_id encodes a genomic coordinate (chrN:START-END), emit a
+        // properly placed VCF record with minimal left-normalised alleles.
+        // Fall back to the alignment-free format (target_id as CHROM, POS=1)
+        // when the target_id cannot be parsed.
+        if let Some(a) =
+            extract_minimal_allele(&call.target_id, &call.ref_sequence, &call.alt_sequence)
+        {
+            writeln!(
+                writer,
+                "{}\t{}\t.\t{}\t{}\t.\t{}\t{}",
+                a.chrom, a.pos, a.ref_allele, a.alt_allele, filter_str, info
+            )?;
+        } else {
+            let ref_str = bytes_to_str(&call.ref_sequence);
+            let alt_str = bytes_to_str(&call.alt_sequence);
+            writeln!(
+                writer,
+                "{}\t1\t.\t{}\t{}\t.\t{}\t{}",
+                call.target_id, ref_str, alt_str, filter_str, info
+            )?;
+        }
     }
     Ok(())
 }
@@ -427,7 +443,29 @@ mod tests {
         assert!(text.contains("ACGN"));
     }
 
-    // Test 8: write_variants dispatches to the correct format.
+    // Test 8: VCF uses proper genomic coordinates when target_id is chrN:START-END.
+    #[test]
+    fn vcf_uses_genomic_coordinates_for_snv() {
+        // target_id = "chr2:1000-1100", ref = full 101-bp sequence with C at index 50.
+        let mut ref_seq = vec![b'A'; 101];
+        let mut alt_seq = ref_seq.clone();
+        ref_seq[50] = b'C';
+        alt_seq[50] = b'T';
+        let mut call = make_call("chr2:1000-1100", &ref_seq, &alt_seq);
+        call.variant_type = VariantType::Snv;
+        let mut buf = Vec::new();
+        write_vcf(&[call], &mut buf).unwrap();
+        let text = String::from_utf8(buf).unwrap();
+        let data: Vec<&str> = text.lines().filter(|l| !l.starts_with('#')).collect();
+        assert_eq!(data.len(), 1);
+        let fields: Vec<&str> = data[0].split('\t').collect();
+        assert_eq!(fields[0], "chr2", "CHROM");
+        assert_eq!(fields[1], "1050", "POS = start(1000) + index(50)");
+        assert_eq!(fields[3], "C", "REF");
+        assert_eq!(fields[4], "T", "ALT");
+    }
+
+    // Test 9: write_variants dispatches to the correct format.
     #[test]
     fn write_variants_dispatches_correctly() {
         let calls = vec![make_call("test", b"A", b"T")];

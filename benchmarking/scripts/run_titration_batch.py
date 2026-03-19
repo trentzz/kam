@@ -106,8 +106,7 @@ def extract_called_variants(tsv_path):
             )
             if diff_pos is None:
                 continue
-            # Determine REF and ALT alleles from the diff.
-            # Trim common suffix so the alleles are the minimal VCF representation.
+            # Trim common suffix to get the minimal differing region.
             common_suffix = 0
             while (common_suffix < len(ref_seq) - diff_pos - 1
                    and common_suffix < len(alt_seq) - diff_pos - 1
@@ -122,14 +121,80 @@ def extract_called_variants(tsv_path):
                 alt_trimmed = alt_seq[diff_pos:]
 
             if len(ref_seq) == len(alt_seq):
-                # SNV or MNV: use only the first differing base for SNVs.
+                # SNV: single-base substitution.
                 ref_allele = ref_trimmed[0] if len(ref_trimmed) == 1 else ref_trimmed
                 alt_allele = alt_trimmed[0] if len(alt_trimmed) == 1 else alt_trimmed
+                genomic_pos = target_start + diff_pos
             else:
-                # Indel: minimal representation after suffix trimming.
-                ref_allele = ref_trimmed
-                alt_allele = alt_trimmed
-            genomic_pos = target_start + diff_pos
+                # Indel: find the minimal allele pair, then left-normalise to
+                # match the VCF convention used in the truth set.
+
+                # Remove any inner common suffix between ref_trimmed and
+                # alt_trimmed (the outer common suffix was already stripped).
+                # Use len() without -1 so alt_min can reach empty (pure deletion).
+                inner_cs = 0
+                while (inner_cs < len(ref_trimmed)
+                       and inner_cs < len(alt_trimmed)
+                       and ref_trimmed[-(inner_cs + 1)] == alt_trimmed[-(inner_cs + 1)]):
+                    inner_cs += 1
+                ref_min = ref_trimmed[:-inner_cs] if inner_cs > 0 else ref_trimmed
+                alt_min = alt_trimmed[:-inner_cs] if inner_cs > 0 else alt_trimmed
+
+                # Remove any inner common prefix as well.
+                inner_cp = 0
+                for r, a in zip(ref_min, alt_min):
+                    if r != a:
+                        break
+                    inner_cp += 1
+                ref_min = ref_min[inner_cp:]
+                alt_min = alt_min[inner_cp:]
+                indel_start = diff_pos + inner_cp  # index of first ins/del base
+
+                if len(ref_seq) > len(alt_seq):
+                    # Deletion: ref_min is the deleted sequence.
+                    del_seq = ref_min
+                    anchor_pos = indel_start - 1
+
+                    # Left-normalise: shift anchor left while the preceding
+                    # base matches the last base of the deleted sequence.
+                    # This converts right-aligned deletions in repeat runs to
+                    # the left-aligned representation used by VCF.
+                    while (anchor_pos > 0
+                           and del_seq
+                           and ref_seq[anchor_pos] == del_seq[-1]):
+                        del_seq = del_seq[-1:] + del_seq[:-1]  # rotate right
+                        anchor_pos -= 1
+
+                    if anchor_pos >= 0:
+                        anchor = ref_seq[anchor_pos]
+                        ref_allele = anchor + del_seq
+                        alt_allele = anchor
+                        genomic_pos = target_start + anchor_pos
+                    else:
+                        ref_allele = del_seq
+                        alt_allele = ""
+                        genomic_pos = target_start + indel_start
+                else:
+                    # Insertion: alt_min is the inserted sequence.
+                    ins_seq = alt_min
+                    anchor_pos = indel_start - 1
+
+                    # Left-normalise insertions similarly.
+                    while (anchor_pos > 0
+                           and ins_seq
+                           and ref_seq[anchor_pos] == ins_seq[-1]):
+                        ins_seq = ins_seq[-1:] + ins_seq[:-1]  # rotate right
+                        anchor_pos -= 1
+
+                    if anchor_pos >= 0:
+                        anchor = ref_seq[anchor_pos]
+                        ref_allele = anchor
+                        alt_allele = anchor + ins_seq
+                        genomic_pos = target_start + anchor_pos
+                    else:
+                        ref_allele = ""
+                        alt_allele = ins_seq
+                        genomic_pos = target_start + indel_start
             called.add((chrom, genomic_pos, ref_allele, alt_allele))
     return called
 

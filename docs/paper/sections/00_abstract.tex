@@ -9,16 +9,19 @@ UMI panel sequencing. kam assembles duplex molecules directly from raw FASTQ,
 indexes k-mers with per-molecule provenance, builds a de Bruijn graph over all
 observed k-mers, and calls variants by scoring alternative paths against the
 reference path using molecule counts and strand composition. No reference
-alignment is performed.
+alignment is performed. Called variants are left-normalised to standard VCF
+convention, enabling direct comparison against truth sets for both SNVs and
+indels.
 
 We evaluate kam on the Twist cfDNA Pan-Cancer Reference Standard v2 titration
 series (375 truth variants, 24 samples, 5--30\,ng input DNA, VAF 0\%--2\%).
-Using 200,000 read pairs per sample, kam detects 40--48\% of truth variants
-at 2\% VAF with precision of 0.60, running end-to-end in under 25 seconds per
-sample. Sensitivity is currently limited by two implementation issues: a duplex
-orientation comparison bug that suppresses duplex identification, and a
-quadratic UMI grouping step that restricts input depth. Both have clear fixes.
-At corrected depth with duplex signal restored, we project detection sensitivity
-extending to the 0.1--0.5\% VAF range.
+At 2M read pairs per sample, kam detects 56--59\% of truth variants at 2\%
+VAF with precision of 0.72--0.84, running end-to-end in under 35 seconds per
+sample on a single core. SNV sensitivity reaches 75--79\% at 2\% VAF; indel
+sensitivity is 32--36\%. Sensitivity is currently limited by one implementation
+issue: a duplex orientation comparison bug that suppresses full duplex
+identification. This has a known single-line fix. At corrected duplex signal
+and greater input depth, we project sensitivity extending to the 0.1--0.5\%
+VAF range.
 
 kam is implemented in Rust and is available as an open-source workspace.
