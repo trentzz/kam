@@ -2,7 +2,7 @@
 """Run kam on all titration samples and score against truth variants.
 
 Uses up to READS_PER_SAMPLE read pairs per sample. A per-sample RSS cap
-(PEAK_RSS_LIMIT_MB) kills any sample that exceeds the budget mid-run and
+(--rss-limit-gb) kills any sample that exceeds the budget mid-run and
 marks it as skipped rather than crashing the whole batch.
 Anonymises all sample identifiers in output.
 """
@@ -38,7 +38,7 @@ RESULTS_DIR  = _DEFAULT_RESULTS
 RESULTS_FILE = RESULTS_DIR / "titration_results.tsv"
 
 READS_PER_SAMPLE = 1_000_000  # 1M read pairs; most samples peak ~1.6 GB
-PEAK_RSS_LIMIT_MB = 5_000     # kill and skip any sample that exceeds 5 GB
+PEAK_RSS_LIMIT_MB = 5 * 1024  # kill and skip any sample that exceeds 5 GB
 TRUTH_PANEL_SIZE = 375        # total truth variants in the panel
 
 # ── Truth variants ─────────────────────────────────────────────────────────────
@@ -313,7 +313,7 @@ def run_sample(sample, truth_set, tmp_dir):
     elapsed = time.time() - t0
 
     if killed_oom:
-        print(f"  [{name}] KILLED: exceeded {PEAK_RSS_LIMIT_MB} MB RSS at {peak_mb:.0f} MB",
+        print(f"  [{name}] KILLED: exceeded {PEAK_RSS_LIMIT_MB / 1024:.1f} GB RSS at {peak_mb / 1024:.2f} GB",
               flush=True)
         return None  # caller will write a skipped row
 
@@ -440,8 +440,8 @@ def main():
                         help="Directory for output TSV (default: benchmarking/results/tables)")
     parser.add_argument("--reads", type=int, default=READS_PER_SAMPLE,
                         help=f"Read pairs per sample (default: {READS_PER_SAMPLE:,})")
-    parser.add_argument("--rss-limit-mb", type=int, default=PEAK_RSS_LIMIT_MB,
-                        help=f"Peak RSS kill threshold in MB (default: {PEAK_RSS_LIMIT_MB})")
+    parser.add_argument("--rss-limit-gb", type=float, default=PEAK_RSS_LIMIT_MB / 1024,
+                        help=f"Peak RSS kill threshold in GB (default: {PEAK_RSS_LIMIT_MB / 1024:.0f})")
     args = parser.parse_args()
 
     KAM             = args.kam_binary
@@ -450,7 +450,7 @@ def main():
     FASTQ_DIR       = args.fastq_dir
     RESULTS_DIR     = args.results_dir
     READS_PER_SAMPLE  = args.reads
-    PEAK_RSS_LIMIT_MB = args.rss_limit_mb
+    PEAK_RSS_LIMIT_MB = int(args.rss_limit_gb * 1024)
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     RESULTS_FILE = RESULTS_DIR / "titration_results.tsv"

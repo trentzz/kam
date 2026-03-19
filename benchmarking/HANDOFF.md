@@ -71,7 +71,7 @@ All paths are overridable via CLI flags:
 --kam-binary PATH      kam binary (default: target/release/kam)
 --results-dir PATH     Output directory (default: benchmarking/results/tables)
 --reads N              Read pairs per sample (default: 1000000)
---rss-limit-mb N       OOM kill threshold in MB (default: 5000)
+--rss-limit-gb N       OOM kill threshold in GB (default: 5)
 ```
 
 Example with raised limits for a 32 GB machine:
@@ -80,7 +80,7 @@ Example with raised limits for a 32 GB machine:
 python3 benchmarking/scripts/run_titration_batch.py \
   --fastq-dir /data/titration/fastqs \
   --reads 2000000 \
-  --rss-limit-mb 24000 \
+  --rss-limit-gb 24 \
   2>&1 | tee benchmarking/results/titration_batch.log
 ```
 
