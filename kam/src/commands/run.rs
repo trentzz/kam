@@ -148,15 +148,22 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     // The raw index stores k-mers in the original orientation AND their reverse
     // complements so that every read direction is represented.  The graph is
     // then built from this raw index; scoring still uses the canonical index.
+    // raw_graph_index is a presence map: stores raw (non-canonical) k-mers with
+    // n_molecules=1 as a presence indicator.  HashKmerIndex::insert overwrites on
+    // duplicate, so repeated insertions leave n_molecules=1.  This index is used
+    // only for de Bruijn graph topology — evidence comes from the canonical index.
     let mut raw_graph_index = HashKmerIndex::new();
+    let present = kam_core::kmer::MoleculeEvidence {
+        n_molecules: 1,
+        ..Default::default()
+    };
     for read in &reads {
         let overlaps_target = KmerIterator::new(&read.sequence, k)
             .any(|(_, km)| allowlist.contains(&canonical(km, k)));
         if overlaps_target {
             for (_, raw_km) in KmerIterator::new(&read.sequence, k) {
-                let ev = kam_core::kmer::MoleculeEvidence::default();
-                raw_graph_index.insert(raw_km, ev.clone());
-                raw_graph_index.insert(reverse_complement(raw_km, k), ev);
+                raw_graph_index.insert(raw_km, present.clone());
+                raw_graph_index.insert(reverse_complement(raw_km, k), present.clone());
             }
         }
     }
@@ -179,19 +186,19 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
 
     // ── Stage 3: Pathfind ─────────────────────────────────────────────────────
     let t_pathfind = std::time::Instant::now();
-    // Build the de Bruijn graph ONCE from raw (non-canonical) k-mers.
-    // Raw k-mers preserve suffix/prefix overlap relationships needed for edges.
-    // Building once rather than once-per-target avoids redundant construction
-    // and includes variant k-mers discovered in the reads.
+
+    // Build a single de Bruijn graph from all on-target raw k-mers.
+    // The graph must include variant k-mers (which differ from the reference),
+    // so it is built from ALL k-mers in raw_graph_index, not just reference k-mers.
+    // min_molecules=1 accepts every k-mer observed in at least one molecule.
+    // The walk is bounded per-target by max_path_length to prevent cross-target paths.
     let all_raw_kmers: Vec<u64> = raw_graph_index.iter().map(|(&km, _)| km).collect();
-    let graph = DeBruijnGraph::from_index(&raw_graph_index, k, &all_raw_kmers);
+    let graph = DeBruijnGraph::from_index(&raw_graph_index, k, &all_raw_kmers, 1);
 
     let mut all_scored: Vec<(String, Vec<ScoredPath>)> = Vec::new();
     let mut n_targets_queried: u64 = 0;
     let mut n_targets_with_variants: u64 = 0;
     let mut n_anchors_non_unique: u64 = 0;
-
-    let walk_config = WalkConfig::default();
 
     for (target_id, target_seq) in &targets {
         n_targets_queried += 1;
@@ -212,9 +219,9 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             n_anchors_non_unique += 1;
         }
 
-        // Use raw (non-canonical) anchors from the forward strand of the target
-        // sequence for BFS.  The graph is built from raw k-mers so BFS must
-        // also start and end on raw k-mer nodes.
+        // Use raw (non-canonical) anchors from the forward strand of the target.
+        // The graph is built from raw k-mers so the walk starts and ends on
+        // raw k-mer nodes.
         let start_raw = match encode_kmer(&target_seq[..k]) {
             Some(km) => km,
             None => {
@@ -228,6 +235,18 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
                 eprintln!("[run/pathfind] target {target_id}: end anchor contains N, skipping");
                 continue;
             }
+        };
+
+        // Number of k-mers in the reference path = target_len - k + 1.
+        // Allow 50 extra k-mers of headroom for indels.
+        let target_max_path = if k > 1 {
+            target_seq.len().saturating_sub(k - 1) + 50
+        } else {
+            150
+        };
+        let walk_config = WalkConfig {
+            max_path_length: target_max_path,
+            ..Default::default()
         };
 
         let paths = kam_pathfind::walk::walk_paths(&graph, start_raw, end_raw, &walk_config);

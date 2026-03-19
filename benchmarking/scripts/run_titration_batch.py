@@ -106,18 +106,30 @@ def extract_called_variants(tsv_path):
             )
             if diff_pos is None:
                 continue
-            # Determine REF and ALT alleles from the diff
-            if len(ref_seq) == len(alt_seq):
-                # SNV or MNV: same-length substitution
-                ref_allele = ref_seq[diff_pos]
-                alt_allele = alt_seq[diff_pos]
-                # FASTA headers use 1-based start; diff_pos is 0-based offset → add directly
-                genomic_pos = target_start + diff_pos
+            # Determine REF and ALT alleles from the diff.
+            # Trim common suffix so the alleles are the minimal VCF representation.
+            common_suffix = 0
+            while (common_suffix < len(ref_seq) - diff_pos - 1
+                   and common_suffix < len(alt_seq) - diff_pos - 1
+                   and ref_seq[-(common_suffix + 1)] == alt_seq[-(common_suffix + 1)]):
+                common_suffix += 1
+
+            if common_suffix > 0:
+                ref_trimmed = ref_seq[diff_pos:-common_suffix]
+                alt_trimmed = alt_seq[diff_pos:-common_suffix]
             else:
-                # Indel: extract alleles from first diff position onward
-                ref_allele = ref_seq[diff_pos:]
-                alt_allele = alt_seq[diff_pos:]
-                genomic_pos = target_start + diff_pos
+                ref_trimmed = ref_seq[diff_pos:]
+                alt_trimmed = alt_seq[diff_pos:]
+
+            if len(ref_seq) == len(alt_seq):
+                # SNV or MNV: use only the first differing base for SNVs.
+                ref_allele = ref_trimmed[0] if len(ref_trimmed) == 1 else ref_trimmed
+                alt_allele = alt_trimmed[0] if len(alt_trimmed) == 1 else alt_trimmed
+            else:
+                # Indel: minimal representation after suffix trimming.
+                ref_allele = ref_trimmed
+                alt_allele = alt_trimmed
+            genomic_pos = target_start + diff_pos
             called.add((chrom, genomic_pos, ref_allele, alt_allele))
     return called
 
@@ -438,6 +450,9 @@ def main():
                         help="Path to the kam binary (default: target/release/kam)")
     parser.add_argument("--results-dir", type=Path, default=_DEFAULT_RESULTS,
                         help="Directory for output TSV (default: benchmarking/results/tables)")
+    parser.add_argument("--output", type=str, default=None,
+                        help="Output TSV filename within --results-dir "
+                             "(default: titration_results_{N}reads.tsv based on --reads)")
     parser.add_argument("--reads", type=int, default=READS_PER_SAMPLE,
                         help=f"Read pairs per sample (default: {READS_PER_SAMPLE:,})")
     parser.add_argument("--rss-limit-gb", type=float, default=PEAK_RSS_LIMIT_MB / 1024,
@@ -453,7 +468,16 @@ def main():
     PEAK_RSS_LIMIT_MB = int(args.rss_limit_gb * 1024)
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    RESULTS_FILE = RESULTS_DIR / "titration_results.tsv"
+    if args.output:
+        output_name = args.output
+    else:
+        n = READS_PER_SAMPLE
+        if n % 1_000_000 == 0:
+            label = f"{n // 1_000_000}m"
+        else:
+            label = f"{n // 1_000}k"
+        output_name = f"titration_results_{label}reads.tsv"
+    RESULTS_FILE = RESULTS_DIR / output_name
 
     truth_set = load_truth_set(TRUTH_VCF)
     truth_all, truth_snv, truth_indel = truth_set

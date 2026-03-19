@@ -12,7 +12,6 @@ use kam_index::encode::{canonical, KmerIterator};
 use kam_pathfind::anchor::{validate_anchors, DEFAULT_ANCHOR_THRESHOLD};
 use kam_pathfind::graph::DeBruijnGraph;
 use kam_pathfind::score::{score_and_rank_paths, ScoredPath};
-use kam_pathfind::walk::WalkConfig;
 
 use crate::cli::PathfindArgs;
 use crate::commands::index::{entries_to_hash_index, read_fasta, KmerEntry};
@@ -64,8 +63,6 @@ pub fn run_pathfind(args: PathfindArgs) -> Result<(), Box<dyn std::error::Error>
     let mut n_targets_with_variants: u64 = 0;
     let mut n_anchors_non_unique: u64 = 0;
 
-    let walk_config = WalkConfig::default();
-
     for (target_id, target_seq) in &targets {
         n_targets_queried += 1;
 
@@ -92,8 +89,26 @@ pub fn run_pathfind(args: PathfindArgs) -> Result<(), Box<dyn std::error::Error>
             .map(|(_, km)| canonical(km, k))
             .collect();
 
-        // Build de Bruijn graph.
-        let graph = DeBruijnGraph::from_index(&index, k, &target_kmers);
+        // Build de Bruijn graph. Require at least 2 molecules per k-mer to
+        // filter PCR and sequencing error k-mers before graph construction.
+        // This reduces spurious branching that causes BFS/DFS queue explosion.
+        let graph = DeBruijnGraph::from_index(&index, k, &target_kmers, 2);
+
+        // Set max_path_length based on target size. For a 100bp target at
+        // k=31, the reference path is ~70 k-mers; 50 extra k-mers is generous
+        // headroom for indels. This prevents the walker from exploring paths
+        // far outside the target window, which was the primary memory cost.
+        // Number of k-mers in the reference path = target_len - k + 1.
+        // Allow 50 extra k-mers of headroom for indels.
+        let target_max_path = if k > 1 {
+            target_seq.len().saturating_sub(k - 1) + 50
+        } else {
+            150
+        };
+        let walk_config = kam_pathfind::walk::WalkConfig {
+            max_path_length: target_max_path,
+            ..Default::default()
+        };
 
         // Walk paths.
         let paths = kam_pathfind::walk::walk_paths(

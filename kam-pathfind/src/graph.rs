@@ -17,6 +17,9 @@ use kam_core::kmer::KmerIndex;
 /// Nodes are canonical k-mers encoded as `u64`. An edge A → B exists when
 /// `suffix(A, k-1) == prefix(B, k-1)` in 2-bit encoded form.
 ///
+/// Only successor adjacency is stored. Predecessor adjacency was removed
+/// because path walking only traverses forward edges.
+///
 /// # Example
 ///
 /// ```
@@ -31,7 +34,7 @@ use kam_core::kmer::KmerIndex;
 /// index.insert(acg, MoleculeEvidence { n_molecules: 1, ..Default::default() });
 /// index.insert(cgt, MoleculeEvidence { n_molecules: 1, ..Default::default() });
 /// let all_kmers = vec![acg, cgt];
-/// let graph = DeBruijnGraph::from_index(&index, 3, &all_kmers);
+/// let graph = DeBruijnGraph::from_index(&index, 3, &all_kmers, 1);
 /// assert!(graph.successors(acg).contains(&cgt));
 /// assert_eq!(graph.n_nodes(), 2);
 /// assert_eq!(graph.n_edges(), 1);
@@ -41,8 +44,6 @@ pub struct DeBruijnGraph {
     k: usize,
     /// Adjacency list: kmer → list of successor kmers
     successors: HashMap<u64, Vec<u64>>,
-    /// Adjacency list: kmer → list of predecessor kmers
-    predecessors: HashMap<u64, Vec<u64>>,
     /// Number of nodes
     n_nodes: usize,
     /// Number of edges
@@ -52,14 +53,22 @@ pub struct DeBruijnGraph {
 impl DeBruijnGraph {
     /// Build a de Bruijn graph from a k-mer index.
     ///
-    /// Only includes k-mers present in the index (filtered from `all_kmers`).
-    /// Edges are derived from 2*(k-1) overlap: suffix(A) == prefix(B).
+    /// Only includes k-mers present in the index with at least `min_molecules`
+    /// supporting molecules. Edges are derived from 2*(k-1) overlap:
+    /// suffix(A) == prefix(B).
+    ///
+    /// The `min_molecules` threshold filters out low-evidence k-mers (PCR and
+    /// sequencing errors) before graph construction. This reduces spurious
+    /// branching from error k-mers, which is the primary driver of memory
+    /// explosion in the path-walking stage. Use `min_molecules = 1` to include
+    /// all observed k-mers.
     ///
     /// # Arguments
     ///
-    /// - `index`: the k-mer index (used to verify membership)
+    /// - `index`: the k-mer index (used to verify membership and check evidence)
     /// - `k`: k-mer length
     /// - `all_kmers`: full set of encoded k-mers to consider as candidate nodes
+    /// - `min_molecules`: minimum molecule count to include a node in the graph
     ///
     /// # Example
     ///
@@ -72,25 +81,28 @@ impl DeBruijnGraph {
     /// let mut index = HashKmerIndex::new();
     /// let acg = encode_kmer(b"ACG").unwrap();
     /// let cgt = encode_kmer(b"CGT").unwrap();
-    /// index.insert(acg, MoleculeEvidence::default());
-    /// index.insert(cgt, MoleculeEvidence::default());
+    /// index.insert(acg, MoleculeEvidence { n_molecules: 1, ..Default::default() });
+    /// index.insert(cgt, MoleculeEvidence { n_molecules: 1, ..Default::default() });
     /// let kmers = vec![acg, cgt];
-    /// let graph = DeBruijnGraph::from_index(&index, 3, &kmers);
+    /// let graph = DeBruijnGraph::from_index(&index, 3, &kmers, 1);
     /// assert_eq!(graph.n_nodes(), 2);
     /// assert_eq!(graph.n_edges(), 1);
     /// ```
-    pub fn from_index(index: &dyn KmerIndex, k: usize, all_kmers: &[u64]) -> Self {
-        // Filter to nodes that are actually in the index.
+    pub fn from_index(
+        index: &dyn KmerIndex,
+        k: usize,
+        all_kmers: &[u64],
+        min_molecules: u32,
+    ) -> Self {
+        // Filter to nodes that are in the index with sufficient molecule support.
         let nodes: Vec<u64> = all_kmers
             .iter()
             .copied()
-            .filter(|&km| index.contains(km))
+            .filter(|&km| index.molecule_count(km) >= min_molecules)
             .collect();
 
-        // Initialise adjacency maps with empty vecs for every node.
+        // Initialise successor adjacency map with empty vecs for every node.
         let mut successors: HashMap<u64, Vec<u64>> =
-            nodes.iter().map(|&km| (km, Vec::new())).collect();
-        let mut predecessors: HashMap<u64, Vec<u64>> =
             nodes.iter().map(|&km| (km, Vec::new())).collect();
 
         // Group nodes by their (k-1)-prefix for efficient edge lookup.
@@ -116,7 +128,6 @@ impl DeBruijnGraph {
             if let Some(candidates) = by_prefix.get(&a_suffix) {
                 for &b in candidates {
                     successors.entry(a).or_default().push(b);
-                    predecessors.entry(b).or_default().push(a);
                     n_edges += 1;
                 }
             }
@@ -125,7 +136,6 @@ impl DeBruijnGraph {
         DeBruijnGraph {
             k,
             successors,
-            predecessors,
             n_nodes: nodes.len(),
             n_edges,
         }
@@ -146,44 +156,15 @@ impl DeBruijnGraph {
     /// let mut index = HashKmerIndex::new();
     /// let acg = encode_kmer(b"ACG").unwrap();
     /// let cgt = encode_kmer(b"CGT").unwrap();
-    /// index.insert(acg, MoleculeEvidence::default());
-    /// index.insert(cgt, MoleculeEvidence::default());
-    /// let graph = DeBruijnGraph::from_index(&index, 3, &[acg, cgt]);
+    /// index.insert(acg, MoleculeEvidence { n_molecules: 1, ..Default::default() });
+    /// index.insert(cgt, MoleculeEvidence { n_molecules: 1, ..Default::default() });
+    /// let graph = DeBruijnGraph::from_index(&index, 3, &[acg, cgt], 1);
     /// assert!(graph.successors(acg).contains(&cgt));
     /// let empty: &[u64] = &[];
     /// assert_eq!(graph.successors(999), empty);
     /// ```
     pub fn successors(&self, kmer: u64) -> &[u64] {
         self.successors.get(&kmer).map(Vec::as_slice).unwrap_or(&[])
-    }
-
-    /// Get predecessors of a k-mer (k-mers that can directly precede it).
-    ///
-    /// Returns an empty slice if the k-mer is not in the graph.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use kam_pathfind::graph::DeBruijnGraph;
-    /// use kam_index::HashKmerIndex;
-    /// use kam_core::kmer::{KmerIndex, MoleculeEvidence};
-    /// use kam_index::encode::encode_kmer;
-    ///
-    /// let mut index = HashKmerIndex::new();
-    /// let acg = encode_kmer(b"ACG").unwrap();
-    /// let cgt = encode_kmer(b"CGT").unwrap();
-    /// index.insert(acg, MoleculeEvidence::default());
-    /// index.insert(cgt, MoleculeEvidence::default());
-    /// let graph = DeBruijnGraph::from_index(&index, 3, &[acg, cgt]);
-    /// assert!(graph.predecessors(cgt).contains(&acg));
-    /// let empty: &[u64] = &[];
-    /// assert_eq!(graph.predecessors(999), empty);
-    /// ```
-    pub fn predecessors(&self, kmer: u64) -> &[u64] {
-        self.predecessors
-            .get(&kmer)
-            .map(Vec::as_slice)
-            .unwrap_or(&[])
     }
 
     /// Return `true` if `kmer` is a node in the graph.
@@ -198,8 +179,8 @@ impl DeBruijnGraph {
     ///
     /// let mut index = HashKmerIndex::new();
     /// let acg = encode_kmer(b"ACG").unwrap();
-    /// index.insert(acg, MoleculeEvidence::default());
-    /// let graph = DeBruijnGraph::from_index(&index, 3, &[acg]);
+    /// index.insert(acg, MoleculeEvidence { n_molecules: 1, ..Default::default() });
+    /// let graph = DeBruijnGraph::from_index(&index, 3, &[acg], 1);
     /// assert!(graph.contains(acg));
     /// assert!(!graph.contains(999));
     /// ```
@@ -242,7 +223,6 @@ impl DeBruijnGraph {
         DeBruijnGraph {
             k,
             successors: HashMap::new(),
-            predecessors: HashMap::new(),
             n_nodes: 0,
             n_edges: 0,
         }
@@ -267,20 +247,16 @@ impl DeBruijnGraph {
     ///
     /// [`from_index`]: DeBruijnGraph::from_index
     pub fn add_edge(&mut self, from: u64, to: u64) {
-        // Insert nodes if absent, tracking n_nodes separately.
         use std::collections::hash_map::Entry;
         if let Entry::Vacant(e) = self.successors.entry(from) {
             e.insert(Vec::new());
-            self.predecessors.insert(from, Vec::new());
             self.n_nodes += 1;
         }
         if let Entry::Vacant(e) = self.successors.entry(to) {
             e.insert(Vec::new());
-            self.predecessors.insert(to, Vec::new());
             self.n_nodes += 1;
         }
         self.successors.entry(from).or_default().push(to);
-        self.predecessors.entry(to).or_default().push(from);
         self.n_edges += 1;
     }
 }
@@ -306,37 +282,32 @@ mod tests {
         for &km in kmers {
             index.insert(km, ev(1));
         }
-        DeBruijnGraph::from_index(&index, k, kmers)
+        DeBruijnGraph::from_index(&index, k, kmers, 1)
     }
 
     // Test 1: Two overlapping k-mers form an edge.
     #[test]
     fn two_overlapping_kmers_form_edge() {
-        // ACG → CGT: suffix(ACG, k-1=2)=CG == prefix(CGT, k-1=2)=CG
         let acg = encode_kmer(b"ACG").unwrap();
         let cgt = encode_kmer(b"CGT").unwrap();
         let graph = build(&[acg, cgt], 3);
 
         assert!(graph.successors(acg).contains(&cgt));
-        assert!(graph.predecessors(cgt).contains(&acg));
     }
 
     // Test 2: Non-overlapping k-mers have no edge.
     #[test]
     fn non_overlapping_kmers_no_edge() {
-        // ACG suffix=CG; TAC prefix=TA — no match.
         let acg = encode_kmer(b"ACG").unwrap();
         let tac = encode_kmer(b"TAC").unwrap();
         let graph = build(&[acg, tac], 3);
 
         assert!(graph.successors(acg).is_empty());
-        assert!(graph.predecessors(tac).is_empty());
     }
 
     // Test 3: Linear sequence of k-mers forms a chain.
     #[test]
     fn linear_chain_of_kmers() {
-        // ACGTA with k=3 → ACG → CGT → GTA
         let acg = encode_kmer(b"ACG").unwrap();
         let cgt = encode_kmer(b"CGT").unwrap();
         let gta = encode_kmer(b"GTA").unwrap();
@@ -344,15 +315,13 @@ mod tests {
 
         assert!(graph.successors(acg).contains(&cgt));
         assert!(graph.successors(cgt).contains(&gta));
-        assert!(graph.predecessors(gta).contains(&cgt));
         assert!(graph.successors(gta).is_empty());
-        assert!(graph.predecessors(acg).is_empty());
+        assert!(!graph.contains(999));
     }
 
     // Test 4: Branch point (SNV) creates two successors.
     #[test]
     fn branch_point_creates_two_successors() {
-        // ACG → CGT and ACG → CGC (SNV at last base of successor)
         let acg = encode_kmer(b"ACG").unwrap();
         let cgt = encode_kmer(b"CGT").unwrap();
         let cgc = encode_kmer(b"CGC").unwrap();
@@ -367,7 +336,6 @@ mod tests {
     // Test 5: n_nodes and n_edges correct.
     #[test]
     fn n_nodes_and_n_edges_correct() {
-        // ACG → CGT → GTA: 3 nodes, 2 edges
         let acg = encode_kmer(b"ACG").unwrap();
         let cgt = encode_kmer(b"CGT").unwrap();
         let gta = encode_kmer(b"GTA").unwrap();
@@ -381,50 +349,48 @@ mod tests {
     #[test]
     fn empty_index_produces_empty_graph() {
         let index = HashKmerIndex::new();
-        let graph = DeBruijnGraph::from_index(&index, 3, &[]);
+        let graph = DeBruijnGraph::from_index(&index, 3, &[], 1);
         assert_eq!(graph.n_nodes(), 0);
         assert_eq!(graph.n_edges(), 0);
     }
 
     // Test 7: Self-loop k-mer (AAAA with k=4) handled.
-    // AAAA encodes to 0. suffix(AAAA, k-1=3)=0; prefix(AAAA)=0 → self-loop.
     #[test]
     fn self_loop_kmer_handled() {
-        let aaaa = encode_kmer(b"AAAA").unwrap(); // 0
+        let aaaa = encode_kmer(b"AAAA").unwrap();
         let graph = build(&[aaaa], 4);
 
         assert!(graph.successors(aaaa).contains(&aaaa));
-        assert!(graph.predecessors(aaaa).contains(&aaaa));
         assert_eq!(graph.n_nodes(), 1);
         assert_eq!(graph.n_edges(), 1);
     }
 
-    // Test 8: successors and predecessors are consistent (A→B ⟹ B has A as predecessor).
+    // Test 8: min_molecules filters low-evidence k-mers.
     #[test]
-    fn successors_and_predecessors_consistent() {
+    fn min_molecules_filters_low_evidence() {
         let acg = encode_kmer(b"ACG").unwrap();
         let cgt = encode_kmer(b"CGT").unwrap();
-        let cgc = encode_kmer(b"CGC").unwrap();
-        let graph = build(&[acg, cgt, cgc], 3);
+        let mut index = HashKmerIndex::new();
+        index.insert(acg, ev(3));
+        index.insert(cgt, ev(1)); // below threshold
 
-        // For every A→B edge, B must list A as predecessor.
-        for (&a, succs) in &graph.successors {
-            for &b in succs {
-                assert!(
-                    graph.predecessors(b).contains(&a),
-                    "A→B edge exists but B does not list A as predecessor"
-                );
-            }
-        }
+        // With min_molecules=2, cgt is excluded.
+        let graph = DeBruijnGraph::from_index(&index, 3, &[acg, cgt], 2);
+        assert!(graph.contains(acg));
+        assert!(!graph.contains(cgt));
+        assert_eq!(graph.n_nodes(), 1);
+        assert_eq!(graph.n_edges(), 0);
+    }
 
-        // And vice versa: for every B with predecessor A, A must list B as successor.
-        for (&b, preds) in &graph.predecessors {
-            for &a in preds {
-                assert!(
-                    graph.successors(a).contains(&b),
-                    "B has A as predecessor but A does not list B as successor"
-                );
-            }
-        }
+    // Test 9: add_edge builds graph correctly (no predecessors map required).
+    #[test]
+    fn add_edge_builds_successors() {
+        let mut g = DeBruijnGraph::new(3);
+        g.add_edge(10, 20);
+        assert!(g.contains(10));
+        assert!(g.contains(20));
+        assert_eq!(g.successors(10), &[20]);
+        assert_eq!(g.n_nodes(), 2);
+        assert_eq!(g.n_edges(), 1);
     }
 }
