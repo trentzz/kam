@@ -9,7 +9,9 @@
 *.toc
 *.fls
 *.fdb_latexmk
-# Raw PDFs in the paper root (versioned copies go in pdfs/)
+
+# Build-output PDFs in the paper root — ignored because versioned copies
+# are committed to pdfs/ with the kam_v0.1_* naming convention.
 /main.pdf
 /main_normal.pdf
 /main_normal_2col.pdf
