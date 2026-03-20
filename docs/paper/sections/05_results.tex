@@ -4,7 +4,7 @@
 We evaluated kam on the Twist cfDNA Pan-Cancer Reference Standard v2 titration
 series, a set of 24 samples spanning three input masses (5\,ng, 15\,ng, 30\,ng)
 and eight VAF levels (0\%, 0.001\%, 0.01\%, 0.1\%, 0.25\%, 0.5\%, 1\%, 2\%).
-The truth set contains 375 validated somatic variants (346 SNVs, 29 indels)
+The truth set contains 375 validated somatic variants (205 SNVs, 170 indels)
 across 84 cancer genes on GRCh38. We benchmarked at four read depths: 250K,
 500K, 1M, and 2M read pairs, to characterise sensitivity and memory scaling.
 
@@ -68,9 +68,19 @@ polymorphism not in the reference sequence used to build the allowlist.
   \includegraphics[width=\columnwidth]{figures/precision_recall.pdf}
   \caption{Precision vs sensitivity across all VAF/concentration combinations
     where at least one true positive was called. Each point is annotated with
-    its VAF level. Precision is consistently above 0.55 wherever calls are
-    made.}
+    its VAF level.}
   \label{fig:precision_recall}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/confusion_matrix.pdf}
+  \caption{True positives, false positives, and false negatives at 2\% VAF for
+    each input concentration. The dashed line marks the 375-variant truth set.
+    False positive counts are highest at 15\,ng, consistent with the elevated
+    duplex rates and larger number of background biological variants called at
+    that concentration.}
+  \label{fig:confusion}
 \end{figure}
 
 % ── SNV vs indel sensitivity ──────────────────────────────────────────────────

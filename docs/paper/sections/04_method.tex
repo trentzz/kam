@@ -4,7 +4,7 @@
 \subsection{Overview}
 \label{sec:method:overview}
 
-kam processes paired-end FASTQ files through six stages.
+kam processes paired-end FASTQ files through six stages (Figure~\ref{fig:pipeline}).
 Stage~1 (\textbf{Parse}) extracts UMIs, skip bases, and template sequences from raw reads.
 Stage~2 (\textbf{Assemble}) groups reads into molecule families by canonical UMI pair, detects UMI collisions via endpoint fingerprinting, and calls single-strand and duplex consensus sequences.
 Stage~3 (\textbf{Index}) encodes consensus sequences as 2-bit k-mers and builds a molecule-level k-mer index.
@@ -16,10 +16,45 @@ All stages operate on molecules as the atomic unit of evidence.
 A k-mer supported by 100 PCR duplicates of one molecule contributes $n_\text{molecules} = 1$, not 100.
 This distinction is the foundation of kam's error model.
 
-% Figure~\ref{fig:pipeline} shows a horizontal flow diagram:
-% FASTQ → Parse → Assemble → Index → Pathfind → Call → VCF
-% with data types annotated on each arrow (ReadPair, Molecule, KmerIndex,
-% GraphPath, ScoredPath, VariantCall).
+\begin{figure}[h]
+\centering
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}[
+  node distance=2.1cm,
+  stage/.style={
+    draw=blue!60!black, fill=blue!10, rounded corners=3pt,
+    minimum width=1.65cm, minimum height=0.65cm,
+    font=\small\bfseries, align=center
+  },
+  io/.style={
+    draw=blue!60!black, fill=green!15, rounded corners=3pt,
+    minimum width=1.65cm, minimum height=0.65cm,
+    font=\small\bfseries, align=center
+  },
+  arr/.style={-{Latex[length=4pt,width=3pt]}, draw=black!55, line width=0.7pt},
+]
+  \node[io]                       (fastq)    {FASTQ};
+  \node[stage, right of=fastq]    (parse)    {Parse};
+  \node[stage, right of=parse]    (assemble) {Assemble};
+  \node[stage, right of=assemble] (index)    {Index};
+  \node[stage, right of=index]    (pathfind) {Pathfind};
+  \node[stage, right of=pathfind] (call)     {Call};
+  \node[io,    right of=call]     (vcf)      {VCF/TSV};
+
+  \draw[arr] (fastq)    -- node[below, font=\tiny\itshape, text=black!50] {ReadPair}   (parse);
+  \draw[arr] (parse)    -- node[below, font=\tiny\itshape, text=black!50] {ReadPair}   (assemble);
+  \draw[arr] (assemble) -- node[below, font=\tiny\itshape, text=black!50] {Molecule}   (index);
+  \draw[arr] (index)    -- node[below, font=\tiny\itshape, text=black!50] {KmerIndex}  (pathfind);
+  \draw[arr] (pathfind) -- node[below, font=\tiny\itshape, text=black!50] {GraphPath}  (call);
+  \draw[arr] (call)     -- node[below, font=\tiny\itshape, text=black!50] {ScoredPath} (vcf);
+\end{tikzpicture}%
+}
+\caption{The six stages of the kam pipeline. Each arrow is labelled with the
+  data type flowing between stages. Processing stages (blue) preserve
+  molecule-level evidence from assembly through to calling. I/O endpoints
+  (green) are raw FASTQ and variant output.}
+\label{fig:pipeline}
+\end{figure}
 
 \subsection{Read Parsing and UMI Extraction}
 \label{sec:method:parsing}

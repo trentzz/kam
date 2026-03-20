@@ -5,9 +5,11 @@ Single-run mode (default):
   python3 plot_results.py [--results PATH]
 
   Produces:
-    sensitivity_vs_vaf.pdf   — lollipop chart of sensitivity by VAF and concentration
+    sensitivity_vs_vaf.pdf   — grouped bar chart of sensitivity by VAF and concentration
     precision_recall.pdf     — scatter plot of precision vs sensitivity
     molecule_stats.pdf       — molecule count and duplex rate by sample
+    confusion_matrix.pdf     — TP/FP/FN counts at 2% VAF by concentration
+    fn_analysis.pdf          — missed variants by type across VAF titration
 
 Compare mode:
   python3 plot_results.py --compare 250k:titration_results_250kreads.tsv \\
@@ -26,7 +28,7 @@ All figures follow graph-style.md rules:
   - 84mm (single-column) width
   - 600 DPI raster + PDF
   - Thin lines (1.0–1.2pt)
-  - Lollipop/dot plots instead of bars
+  - Grouped vertical bar charts
   - No dual y-axes
   - Direct labels where possible
 """
@@ -42,7 +44,7 @@ from pathlib import Path
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 REPO = Path(__file__).resolve().parents[2]
-_DEFAULT_RESULTS = REPO / "benchmarking/results/tables/titration_results.tsv"
+_DEFAULT_RESULTS = REPO / "benchmarking/results/tables_v4/titration_results_2mreads.tsv"
 OUT_DIR = REPO / "docs/paper/figures"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -138,7 +140,7 @@ def load_results(path):
 # ── Single-run figures ─────────────────────────────────────────────────────────
 
 def plot_sensitivity(rows):
-    """Lollipop chart of overall sensitivity by VAF and concentration."""
+    """Grouped vertical bar chart of overall sensitivity by VAF and concentration."""
     data = [r for r in rows if r["vaf"] > 0]
     ng_groups = ["5ng", "15ng", "30ng"]
     vafs = sorted({r["vaf"] for r in data})
@@ -153,15 +155,14 @@ def plot_sensitivity(rows):
         series = {r["vaf"]: r["sensitivity"] for r in data if r["ng"] == ng}
         xpos = x_positions + offsets[ng]
         yvals = [series.get(v, 0.0) for v in vafs]
-        ax.vlines(xpos, 0, yvals, color=COLOURS[ng], linewidth=1.0, alpha=0.7)
-        ax.plot(xpos, yvals, marker=MARKERS[ng], color=COLOURS[ng],
-                markersize=4, linestyle="none", label=ng)
+        ax.bar(xpos, yvals, width=width, color=COLOURS[ng], label=ng,
+               linewidth=0.5, edgecolor="white")
 
     ax.set_xticks(x_positions)
     ax.set_xticklabels([f"{v:g}" for v in vafs], rotation=30, ha="right")
     ax.set_xlabel("VAF (%)")
     ax.set_ylabel("Sensitivity")
-    ax.set_ylim(0, 0.60)
+    ax.set_ylim(0, 0.70)
     ax.yaxis.set_major_formatter(ticker.PercentFormatter(xmax=1, decimals=0))
     ax.legend(title="Input", frameon=False, loc="upper left")
     ax.spines[["top", "right"]].set_visible(False)
@@ -208,7 +209,7 @@ def plot_precision_recall(rows):
 
 
 def plot_molecule_stats(rows):
-    """Two-panel: molecule count and duplex rate by VAF and concentration."""
+    """Two-panel grouped bar chart: molecule count and duplex rate by VAF and concentration."""
     ng_groups = ["5ng", "15ng", "30ng"]
     vafs_all = sorted({r["vaf"] for r in rows})
 
@@ -223,12 +224,10 @@ def plot_molecule_stats(rows):
         xpos = x_positions + offsets[ng]
         mols = [series[v]["molecules"] / 1000 if v in series else 0 for v in vafs_all]
         duplex_pct = [series[v]["duplex_pct"] if v in series else 0 for v in vafs_all]
-        ax1.vlines(xpos, 0, mols, color=COLOURS[ng], linewidth=1.0, alpha=0.7)
-        ax1.plot(xpos, mols, marker=MARKERS[ng], color=COLOURS[ng],
-                 markersize=4, linestyle="none", label=ng)
-        ax2.vlines(xpos, 0, duplex_pct, color=COLOURS[ng], linewidth=1.0, alpha=0.7)
-        ax2.plot(xpos, duplex_pct, marker=MARKERS[ng], color=COLOURS[ng],
-                 markersize=4, linestyle="none", label=ng)
+        ax1.bar(xpos, mols, width=width, color=COLOURS[ng], label=ng,
+                linewidth=0.5, edgecolor="white")
+        ax2.bar(xpos, duplex_pct, width=width, color=COLOURS[ng], label=ng,
+                linewidth=0.5, edgecolor="white")
 
     for ax, ylabel, title in [
         (ax1, "Molecules (×1000)", "Assembled molecules per sample"),
@@ -238,6 +237,7 @@ def plot_molecule_stats(rows):
         ax.set_xticklabels([f"{v:g}" for v in vafs_all], rotation=30, ha="right")
         ax.set_xlabel("VAF (%)")
         ax.set_ylabel(ylabel)
+        ax.set_ylim(bottom=0)
         ax.legend(title="Input", frameon=False, fontsize=6)
         ax.spines[["top", "right"]].set_visible(False)
         ax.set_title(title)
@@ -251,7 +251,7 @@ def plot_molecule_stats(rows):
 # ── Figure 4: SNV vs indel sensitivity ────────────────────────────────────────
 
 def plot_sensitivity_by_type(rows):
-    """Two-panel lollipop: SNV sensitivity (left) and indel sensitivity (right)."""
+    """Two-panel grouped bar chart: SNV sensitivity (left) and indel sensitivity (right)."""
     data = [r for r in rows if r["vaf"] > 0]
     ng_groups = ["5ng", "15ng", "30ng"]
     vafs = sorted({r["vaf"] for r in data})
@@ -271,9 +271,8 @@ def plot_sensitivity_by_type(rows):
             series = {r["vaf"]: r[metric] for r in data if r["ng"] == ng}
             xpos = x_positions + offsets[ng]
             yvals = [series.get(v, 0.0) for v in vafs]
-            ax.vlines(xpos, 0, yvals, color=COLOURS[ng], linewidth=1.0, alpha=0.7)
-            ax.plot(xpos, yvals, marker=MARKERS[ng], color=COLOURS[ng],
-                    markersize=4, linestyle="none", label=ng)
+            ax.bar(xpos, yvals, width=width, color=COLOURS[ng], label=ng,
+                   linewidth=0.5, edgecolor="white")
         ax.set_xticks(x_positions)
         ax.set_xticklabels([f"{v:g}" for v in vafs], rotation=30, ha="right")
         ax.set_xlabel("VAF (%)")
@@ -293,7 +292,7 @@ def plot_sensitivity_by_type(rows):
 # ── Figure 5: False positives by VAF ──────────────────────────────────────────
 
 def plot_fp_by_vaf(rows):
-    """Lollipop chart of false positive count by VAF and concentration."""
+    """Grouped vertical bar chart of false positive count by VAF and concentration."""
     data = [r for r in rows if r["vaf"] > 0]
     ng_groups = ["5ng", "15ng", "30ng"]
     vafs = sorted({r["vaf"] for r in data})
@@ -308,9 +307,8 @@ def plot_fp_by_vaf(rows):
         series = {r["vaf"]: r["fp"] for r in data if r["ng"] == ng}
         xpos = x_positions + offsets[ng]
         yvals = [series.get(v, 0) for v in vafs]
-        ax.vlines(xpos, 0, yvals, color=COLOURS[ng], linewidth=1.0, alpha=0.7)
-        ax.plot(xpos, yvals, marker=MARKERS[ng], color=COLOURS[ng],
-                markersize=4, linestyle="none", label=ng)
+        ax.bar(xpos, yvals, width=width, color=COLOURS[ng], label=ng,
+               linewidth=0.5, edgecolor="white")
 
     ax.set_xticks(x_positions)
     ax.set_xticklabels([f"{v:g}" for v in vafs], rotation=30, ha="right")
@@ -330,15 +328,15 @@ def plot_fp_by_vaf(rows):
 # ── Figure 6: Per-stage runtime and memory breakdown ──────────────────────────
 
 def plot_stage_breakdown(rows):
-    """Two-panel Cleveland dot plots: per-stage timing and peak RSS.
+    """Two-panel vertical bar chart: per-stage timing and peak RSS.
 
-    Each point is one sample. Stages on y-axis; value on x-axis.
+    Each bar shows the median value for that stage across all samples.
     """
     stages = ["assemble", "index", "pathfind", "call", "output"]
     stage_labels = ["Assemble", "Index", "Pathfind", "Call", "Output"]
 
-    timing_key  = lambda s: f"t_{s}_ms"
-    rss_key     = lambda s: f"rss_{s}_mb"
+    timing_key = lambda s: f"t_{s}_ms"
+    rss_key    = lambda s: f"rss_{s}_mb"
 
     # Collect all values per stage.
     timing_vals = {s: [r[timing_key(s)] for r in rows
@@ -355,27 +353,24 @@ def plot_stage_breakdown(rows):
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(COL_W * 1.9, COL_W * 0.75))
 
-    y_positions = np.arange(len(stages))
+    x_positions = np.arange(len(stages))
 
-    for ax, vals_dict, xlabel, title in [
+    for ax, vals_dict, ylabel, title in [
         (ax1, timing_vals, "Wall time (ms)", "Per-stage runtime"),
         (ax2, rss_vals,    "Peak RSS (MB)",  "Per-stage memory"),
     ]:
-        for i, (s, label) in enumerate(zip(stages, stage_labels)):
+        medians = []
+        for s in stages:
             vals = vals_dict[s]
-            if not vals:
-                continue
-            median = np.median(vals)
-            p25, p75 = np.percentile(vals, [25, 75])
-            # IQR bar
-            ax.hlines(i, p25, p75, color="#2166ac", linewidth=2.0, alpha=0.4, zorder=2)
-            # Median dot
-            ax.plot(median, i, "o", color="#2166ac", markersize=5, zorder=3)
+            medians.append(np.median(vals) if vals else 0.0)
 
-        ax.set_yticks(y_positions)
-        ax.set_yticklabels(stage_labels)
-        ax.set_xlabel(xlabel)
-        ax.set_xlim(left=0)
+        ax.bar(x_positions, medians, width=0.55, color="#2166ac",
+               linewidth=0.5, edgecolor="white")
+
+        ax.set_xticks(x_positions)
+        ax.set_xticklabels(stage_labels, rotation=30, ha="right")
+        ax.set_ylabel(ylabel)
+        ax.set_ylim(bottom=0)
         ax.spines[["top", "right"]].set_visible(False)
         ax.set_title(title)
 
@@ -383,6 +378,125 @@ def plot_stage_breakdown(rows):
     fig.savefig(OUT_DIR / "stage_breakdown.png", dpi=DPI)
     plt.close(fig)
     print("Saved stage_breakdown")
+
+
+# ── Figure 7: Confusion matrix at 2% VAF ──────────────────────────────────────
+
+def plot_confusion_matrix(rows):
+    """Grouped bar chart of TP, FP, and FN counts at 2% VAF by concentration.
+
+    Shows three bars per concentration group: TP (green), FP (pink), FN (red-orange).
+    A dashed horizontal line marks the total truth variant count (375).
+    """
+    # Filter to 2% VAF only.
+    target_vaf = 2.0
+    data = [r for r in rows if abs(r["vaf"] - target_vaf) < 1e-6]
+
+    if not data:
+        print("Skipping confusion_matrix: no rows at 2% VAF")
+        return
+
+    ng_groups = ["5ng", "15ng", "30ng"]
+    total_truth = 375
+
+    # Colours for TP, FP, FN.
+    tp_colour = "#1b7837"
+    fp_colour = "#d01c8b"
+    fn_colour = "#d6604d"
+
+    fig, ax = plt.subplots(figsize=(COL_W, COL_W * 0.85))
+
+    # Three concentrations on x-axis; within each, three bars side by side.
+    x_positions = np.arange(len(ng_groups))
+    bar_width = 0.22
+    offsets = {"tp": -bar_width, "fp": 0, "fn": bar_width}
+    metric_colours = {"tp": tp_colour, "fp": fp_colour, "fn": fn_colour}
+    metric_labels  = {"tp": "TP", "fp": "FP", "fn": "FN"}
+
+    # Build lookup: ng -> row.
+    by_ng = {r["ng"]: r for r in data}
+
+    for metric in ("tp", "fp", "fn"):
+        yvals = [by_ng[ng][metric] if ng in by_ng else 0 for ng in ng_groups]
+        xpos = x_positions + offsets[metric]
+        bars = ax.bar(xpos, yvals, width=bar_width,
+                      color=metric_colours[metric], label=metric_labels[metric],
+                      linewidth=0.5, edgecolor="white")
+        # Value labels on top of each bar.
+        for bar, val in zip(bars, yvals):
+            if val > 0:
+                ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 2,
+                        str(val), ha="center", va="bottom", fontsize=5.5)
+
+    # Dashed line for total truth variant count.
+    ax.axhline(total_truth, color="#555555", linewidth=0.8, linestyle="--",
+               label=f"Truth total ({total_truth})")
+
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels(ng_groups)
+    ax.set_xlabel("Input concentration")
+    ax.set_ylabel("Variant count")
+    ax.set_ylim(bottom=0)
+    ax.legend(frameon=False, loc="upper right", fontsize=6)
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.set_title("True/false positive and false negative counts at 2% VAF")
+
+    fig.savefig(OUT_DIR / "confusion_matrix.pdf")
+    fig.savefig(OUT_DIR / "confusion_matrix.png", dpi=DPI)
+    plt.close(fig)
+    print("Saved confusion_matrix")
+
+
+# ── Figure 8: FN breakdown by variant type ────────────────────────────────────
+
+def plot_fn_analysis(rows):
+    """Grouped bar chart of missed variants (FN) by type across VAF levels.
+
+    SNV FN and indel FN values are averaged across concentrations at each VAF level.
+    Total truth: 205 SNVs, 170 indels.
+    """
+    from collections import defaultdict
+
+    data = [r for r in rows if r["vaf"] > 0]
+    vafs = sorted({r["vaf"] for r in data})
+
+    # Average SNV FN and indel FN across concentrations at each VAF.
+    snv_fn_by_vaf   = defaultdict(list)
+    indel_fn_by_vaf = defaultdict(list)
+    for r in data:
+        snv_fn_by_vaf[r["vaf"]].append(r["snv_fn"])
+        indel_fn_by_vaf[r["vaf"]].append(r["indel_fn"])
+
+    snv_fn_mean   = [np.mean(snv_fn_by_vaf[v])   for v in vafs]
+    indel_fn_mean = [np.mean(indel_fn_by_vaf[v]) for v in vafs]
+
+    snv_colour   = "#2166ac"
+    indel_colour = "#d01c8b"
+
+    fig, ax = plt.subplots(figsize=(COL_W, COL_W * 0.85))
+
+    x_positions = np.arange(len(vafs))
+    bar_width = 0.30
+    offsets = {"snv": -bar_width / 2, "indel": bar_width / 2}
+
+    ax.bar(x_positions + offsets["snv"],   snv_fn_mean,   width=bar_width,
+           color=snv_colour,   label="SNV FN",   linewidth=0.5, edgecolor="white")
+    ax.bar(x_positions + offsets["indel"], indel_fn_mean, width=bar_width,
+           color=indel_colour, label="Indel FN", linewidth=0.5, edgecolor="white")
+
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels([f"{v:g}" for v in vafs], rotation=30, ha="right")
+    ax.set_xlabel("VAF (%)")
+    ax.set_ylabel("Missed truth variants (mean across concentrations)")
+    ax.set_ylim(bottom=0)
+    ax.legend(frameon=False, loc="upper right")
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.set_title("Missed variants by type across VAF titration")
+
+    fig.savefig(OUT_DIR / "fn_analysis.pdf")
+    fig.savefig(OUT_DIR / "fn_analysis.png", dpi=DPI)
+    plt.close(fig)
+    print("Saved fn_analysis")
 
 
 # ── Compare figures ────────────────────────────────────────────────────────────
@@ -470,7 +584,7 @@ def parse_args():
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--results", type=Path, default=_DEFAULT_RESULTS,
                         help="Results TSV for single-run mode "
-                             "(default: benchmarking/results/tables/titration_results.tsv)")
+                             "(default: benchmarking/results/tables_v4/titration_results_2mreads.tsv)")
     parser.add_argument("--compare", nargs="+", metavar="LABEL:PATH",
                         help="Compare mode: one or more label:path pairs, e.g. "
                              "250k:titration_results_250kreads.tsv. "
@@ -507,6 +621,8 @@ def main():
         plot_sensitivity_by_type(rows)
         plot_fp_by_vaf(rows)
         plot_stage_breakdown(rows)
+        plot_confusion_matrix(rows)
+        plot_fn_analysis(rows)
 
     print(f"All figures written to {OUT_DIR}")
 

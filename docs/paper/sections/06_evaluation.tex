@@ -20,7 +20,7 @@ Fisher exact test, giving $p \approx 10^{-50}$ instead of $p \approx 0.5$.
 This inflated sample size made the strand bias filter approximately 70$\times$
 more sensitive than intended.
 Any low-VAF variant where all supporting molecules happened to come from one
-strand --- common at 2 alt molecules --- was filtered regardless of the true
+strand (common at 2 alt molecules) was filtered regardless of the true
 per-molecule strand balance.
 
 The fix is to use the per-path minimum rather than the sum: the minimum of
@@ -75,17 +75,51 @@ UMI prefix, then compare within partitions), which would reduce expected
 complexity to O($n$) and allow tens of millions of read pairs within a 4\,GB
 budget.
 
+% ── Analysis of missed variants ────────────────────────────────────────────────
+\subsection{Analysis of missed variants}
+\label{sec:eval:fn}
+
+Figure~\ref{fig:fn_analysis} shows the count of missed truth variants (false
+negatives) broken down by type across the VAF titration at 2M reads.
+At every VAF level, indels account for the majority of missed variants.
+At 2\% VAF, 104--116 of the 170 truth indels are missed (61--68\%) compared
+to 41--63 of the 205 truth SNVs (20--31\%).
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/fn_analysis.pdf}
+  \caption{Missed truth variants (false negatives) by type averaged across
+    three concentrations. Indels account for the majority of missed variants at
+    every VAF level. The gap narrows at 2\% VAF but remains substantial.}
+  \label{fig:fn_analysis}
+\end{figure}
+
+Missed SNVs arise from two causes. First, stochastic molecule dropout: at
+0.1\% VAF with 2M reads, a target is expected to contain roughly 2 variant
+molecules after UMI grouping. Duplex collapsing can reduce this to zero or
+one, failing the minimum alt molecule threshold of 2. Second, coverage
+imbalance: some 100\,bp targets have lower effective molecule coverage due
+to GC content or PCR amplification bias, leaving fewer molecules to support
+any variant call.
+
+Missed indels arise from all the same causes, plus one structural limitation.
+For an indel of length $\ell$, the variant path through the de~Bruijn graph
+is $\ell$ k-mers longer (insertion) or shorter (deletion) than the reference
+path. The end-anchor k-mer of the reference path shifts by $\ell$ positions
+relative to the genomic sequence. Reads must cover that shifted anchor
+position for the DFS walk to reach the end anchor. At low VAF, variant reads
+may not cover the shifted anchor, so the walk cannot complete and no call is
+made. Larger indels require wider anchor displacement, compounding the
+coverage requirement. This is why indel sensitivity is consistently lower than
+SNV sensitivity and why it recovers less steeply with increasing VAF.
+
 % ── Overall assessment ────────────────────────────────────────────────────────
 \subsection{Overall assessment}
 
 With both implementation fixes applied, sensitivity extends to the 0.25--1\%
 VAF range at 2M reads.
-Indel sensitivity remains lower than SNV sensitivity at all VAF levels.
-This is a structural characteristic of anchor-based graph walking: when a
-variant path is a different length from the reference path, the end anchor
-k-mer shifts position relative to the reference.
-Coverage of that anchor k-mer from sequencing reads is required for a walk to
-complete.
+Indel sensitivity remains lower than SNV sensitivity at all VAF levels, for
+the structural reasons described above.
 At 0.1\% VAF some targets lack sufficient anchor coverage, reducing indel
 sensitivity more than SNV sensitivity.
-Increasing depth further would partially close this gap.
+Increasing depth further would partially close this gap for both types.
