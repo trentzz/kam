@@ -29,10 +29,12 @@ pub struct ScoredPathRecord {
     pub min_molecules: u32,
     /// Mean molecule support.
     pub mean_molecules: f32,
-    /// Minimum duplex support.
+    /// Minimum duplex support across all path k-mers.
     pub min_duplex: u32,
-    /// Mean duplex support.
+    /// Mean duplex support across all path k-mers.
     pub mean_duplex: f32,
+    /// Minimum duplex support at variant-specific k-mers only.
+    pub min_variant_specific_duplex: u32,
     /// Minimum forward-strand simplex molecule count across k-mers.
     pub min_simplex_fwd: u32,
     /// Minimum reverse-strand simplex molecule count across k-mers.
@@ -136,6 +138,7 @@ pub fn run_pathfind(args: PathfindArgs) -> Result<(), Box<dyn std::error::Error>
                 mean_molecules: sp.aggregate_evidence.mean_molecules,
                 min_duplex: sp.aggregate_evidence.min_duplex,
                 mean_duplex: sp.aggregate_evidence.mean_duplex,
+                min_variant_specific_duplex: sp.aggregate_evidence.min_variant_specific_duplex,
                 min_simplex_fwd: sp.aggregate_evidence.min_simplex_fwd,
                 min_simplex_rev: sp.aggregate_evidence.min_simplex_rev,
                 mean_error_prob: sp.aggregate_evidence.mean_error_prob,

@@ -32,6 +32,8 @@
 //! assert_eq!(scored.aggregate_evidence.min_molecules, 8);
 //! ```
 
+use std::collections::HashSet;
+
 use kam_core::kmer::{KmerIndex, MoleculeEvidence};
 use kam_index::encode::canonical;
 
@@ -62,6 +64,19 @@ pub struct PathEvidence {
     pub min_duplex: u32,
     /// Mean `n_duplex` across all k-mers in the path.
     pub mean_duplex: f32,
+    /// Minimum duplex count across variant-specific k-mers only.
+    ///
+    /// Variant-specific k-mers are those present in this (alt) path but absent
+    /// from the reference path k-mer set.  For these k-mers, molecule evidence
+    /// comes only from alt-supporting reads, not from the many reference
+    /// molecules covering the shared anchor k-mers.  This gives a calibrated
+    /// duplex count at the actual variant site rather than the inflated
+    /// `mean_duplex` computed across all ~70 path k-mers.
+    ///
+    /// Set to 0 for the reference path itself.  Computed by
+    /// [`score_and_rank_paths`] after the reference path is identified; not
+    /// available from [`score_path`] alone.
+    pub min_variant_specific_duplex: u32,
     /// Minimum `n_simplex_fwd` across all k-mers in the path.
     ///
     /// Using the minimum rather than the sum gives a per-molecule count rather
@@ -134,6 +149,7 @@ pub fn score_path(path: &GraphPath, index: &dyn KmerIndex, k: usize) -> ScoredPa
                 mean_molecules: 0.0,
                 min_duplex: 0,
                 mean_duplex: 0.0,
+                min_variant_specific_duplex: 0,
                 min_simplex_fwd: 0,
                 min_simplex_rev: 0,
                 mean_error_prob: 0.0,
@@ -186,6 +202,7 @@ pub fn score_path(path: &GraphPath, index: &dyn KmerIndex, k: usize) -> ScoredPa
             mean_molecules,
             min_duplex,
             mean_duplex,
+            min_variant_specific_duplex: 0, // set by score_and_rank_paths
             min_simplex_fwd,
             min_simplex_rev,
             mean_error_prob,
@@ -248,6 +265,46 @@ pub fn score_and_rank_paths(
         if sp.path.sequence == reference_seq {
             sp.is_reference = true;
         }
+    }
+
+    // Build a set of canonical k-mers from the reference path.
+    // These are the anchor k-mers shared with every alt path.  Duplex evidence
+    // at these k-mers reflects reference molecules, not alt-supporting molecules,
+    // so they must be excluded when computing variant-specific duplex support.
+    let ref_kmer_set: HashSet<u64> = scored
+        .iter()
+        .find(|sp| sp.is_reference)
+        .map(|sp| {
+            sp.path
+                .kmers
+                .iter()
+                .map(|&kmer| canonical(kmer, k))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // For each alt path, compute the minimum duplex count across variant-specific
+    // k-mers (those not shared with the reference path).  This gives a calibrated
+    // duplex count at the actual variant site.
+    for sp in &mut scored {
+        if sp.is_reference {
+            continue;
+        }
+        let min_vs_duplex = sp
+            .path
+            .kmers
+            .iter()
+            .filter_map(|&kmer| {
+                let canon = canonical(kmer, k);
+                if ref_kmer_set.contains(&canon) {
+                    return None; // anchor k-mer: skip
+                }
+                let ev = index.get(canon).cloned().unwrap_or_default();
+                Some(ev.n_duplex)
+            })
+            .min()
+            .unwrap_or(0);
+        sp.aggregate_evidence.min_variant_specific_duplex = min_vs_duplex;
     }
 
     // Sort by min_molecules descending, then mean_molecules descending for ties.

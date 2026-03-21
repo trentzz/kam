@@ -183,6 +183,10 @@ pub fn write_vcf(calls: &[VariantCall], writer: &mut dyn Write) -> io::Result<()
         writer,
         "##FILTER=<ID=CollisionRisk,Description=\"UMI collision risk\">"
     )?;
+    writeln!(
+        writer,
+        "##FILTER=<ID=HighVaf,Description=\"VAF exceeds maximum threshold (likely germline)\">"
+    )?;
     writeln!(writer, "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO")?;
 
     for call in calls {
@@ -296,6 +300,7 @@ fn filter_to_str(vf: VariantFilter) -> &'static str {
         VariantFilter::LowConfidence => "LowConfidence",
         VariantFilter::LowDuplex => "LowDuplex",
         VariantFilter::CollisionRisk => "CollisionRisk",
+        VariantFilter::HighVaf => "HighVaf",
     }
 }
 

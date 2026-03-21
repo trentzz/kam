@@ -41,6 +41,10 @@ READS_PER_SAMPLE = 1_000_000  # 1M read pairs; most samples peak ~1.6 GB
 PEAK_RSS_LIMIT_MB = 5 * 1024  # kill and skip any sample that exceeds 5 GB
 TRUTH_PANEL_SIZE = 375        # total truth variants in the panel
 
+# Optional caller flags (set to non-None to pass them to kam run).
+KAM_MAX_VAF: float | None = None
+KAM_MIN_ALT_MOLECULES: int | None = None
+
 # ── Truth variants ─────────────────────────────────────────────────────────────
 def load_truth_set(vcf_path):
     """Load truth variants as (chrom, pos, ref, alt) tuples for positional matching.
@@ -310,6 +314,10 @@ def run_sample(sample, truth_set, tmp_dir):
         "--output-dir", str(out_dir),
         "--output-format", "vcf,tsv",
     ]
+    if KAM_MAX_VAF is not None:
+        cmd += ["--max-vaf", str(KAM_MAX_VAF)]
+    if KAM_MIN_ALT_MOLECULES is not None:
+        cmd += ["--min-alt-molecules", str(KAM_MIN_ALT_MOLECULES)]
 
     print(f"  [{name}] running kam...", flush=True)
     t0 = time.time()
@@ -500,6 +508,7 @@ def run_sample(sample, truth_set, tmp_dir):
 def main():
     global KAM, TARGETS, TRUTH_VCF, FASTQ_DIR, RESULTS_DIR, RESULTS_FILE
     global READS_PER_SAMPLE, PEAK_RSS_LIMIT_MB
+    global KAM_MAX_VAF, KAM_MIN_ALT_MOLECULES
 
     parser = argparse.ArgumentParser(
         description="Run kam on all titration samples and score against truth variants."
@@ -522,6 +531,11 @@ def main():
                         help=f"Read pairs per sample (default: {READS_PER_SAMPLE:,})")
     parser.add_argument("--rss-limit-gb", type=float, default=PEAK_RSS_LIMIT_MB / 1024,
                         help=f"Peak RSS kill threshold in GB (default: {PEAK_RSS_LIMIT_MB / 1024:.0f})")
+    parser.add_argument("--max-vaf", type=float, default=None,
+                        help="Maximum VAF for a PASS call; calls above this are labelled HighVaf. "
+                             "Use 0.35 to exclude germline heterozygous variants.")
+    parser.add_argument("--min-alt-molecules", type=int, default=None,
+                        help="Minimum alt-supporting molecules to emit a call (default: 2).")
     args = parser.parse_args()
 
     KAM             = args.kam_binary
@@ -531,6 +545,8 @@ def main():
     RESULTS_DIR     = args.results_dir
     READS_PER_SAMPLE  = args.reads
     PEAK_RSS_LIMIT_MB = int(args.rss_limit_gb * 1024)
+    KAM_MAX_VAF           = args.max_vaf
+    KAM_MIN_ALT_MOLECULES = args.min_alt_molecules
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     if args.output:

@@ -287,6 +287,10 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
         strand_bias_threshold: args
             .strand_bias_threshold
             .unwrap_or(CallerConfig::default().strand_bias_threshold),
+        min_alt_molecules: args
+            .min_alt_molecules
+            .unwrap_or(CallerConfig::default().min_alt_molecules),
+        max_vaf: args.max_vaf.or(CallerConfig::default().max_vaf),
         ..CallerConfig::default()
     };
 
@@ -470,6 +474,8 @@ mod tests {
             kmer_size: 8,
             min_confidence: None,
             strand_bias_threshold: None,
+            min_alt_molecules: None,
+            max_vaf: None,
             output_format: "tsv".to_string(),
             qc_output: None,
             log_dir: None,
@@ -532,6 +538,8 @@ mod tests {
             kmer_size: 4,
             min_confidence: None,
             strand_bias_threshold: None,
+            min_alt_molecules: None,
+            max_vaf: None,
             output_format: "tsv".to_string(),
             qc_output: None,
             log_dir: None,

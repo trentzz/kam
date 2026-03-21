@@ -141,6 +141,16 @@ pub struct CallArgs {
     /// Strand bias Fisher's exact p-value cutoff.
     #[arg(long)]
     pub strand_bias_threshold: Option<f64>,
+
+    /// Minimum alt-supporting molecules to emit a call.
+    #[arg(long)]
+    pub min_alt_molecules: Option<u32>,
+
+    /// Maximum VAF for a PASS call. Calls above this are labelled HighVaf.
+    /// Useful for ctDNA somatic calling where germline heterozygous variants
+    /// (VAF ≈ 0.5) should be excluded. Example: --max-vaf 0.35.
+    #[arg(long)]
+    pub max_vaf: Option<f64>,
 }
 
 /// Arguments for the `run` subcommand (full pipeline).
@@ -189,6 +199,16 @@ pub struct RunArgs {
     /// Strand bias Fisher's exact p-value cutoff.
     #[arg(long)]
     pub strand_bias_threshold: Option<f64>,
+
+    /// Minimum alt-supporting molecules to emit a call.
+    #[arg(long)]
+    pub min_alt_molecules: Option<u32>,
+
+    /// Maximum VAF for a PASS call. Calls above this are labelled HighVaf.
+    /// Useful for ctDNA somatic calling where germline heterozygous variants
+    /// (VAF ≈ 0.5) should be excluded. Example: --max-vaf 0.35.
+    #[arg(long)]
+    pub max_vaf: Option<f64>,
 
     /// Output format(s), comma-separated (tsv, csv, json, vcf).
     #[arg(long, default_value = "tsv")]

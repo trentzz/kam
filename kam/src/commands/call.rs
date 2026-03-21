@@ -41,6 +41,10 @@ pub fn run_call(args: CallArgs) -> Result<(), Box<dyn std::error::Error>> {
         strand_bias_threshold: args
             .strand_bias_threshold
             .unwrap_or(CallerConfig::default().strand_bias_threshold),
+        min_alt_molecules: args
+            .min_alt_molecules
+            .unwrap_or(CallerConfig::default().min_alt_molecules),
+        max_vaf: args.max_vaf.or(CallerConfig::default().max_vaf),
         ..CallerConfig::default()
     };
 
@@ -143,6 +147,7 @@ fn record_to_path_evidence(rec: &ScoredPathRecord) -> kam_pathfind::score::PathE
         mean_molecules: rec.mean_molecules,
         min_duplex: rec.min_duplex,
         mean_duplex: rec.mean_duplex,
+        min_variant_specific_duplex: rec.min_variant_specific_duplex,
         min_simplex_fwd: rec.min_simplex_fwd,
         min_simplex_rev: rec.min_simplex_rev,
         mean_error_prob: rec.mean_error_prob,
@@ -202,6 +207,7 @@ mod tests {
             mean_molecules: n_molecules as f32,
             min_duplex: 0,
             mean_duplex: 0.0,
+            min_variant_specific_duplex: 0,
             min_simplex_fwd: n_molecules / 2,
             min_simplex_rev: n_molecules / 2,
             mean_error_prob: 0.001,
@@ -228,6 +234,8 @@ mod tests {
             output_format: "tsv".to_string(),
             min_confidence: None,
             strand_bias_threshold: None,
+            min_alt_molecules: None,
+            max_vaf: None,
         };
 
         run_call(args).expect("run_call should succeed");
@@ -258,6 +266,8 @@ mod tests {
             output_format: "tsv".to_string(),
             min_confidence: None,
             strand_bias_threshold: None,
+            min_alt_molecules: None,
+            max_vaf: None,
         };
 
         run_call(args).expect("run_call with empty input should succeed");

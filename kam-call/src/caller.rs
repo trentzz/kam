@@ -75,10 +75,12 @@ pub enum VariantFilter {
     StrandBias,
     /// Posterior confidence below threshold.
     LowConfidence,
-    /// Fewer duplex molecules than required.
+    /// Fewer duplex molecules than required at the variant site.
     LowDuplex,
     /// UMI collision risk too high to trust.
     CollisionRisk,
+    /// VAF exceeds the configured maximum (likely germline).
+    HighVaf,
 }
 
 /// Caller configuration with sensible defaults.
@@ -88,7 +90,8 @@ pub enum VariantFilter {
 /// use kam_call::caller::CallerConfig;
 /// let cfg = CallerConfig::default();
 /// assert_eq!(cfg.min_alt_molecules, 2);
-/// assert_eq!(cfg.min_alt_duplex, 1);
+/// assert_eq!(cfg.min_alt_duplex, 0);
+/// assert_eq!(cfg.max_vaf, None);
 /// ```
 #[derive(Debug, Clone)]
 pub struct CallerConfig {
@@ -97,14 +100,33 @@ pub struct CallerConfig {
     /// Fisher p-value below which strand bias is flagged. Default: 0.01.
     pub strand_bias_threshold: f64,
     /// Minimum alt-supporting molecules required. Default: 2.
-    pub min_alt_molecules: u32,
-    /// Minimum duplex alt molecules required.
     ///
-    /// Requiring at least one duplex molecule suppresses false positives from
-    /// background sequencing errors: a random error that generates 2+ simplex
-    /// molecules at the same position is unlikely to produce independent errors
-    /// on both strands, so it cannot form a duplex call.  Default: 1.
+    /// If `min_alt_duplex_for_single` is set (not None) and the variant has at
+    /// least that many duplex molecules at the variant site, a single-molecule
+    /// call (n_alt = 1) is accepted.  Otherwise this threshold applies strictly.
+    pub min_alt_molecules: u32,
+    /// Minimum variant-specific duplex molecules required.
+    ///
+    /// Uses the minimum duplex count at variant-specific k-mers only (k-mers
+    /// in the alt path that are absent from the reference path).  This is a
+    /// calibrated signal: the old `mean_duplex` field included anchor k-mers
+    /// covered by many reference molecules and was always ≥ 1, making the
+    /// filter ineffective.  Default: 1.
     pub min_alt_duplex: u32,
+    /// Minimum variant-specific duplex to accept a single-molecule call.
+    ///
+    /// When set, a call with n_alt = 1 passes the molecule threshold if its
+    /// variant-specific duplex count is at least this value.  Duplex
+    /// confirmation on a single molecule is strong evidence that the variant
+    /// is real rather than a sequencing error on one strand.
+    /// `None` disables single-molecule calls regardless of duplex support.
+    /// Default: `Some(1)`.
+    pub min_alt_duplex_for_single: Option<u32>,
+    /// Maximum VAF for a `Pass` call.  Calls above this are filtered as
+    /// `HighVaf`.  Useful for somatic variant calling in ctDNA where germline
+    /// heterozygous variants (VAF ≈ 0.5) should be excluded.
+    /// `None` disables the filter.  Default: `None`.
+    pub max_vaf: Option<f64>,
     /// Per-site background error rate used in the posterior. Default: 1e-4.
     pub background_error_rate: f64,
 }
@@ -115,7 +137,14 @@ impl Default for CallerConfig {
             min_confidence: 0.99,
             strand_bias_threshold: 0.01,
             min_alt_molecules: 2,
-            min_alt_duplex: 1,
+            // 0 disables the LowDuplex hard filter.  At typical depths (2M reads,
+            // 6.6% duplex rate) roughly 25–36% of genuine 2% VAF variants have
+            // zero duplex coverage at the variant site, so a threshold of 1 would
+            // remove too many true positives.  Enable by setting to 1 when running
+            // at higher duplex rates (≥15%) or deeper sequencing (≥5M reads).
+            min_alt_duplex: 0,
+            min_alt_duplex_for_single: Some(1),
+            max_vaf: None,
             background_error_rate: 1e-4,
         }
     }
@@ -136,12 +165,14 @@ impl Default for CallerConfig {
 /// let ref_ev = PathEvidence {
 ///     min_molecules: 990, mean_molecules: 990.0,
 ///     min_duplex: 0, mean_duplex: 0.0,
+///     min_variant_specific_duplex: 0,
 ///     min_simplex_fwd: 495, min_simplex_rev: 495,
 ///     mean_error_prob: 0.001,
 /// };
 /// let alt_ev = PathEvidence {
 ///     min_molecules: 10, mean_molecules: 10.0,
 ///     min_duplex: 5, mean_duplex: 5.0,
+///     min_variant_specific_duplex: 5,
 ///     min_simplex_fwd: 5, min_simplex_rev: 5,
 ///     mean_error_prob: 0.001,
 /// };
@@ -172,14 +203,15 @@ pub fn call_variant(
 
     let variant_type = classify_variant(ref_seq, alt_seq);
 
-    // Use mean_duplex across all path k-mers rather than the minimum.
-    // The minimum is almost always 0: some k-mers at the path boundary lack
-    // coverage even for genuine variants.  The mean gives a calibrated
-    // per-k-mer duplex count.  Round to the nearest integer for the filter.
-    let n_duplex_alt = alt_evidence.mean_duplex.round() as u32;
+    // Use the minimum duplex count at variant-specific k-mers only.
+    // The old mean_duplex across all ~70 path k-mers was dominated by anchor
+    // k-mers covered by reference molecules, making it always ≥ 1 and
+    // rendering the LowDuplex filter ineffective.  min_variant_specific_duplex
+    // reflects actual duplex support at the variant site.
+    let n_duplex_alt = alt_evidence.min_variant_specific_duplex;
     let n_simplex_alt = k.saturating_sub(n_duplex_alt);
 
-    let filter = assign_filter(confidence, strand_bias_p, k, n_duplex_alt, config);
+    let filter = assign_filter(confidence, strand_bias_p, k, n_duplex_alt, vaf, config);
 
     VariantCall {
         target_id: target_id.to_owned(),
@@ -399,9 +431,16 @@ fn assign_filter(
     strand_bias_p: f64,
     n_alt: u32,
     n_duplex_alt: u32,
+    vaf: f64,
     config: &CallerConfig,
 ) -> VariantFilter {
-    if n_alt < config.min_alt_molecules {
+    // Molecule count: accept single-molecule calls when duplex-confirmed.
+    let min_mols_ok = n_alt >= config.min_alt_molecules
+        || (n_alt == 1
+            && config
+                .min_alt_duplex_for_single
+                .is_some_and(|min_d| n_duplex_alt >= min_d));
+    if !min_mols_ok {
         return VariantFilter::LowConfidence;
     }
     if n_duplex_alt < config.min_alt_duplex {
@@ -412,6 +451,11 @@ fn assign_filter(
     }
     if confidence < config.min_confidence {
         return VariantFilter::LowConfidence;
+    }
+    if let Some(max_vaf) = config.max_vaf {
+        if vaf > max_vaf {
+            return VariantFilter::HighVaf;
+        }
     }
     VariantFilter::Pass
 }
@@ -429,6 +473,9 @@ mod tests {
             mean_molecules: min_molecules as f32,
             min_duplex,
             mean_duplex: min_duplex as f32,
+            // For tests, set variant-specific duplex equal to min_duplex so
+            // that the filter behaves the same as the old mean_duplex logic.
+            min_variant_specific_duplex: min_duplex,
             min_simplex_fwd: fwd,
             min_simplex_rev: rev,
             mean_error_prob: 0.001,
@@ -510,6 +557,7 @@ mod tests {
             mean_molecules: 10.0,
             min_duplex: 5,
             mean_duplex: 5.0,
+            min_variant_specific_duplex: 5,
             min_simplex_fwd: 10, // all forward
             min_simplex_rev: 0,
             mean_error_prob: 0.001,
@@ -531,14 +579,58 @@ mod tests {
         assert_eq!(call.filter, VariantFilter::LowConfidence);
     }
 
-    // Test 11: call_variant with sufficient molecules but no duplex → LowDuplex filter.
+    // Test 11: call_variant with min_alt_duplex=1 and no variant-specific duplex → LowDuplex.
+    //
+    // The default is min_alt_duplex=0 (disabled); this test uses an explicit
+    // config with threshold=1 to verify the filter works when enabled.
     #[test]
-    fn call_variant_no_duplex_flagged() {
-        // 10 alt molecules but 0 duplex — fails the default min_alt_duplex = 1.
+    fn call_variant_no_duplex_flagged_when_threshold_set() {
         let ref_ev = make_path_evidence(990, 0, 495, 495);
-        let alt_ev = make_path_evidence(10, 0, 5, 5); // min_duplex = 0
-        let cfg = CallerConfig::default();
+        let alt_ev = make_path_evidence(10, 0, 5, 5); // min_variant_specific_duplex = 0
+        let cfg = CallerConfig {
+            min_alt_duplex: 1,
+            ..CallerConfig::default()
+        };
         let call = call_variant("TP53", &ref_ev, &alt_ev, b"A", b"T", &cfg);
         assert_eq!(call.filter, VariantFilter::LowDuplex);
+    }
+
+    // Test 12: single molecule with duplex confirmation passes when min_alt_duplex_for_single is set.
+    //
+    // Uses a low-coverage target (13 ref + 1 alt = 14 molecules, VAF ≈ 7%),
+    // analogous to the EGFR T790M case in the FN investigation.  At this depth
+    // the posterior confidence for n_alt=1 exceeds 0.99, so the call passes.
+    #[test]
+    fn single_molecule_duplex_confirmed_passes() {
+        let ref_ev = make_path_evidence(13, 0, 7, 6);
+        // n_alt=1, duplex-confirmed. A duplex molecule contributes one read from
+        // each strand, so min_simplex_fwd=1, min_simplex_rev=1.
+        let alt_ev = PathEvidence {
+            min_molecules: 1,
+            mean_molecules: 1.0,
+            min_duplex: 1,
+            mean_duplex: 1.0,
+            min_variant_specific_duplex: 1,
+            min_simplex_fwd: 1,
+            min_simplex_rev: 1,
+            mean_error_prob: 0.001,
+        };
+        let cfg = CallerConfig::default();
+        let call = call_variant("EGFR", &ref_ev, &alt_ev, b"G", b"A", &cfg);
+        assert_eq!(call.filter, VariantFilter::Pass);
+    }
+
+    // Test 13: max_vaf filter rejects high-VAF calls.
+    #[test]
+    fn max_vaf_filters_germline() {
+        let ref_ev = make_path_evidence(500, 0, 250, 250);
+        // n_alt=500, VAF≈0.5 — likely germline.
+        let alt_ev = make_path_evidence(500, 50, 250, 250);
+        let cfg = CallerConfig {
+            max_vaf: Some(0.35),
+            ..CallerConfig::default()
+        };
+        let call = call_variant("EGFR", &ref_ev, &alt_ev, b"A", b"T", &cfg);
+        assert_eq!(call.filter, VariantFilter::HighVaf);
     }
 }
