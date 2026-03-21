@@ -1,7 +1,7 @@
 # Feature: Hash-Partition UMI Grouping
 
 **Date**: 2026-03-22
-**Status**: Phase 1 implemented (HashMap lookup). Phase 2 (Hamming clustering partition) planned.
+**Status**: Phase 1 (HashMap lookup) and Phase 2 (Hamming clustering partition) both implemented.
 
 ---
 
@@ -78,11 +78,15 @@ Impact on sensitivity: negligible, since the affected molecules are still assemb
 correctly — they just appear as two separate molecules instead of one, and both contribute
 to the variant evidence.
 
-**Implementation plan**:
-1. Compute the partition key from `canonical_umi.umi_a[0..3]`.
-2. Bucket reads by partition key before calling `cluster_umi_pairs`.
-3. Run `cluster_umi_pairs` within each bucket.
-4. Merge all bucket results into the global cluster list.
+**Implementation**: `partition_and_cluster()` in `kam-assemble/src/assembler.rs`.
+1. Bucket unique UMIs by `canonical_umi.umi_a[0..3]` into a `HashMap<[u8;3], Vec<usize>>`.
+2. For each bucket, build a local pairs slice and call `cluster_umi_pairs`.
+3. Remap local cluster member indices back to global `unique_umis` indices.
+4. Flatten all bucket cluster results into the global cluster vec.
+
+Phase 2 is a drop-in replacement for the global `cluster_umi_pairs` call in step 2 of
+`assemble_molecules`. The downstream pipeline (fingerprint splitting, consensus calling)
+is unchanged.
 
 ---
 
