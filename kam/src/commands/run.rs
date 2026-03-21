@@ -24,7 +24,7 @@ use kam_index::HashKmerIndex;
 use kam_pathfind::anchor::{validate_anchors, DEFAULT_ANCHOR_THRESHOLD};
 use kam_pathfind::graph::DeBruijnGraph;
 use kam_pathfind::score::{score_and_rank_paths, ScoredPath};
-use kam_pathfind::walk::WalkConfig;
+use kam_pathfind::walk::{GraphPath, WalkConfig};
 
 use crate::cli::RunArgs;
 use crate::commands::index::{molecules_to_consensus_reads, read_fasta};
@@ -200,6 +200,12 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     let mut n_targets_queried: u64 = 0;
     let mut n_targets_with_variants: u64 = 0;
     let mut n_anchors_non_unique: u64 = 0;
+    let mut n_walk_no_paths: u64 = 0;
+    let mut n_walk_ref_only: u64 = 0;
+    let mut n_walk_alt_found: u64 = 0;
+    let mut n_start_not_in_graph: u64 = 0;
+    let mut n_end_not_in_graph: u64 = 0;
+    let mut n_soft_anchor_recovered: u64 = 0;
 
     for (target_id, target_seq) in &targets {
         n_targets_queried += 1;
@@ -220,28 +226,60 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             n_anchors_non_unique += 1;
         }
 
-        // Use raw (non-canonical) anchors from the forward strand of the target.
-        // The graph is built from raw k-mers so the walk starts and ends on
-        // raw k-mer nodes.
-        let start_raw = match encode_kmer(&target_seq[..k]) {
-            Some(km) => km,
-            None => {
-                eprintln!("[run/pathfind] target {target_id}: start anchor contains N, skipping");
-                continue;
-            }
-        };
-        let end_raw = match encode_kmer(&target_seq[target_seq.len() - k..]) {
-            Some(km) => km,
-            None => {
-                eprintln!("[run/pathfind] target {target_id}: end anchor contains N, skipping");
-                continue;
-            }
-        };
+        // Soft anchor search: if the exact start/end anchor k-mer is absent from
+        // the graph, scan inward up to ANCHOR_WINDOW positions to find the
+        // nearest in-graph k-mer.  Missing exact anchors (18% of targets at
+        // 2M reads) arise when reads do not cover the first/last k=31 bases of
+        // the target window due to short insert sizes or coverage imbalance.
+        //
+        // After walking with the inward anchors, each path sequence is padded
+        // with the skipped prefix/suffix from the reference, so downstream
+        // scoring and calling compare against the full target sequence unchanged.
+        const ANCHOR_WINDOW: usize = 10;
 
-        // Number of k-mers in the reference path = target_len - k + 1.
+        let (start_offset, start_raw) =
+            match find_soft_anchor(target_seq, k, &graph, false, ANCHOR_WINDOW) {
+                Some(v) => v,
+                None => {
+                    n_walk_no_paths += 1;
+                    all_scored.push((target_id.clone(), vec![]));
+                    continue;
+                }
+            };
+
+        let (end_offset, end_raw) =
+            match find_soft_anchor(target_seq, k, &graph, true, ANCHOR_WINDOW) {
+                Some(v) => v,
+                None => {
+                    n_walk_no_paths += 1;
+                    all_scored.push((target_id.clone(), vec![]));
+                    continue;
+                }
+            };
+
+        // Guard: anchors must not overlap (target too short or very large window).
+        let end_anchor_pos = target_seq.len().saturating_sub(k + end_offset);
+        if start_offset + k > end_anchor_pos {
+            n_walk_no_paths += 1;
+            all_scored.push((target_id.clone(), vec![]));
+            continue;
+        }
+
+        // Track exact anchor misses (offset > 0 means the exact anchor was absent).
+        if start_offset > 0 {
+            n_start_not_in_graph += 1;
+            n_soft_anchor_recovered += 1;
+        }
+        if end_offset > 0 {
+            n_end_not_in_graph += 1;
+            n_soft_anchor_recovered += 1;
+        }
+
+        // Number of k-mers in the effective (inward-trimmed) reference path.
         // Allow 50 extra k-mers of headroom for indels.
+        let effective_len = target_seq.len() - start_offset - end_offset;
         let target_max_path = if k > 1 {
-            target_seq.len().saturating_sub(k - 1) + 50
+            effective_len.saturating_sub(k - 1) + 50
         } else {
             150
         };
@@ -250,7 +288,34 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             ..Default::default()
         };
 
-        let paths = kam_pathfind::walk::walk_paths(&graph, start_raw, end_raw, &walk_config);
+        let raw_paths = kam_pathfind::walk::walk_paths(&graph, start_raw, end_raw, &walk_config);
+
+        // Categorise walk outcome.
+        if raw_paths.is_empty() {
+            n_walk_no_paths += 1;
+        }
+
+        // Pad each path sequence with the reference prefix/suffix that was
+        // excluded from the walk due to soft anchoring.  This allows
+        // score_and_rank_paths to compare against the full target_seq.
+        let prefix = &target_seq[..start_offset];
+        let suffix = &target_seq[target_seq.len() - end_offset..];
+        let paths: Vec<GraphPath> = if start_offset == 0 && end_offset == 0 {
+            raw_paths
+        } else {
+            raw_paths
+                .into_iter()
+                .map(|mut p| {
+                    let mut padded =
+                        Vec::with_capacity(prefix.len() + p.sequence.len() + suffix.len());
+                    padded.extend_from_slice(prefix);
+                    padded.extend_from_slice(&p.sequence);
+                    padded.extend_from_slice(suffix);
+                    p.sequence = padded;
+                    p
+                })
+                .collect()
+        };
 
         // Score against the canonical evidence index; score_path canonicalizes
         // each raw path k-mer before the lookup.
@@ -258,6 +323,9 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
         let has_variant = scored.iter().any(|p| !p.is_reference);
         if has_variant {
             n_targets_with_variants += 1;
+            n_walk_alt_found += 1;
+        } else if !scored.is_empty() {
+            n_walk_ref_only += 1;
         }
 
         all_scored.push((target_id.clone(), scored));
@@ -273,9 +341,15 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     };
     write_qc(&args.output_dir.join("pathfind_qc.json"), &pathfind_qc)?;
     eprintln!(
-        "[run/pathfind] targets={} with_variants={} time_ms={}",
+        "[run/pathfind] targets={} with_variants={} no_paths={} ref_only={} alt_found={} start_missing={} end_missing={} soft_recovered={} time_ms={}",
         n_targets_queried,
         n_targets_with_variants,
+        n_walk_no_paths,
+        n_walk_ref_only,
+        n_walk_alt_found,
+        n_start_not_in_graph,
+        n_end_not_in_graph,
+        n_soft_anchor_recovered,
         t_pathfind.elapsed().as_millis()
     );
 
@@ -396,6 +470,42 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/// Find the nearest in-graph anchor k-mer within `window` positions of the
+/// nominal anchor.
+///
+/// When `from_end` is `false`, scans start positions `0, 1, ..., window`
+/// (inward from the start of the target).  When `from_end` is `true`, scans
+/// end positions `target_len - k`, `target_len - k - 1`, ... (inward from the
+/// end of the target).
+///
+/// Returns `Some((offset_from_nominal, kmer))` for the first in-graph k-mer
+/// found, or `None` if no k-mer within the window is present in the graph.
+fn find_soft_anchor(
+    target_seq: &[u8],
+    k: usize,
+    graph: &DeBruijnGraph,
+    from_end: bool,
+    window: usize,
+) -> Option<(usize, u64)> {
+    let len = target_seq.len();
+    for off in 0..=window {
+        let pos = if from_end {
+            len.checked_sub(k + off)?
+        } else {
+            off
+        };
+        if pos + k > len {
+            break;
+        }
+        if let Some(km) = encode_kmer(&target_seq[pos..pos + k]) {
+            if graph.contains(km) {
+                return Some((off, km));
+            }
+        }
+    }
+    None
+}
 
 /// Parse a comma-separated format string into [`OutputFormat`] values.
 fn parse_output_formats(s: &str) -> Result<Vec<OutputFormat>, Box<dyn std::error::Error>> {

@@ -88,6 +88,24 @@ See `docs/planning/rust_workspace_architecture.md` for full architecture.
 - `docs/paper/` — publication materials
 - `docs/manual/` — end-user documentation
 
+## Investigation Documentation
+
+Whenever a diagnostic investigation uncovers a non-obvious finding (root cause of a bug,
+unexpected performance characteristic, surprising benchmark result, failed hypothesis), write
+it up in `docs/research/` immediately. Use the pattern established in
+`sensitivity_investigation.md` and `anchor_missing_investigation.md`:
+
+1. State the symptom and the diagnostic data that revealed it.
+2. State the hypothesis tested and why it was right or wrong.
+3. State the actual root cause with supporting evidence.
+4. State what would actually fix it and what the expected improvement is.
+5. State what was implemented and what the measured result was.
+
+This log is essential context for future sessions and paper writing. Do not just fix the code
+and move on — document the reasoning.
+
+---
+
 ## Autonomous Session Behaviour
 
 ### What To Do When Stuck

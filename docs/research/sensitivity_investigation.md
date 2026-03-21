@@ -106,6 +106,25 @@ alt molecules per target and recovering many of the coverage-limited FNs.
 
 ---
 
+## Hypothesis 3: Missing anchors (investigated — minor improvement)
+
+Diagnostic counters revealed that 68/375 (18.1%) targets have their start anchor absent
+from the raw graph index, and 64/375 have the end anchor absent.
+
+Test: soft anchor search (ANCHOR_WINDOW=10), scanning inward from each nominal anchor
+position to find the nearest in-graph k-mer.
+
+Result: `start_missing` dropped from 68 to 2 (the soft anchor finds a k-mer within the
+window for 66/68 targets). But `no_paths` only dropped from 69 to 67, recovering only 2
+additional targets, because coverage deficits span the entire boundary region — not just the
+exact anchor position.
+
+Sensitivity improvement at 15ng 2% VAF: +0.5pp (61.3% → 61.9%).
+
+See `anchor_missing_investigation.md` for full analysis.
+
+---
+
 ## Summary
 
 The 52–61% sensitivity at 2% VAF is set by walk failures, primarily for indels
@@ -113,10 +132,10 @@ The 52–61% sensitivity at 2% VAF is set by walk failures, primarily for indels
 end-anchor displacement (indels) and per-target coverage imbalance (SNVs), not
 by the confidence or alt molecule filters.
 
-Meaningful sensitivity improvement requires either:
-- Algorithm changes to the end-anchor walk (medium-term)
-- Deeper sequencing via hash-partition UMI grouping (long-term)
+The soft anchor fix (+0.5pp) and parameter tuning (≤0.5pp) are implemented but
+near the ceiling for this algorithm and read depth.
 
-The current v7 parameter set (`--max-vaf 0.35 --min-family-size 2
---target-variants`) is already near the sensitivity ceiling for this algorithm
-and read depth.
+Meaningful sensitivity improvement requires either:
+- Deeper sequencing via hash-partition UMI grouping (long-term)
+- Longer target windows (medium-term; extends anchor coverage)
+- Algorithm changes to the end-anchor walk for indels (medium-term)
