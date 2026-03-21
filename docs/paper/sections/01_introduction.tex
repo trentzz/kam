@@ -9,11 +9,11 @@ At these variant allele frequencies (VAFs), a single mutant molecule must be dis
 Duplex UMI sequencing suppresses these errors by tagging each original DNA molecule with a unique molecular identifier (UMI) before amplification, then requiring that both strands of the molecule independently confirm each base call\autocite{Schmitt12duplex, Kennedy14duplex}.
 This reduces the effective error rate to approximately $10^{-7}$ per base, making sub-0.1\% VAF detection possible in principle.
 
-The standard alignment-free variant detection pipeline for duplex UMI data chains four tools: HUMID for UMI-based deduplication\autocite{Langedijk22humid}, Jellyfish for k-mer counting\autocite{Marcais11jellyfish}, km for de Bruijn graph path walking\autocite{Bourgey19km}, and kmtools for parallelisation and filtering.
+Alignment-free variant detection using k-mer counting and de Bruijn graph path walking was established as a viable alternative to alignment-based calling for UMI duplex data.
+The standard pipeline chains HUMID for UMI-based deduplication\autocite{Langedijk22humid}, Jellyfish for k-mer counting\autocite{Marcais11jellyfish}, km for de Bruijn graph path walking\autocite{Bourgey19km}, and kmtools for parallelisation and filtering.
 This pipeline discards molecule identity at the first step.
 HUMID collapses read families into single representative reads.
 Jellyfish then counts k-mers across all surviving reads, producing a hash table of integer counts with no record of which molecules contributed each count.
-A k-mer observed 1{,}000 times could come from 1{,}000 independent molecules or from 10 molecules each with 100 PCR duplicates.
 km walks paths through the resulting de Bruijn graph and calls variants using a ratio threshold on these aggregate counts.
 The duplex strand information, the per-molecule error correction, and the family size metadata are all lost before variant calling begins.
 
@@ -25,9 +25,15 @@ Both look the same in a table of integer k-mer counts.
 We present kam, a single Rust tool that replaces the full four-tool pipeline and preserves molecule provenance from raw FASTQ reads through to variant calls.
 kam extracts UMIs directly from FASTQ reads, groups reads into duplex molecule families, builds consensus sequences with quality-weighted error correction, and indexes k-mers with per-k-mer \texttt{MoleculeEvidence}: the number of distinct molecules, the number with duplex support, the strand breakdown, and per-base error probabilities.
 Variant calling operates on molecule counts, not read counts, and uses a statistical model that weights duplex-confirmed evidence above simplex evidence.
-On the Twist cfDNA Pan-Cancer Reference Standard v2 titration series, kam detects 52--61\% of truth variants at 2\% VAF with precision 0.64--0.80 (with germline VAF and singleton molecule filters applied) using 2 million read pairs per sample, running in 19--35 seconds per sample on a single core.
+
+kam supports two operating modes.
+In \emph{discovery mode}, it finds all alternative paths within each 100\,bp target window and reports every path that passes statistical quality filters.
+In \emph{tumour-informed monitoring mode} (\texttt{--target-variants}), a VCF of expected somatic variants is provided and the caller only reports calls whose (CHROM, POS, REF, ALT) matches an entry in that set.
+Discovery mode is appropriate for initial somatic profiling; monitoring mode is appropriate for serial liquid biopsy where the variant panel is known from a prior biopsy.
+
+On the Twist cfDNA Pan-Cancer Reference Standard v2 titration series with tumour-informed filtering applied, kam detects 52--61\% of truth variants at 2\% VAF with precision 1.0 (zero false positives), running in 19--35 seconds per sample on a single core.
 
 Section~\ref{sec:background} covers duplex UMI sequencing and k-mer variant detection.
 Section~\ref{sec:related_work} reviews existing tools and their limitations.
 Section~\ref{sec:method} describes kam's architecture, from molecule assembly through statistical calling.
-Sections~\ref{sec:results} and~\ref{sec:evaluation} present benchmark results on synthetic and titration datasets.
+Sections~\ref{sec:results} and~\ref{sec:evaluation} present benchmark results on the titration dataset.

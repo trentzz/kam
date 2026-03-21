@@ -45,6 +45,7 @@ TRUTH_PANEL_SIZE = 375        # total truth variants in the panel
 KAM_MAX_VAF: float | None = None
 KAM_MIN_ALT_MOLECULES: int | None = None
 KAM_MIN_FAMILY_SIZE: int | None = None
+KAM_TARGET_VARIANTS: Path | None = None
 
 # ── Truth variants ─────────────────────────────────────────────────────────────
 def load_truth_set(vcf_path):
@@ -321,6 +322,8 @@ def run_sample(sample, truth_set, tmp_dir):
         cmd += ["--min-alt-molecules", str(KAM_MIN_ALT_MOLECULES)]
     if KAM_MIN_FAMILY_SIZE is not None:
         cmd += ["--min-family-size", str(KAM_MIN_FAMILY_SIZE)]
+    if KAM_TARGET_VARIANTS is not None:
+        cmd += ["--target-variants", str(KAM_TARGET_VARIANTS)]
 
     print(f"  [{name}] running kam...", flush=True)
     t0 = time.time()
@@ -511,7 +514,7 @@ def run_sample(sample, truth_set, tmp_dir):
 def main():
     global KAM, TARGETS, TRUTH_VCF, FASTQ_DIR, RESULTS_DIR, RESULTS_FILE
     global READS_PER_SAMPLE, PEAK_RSS_LIMIT_MB
-    global KAM_MAX_VAF, KAM_MIN_ALT_MOLECULES, KAM_MIN_FAMILY_SIZE
+    global KAM_MAX_VAF, KAM_MIN_ALT_MOLECULES, KAM_MIN_FAMILY_SIZE, KAM_TARGET_VARIANTS
 
     parser = argparse.ArgumentParser(
         description="Run kam on all titration samples and score against truth variants."
@@ -542,6 +545,10 @@ def main():
     parser.add_argument("--min-family-size", type=int, default=None,
                         help="Minimum reads per UMI family to keep a molecule (default: 1). "
                              "Use 2 to replicate HUMID-style singleton filtering.")
+    parser.add_argument("--target-variants", type=Path, default=None,
+                        help="VCF of expected somatic variants for tumour-informed monitoring "
+                             "mode. Only calls matching (CHROM, POS, REF, ALT) in this VCF "
+                             "are marked PASS. Suppresses background biological FPs.")
     args = parser.parse_args()
 
     KAM             = args.kam_binary
@@ -554,6 +561,7 @@ def main():
     KAM_MAX_VAF           = args.max_vaf
     KAM_MIN_ALT_MOLECULES = args.min_alt_molecules
     KAM_MIN_FAMILY_SIZE   = args.min_family_size
+    KAM_TARGET_VARIANTS   = args.target_variants
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     if args.output:

@@ -151,6 +151,15 @@ pub struct CallArgs {
     /// (VAF ≈ 0.5) should be excluded. Example: --max-vaf 0.35.
     #[arg(long)]
     pub max_vaf: Option<f64>,
+
+    /// VCF file of expected somatic variants for tumour-informed monitoring mode.
+    ///
+    /// When provided, only calls whose (CHROM, POS, REF, ALT) matches an entry
+    /// in this VCF are marked PASS. All other calls are labelled NotTargeted.
+    /// Use this with a matched-tumour or reference-standard truth VCF to
+    /// suppress background biological false positives.
+    #[arg(long)]
+    pub target_variants: Option<PathBuf>,
 }
 
 /// Arguments for the `run` subcommand (full pipeline).
@@ -209,6 +218,15 @@ pub struct RunArgs {
     /// (VAF ≈ 0.5) should be excluded. Example: --max-vaf 0.35.
     #[arg(long)]
     pub max_vaf: Option<f64>,
+
+    /// VCF file of expected somatic variants for tumour-informed monitoring mode.
+    ///
+    /// When provided, only calls whose (CHROM, POS, REF, ALT) matches an entry
+    /// in this VCF are marked PASS. All other calls are labelled NotTargeted.
+    /// Use this with a matched-tumour or reference-standard truth VCF to
+    /// suppress background biological false positives.
+    #[arg(long)]
+    pub target_variants: Option<PathBuf>,
 
     /// Output format(s), comma-separated (tsv, csv, json, vcf).
     #[arg(long, default_value = "tsv")]

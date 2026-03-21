@@ -12,8 +12,9 @@ use kam_assemble::assembler::{assemble_molecules, AssemblerConfig};
 use kam_assemble::consensus::ConsensusConfig;
 use kam_assemble::io::read_fastq_pairs;
 use kam_assemble::parser::ParserConfig;
-use kam_call::caller::{call_variant, CallerConfig};
+use kam_call::caller::{call_variant, CallerConfig, VariantFilter};
 use kam_call::output::{write_variants, OutputFormat};
+use kam_call::targeting::{apply_target_filter, load_target_variants};
 use kam_core::kmer::KmerIndex;
 use kam_core::qc::{write_qc, AssemblyQc, CallQc, IndexQc, PathfindQc};
 use kam_index::allowlist::build_allowlist;
@@ -318,16 +319,26 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
                     &alt_sp.path.sequence,
                     &caller_config,
                 );
-
-                use kam_call::caller::VariantFilter;
-                if call.filter == VariantFilter::Pass {
-                    n_pass += 1;
-                } else {
-                    n_filtered += 1;
-                }
-
                 all_calls.push(call);
             }
+        }
+    }
+
+    // Apply tumour-informed filter if --target-variants provided.
+    if let Some(ref vcf_path) = args.target_variants {
+        let target_set = load_target_variants(vcf_path)?;
+        apply_target_filter(&mut all_calls, &target_set);
+        eprintln!(
+            "[run/call] tumour-informed filter applied: {} target variants loaded",
+            target_set.len()
+        );
+    }
+
+    for call in &all_calls {
+        if call.filter == VariantFilter::Pass {
+            n_pass += 1;
+        } else {
+            n_filtered += 1;
         }
     }
 
@@ -476,6 +487,7 @@ mod tests {
             strand_bias_threshold: None,
             min_alt_molecules: None,
             max_vaf: None,
+            target_variants: None,
             output_format: "tsv".to_string(),
             qc_output: None,
             log_dir: None,
@@ -540,6 +552,7 @@ mod tests {
             strand_bias_threshold: None,
             min_alt_molecules: None,
             max_vaf: None,
+            target_variants: None,
             output_format: "tsv".to_string(),
             qc_output: None,
             log_dir: None,

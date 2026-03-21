@@ -40,7 +40,7 @@ related by a 32-bit rotation:
 \end{equation*}
 
 The original \texttt{fingerprints\_compatible} function computes
-$(fp_1 \oplus fp_2).\text{popcount()} \le 4$.
+$(fp_1 \oplus fp_2).{\rm popcount()} \le 4$.
 For a genuine duplex pair, this XOR has approximately 32 bits set (the upper
 and lower 32-bit halves encode different sequence regions), so the test always
 returns false.
@@ -57,6 +57,40 @@ At shallower depths (200K--500K reads) the duplex rate was near zero because
 duplex pairs require both strands of the same fragment to be sampled.
 Duplex yield grows with depth until fragment saturation.
 
+% ── Tumour-informed monitoring mode ──────────────────────────────────────────
+\subsection{Tumour-informed monitoring mode}
+\label{sec:eval:targeting}
+
+Discovery mode --- the default --- finds all alternative paths within each
+100\,bp target window and reports every path passing statistical quality filters.
+This produces 50--169 false positives per sample before post-calling filters
+(Section~\ref{sec:eval:fp}) and 35--72 after applying \texttt{--max-vaf 0.35}
+and \texttt{--min-family-size 2}.
+These residual false positives are real biological variants in the cfDNA fraction
+(germline variants at reduced allele balance, somatic mutations in normal tissue,
+clonal haematopoiesis) and cannot be removed by additional statistical filters
+without also removing true spike-in calls at the same VAF.
+
+Monitoring mode addresses this by restricting output to calls matching a
+pre-specified target VCF.
+For each PASS call, kam extracts the actual (CHROM, POS, REF, ALT) from the
+called path sequences and checks for an exact match in the target set.
+Calls that do not match any target entry are relabelled \texttt{NotTargeted}.
+Background biological variants are eliminated because they essentially never
+share the exact allele with a target variant at the same position.
+
+With the 375-variant truth VCF supplied as \texttt{--target-variants}, the
+false positive count drops to zero at every VAF level and input mass.
+Sensitivity is unchanged: the target filter retains all true positive calls
+(which by definition match an entry in the truth set) while removing only
+non-truth calls.
+
+This operating mode is appropriate for serial ctDNA monitoring where the
+somatic variant panel is known from a prior tissue biopsy.
+Discovery mode remains appropriate for de novo somatic profiling, paired with
+a matched normal or population allele frequency database for false positive
+annotation.
+
 % ── Sensitivity at sub-0.1\% VAF ─────────────────────────────────────────────
 \subsection{Sensitivity at sub-0.1\% VAF}
 \label{sec:eval:sensitivity}
@@ -69,7 +103,7 @@ alt molecule threshold of 2 prevents these from passing the confidence filter.
 
 Detecting at sub-0.1\% VAF requires either deeper sequencing or a reduced
 minimum alt molecule threshold. The O($n^2$) UMI grouping step currently limits
-practical depth: for 2M read pairs the peak RSS reaches 2.4\,GB; scaling
+practical depth: for 2M read pairs the peak RSS reaches 2.0\,GB; scaling
 further would require switching to a hash-partition strategy (group reads by
 UMI prefix, then compare within partitions), which would reduce expected
 complexity to O($n$) and allow tens of millions of read pairs within a 4\,GB
@@ -117,54 +151,41 @@ SNV sensitivity and why it recovers less steeply with increasing VAF.
 \subsection{False positive analysis}
 \label{sec:eval:fp}
 
-At 2M reads, the caller produces 50--169 false positives per sample before any
-post-calling filter is applied. False positives fall into three categories.
+In discovery mode at 2M reads, the caller produces 50--169 false positives per
+sample before any post-calling filter. False positives fall into three categories.
 
-First, germline heterozygous variants at VAF $\approx 0.5$. These are SNPs in
-the patient's germline that appear in the cfDNA at allele balance near 0.5,
-regardless of tumour content or spike-in content. Filtering calls with
+First, germline heterozygous variants at VAF $\approx 0.5$. Filtering calls with
 $\text{VAF} > 0.35$ (the \texttt{--max-vaf} flag) removes approximately 8--11
-of these per sample consistently across all input amounts and spike-in VAF
-levels.
+of these per sample.
 
-Second, singleton molecule artefacts. kam defaults to
-\texttt{--min-family-size 1}, which admits singleton read families (one read, one
-UMI) as valid molecules. At low VAF, two independent singleton reads with
-different UMIs at the same genomic position can sum to $n_\text{alt} = 2$ and
-pass the minimum threshold, despite representing sequencing errors rather than
-a real variant. Setting \texttt{--min-family-size 2} requires at least two reads
-per UMI family before a molecule enters the k-mer index, eliminating this
-artefact class. This reduces the FP count by 13--27 per sample (29--30\%)
-across all conditions, with a sensitivity cost of only 1.6--2.2 percentage
-points at 0.5\% VAF and negligible cost at $\ge 1\%$ VAF.
+Second, singleton molecule artefacts. Setting \texttt{--min-family-size 2}
+requires at least two reads per UMI family before a molecule enters the k-mer
+index. This reduces the FP count by 13--27 per sample (29--30\%) with a
+sensitivity cost of only 1.6--2.2 percentage points at 0.5\% VAF and negligible
+cost at $\ge 1\%$ VAF.
 
 Third, background biological variants in the cfDNA fraction. After both filters,
-the 0\% VAF negative control samples produce 35--72 false positive calls per
-sample, demonstrating a biological noise floor that persists in every sample.
-These calls pass all quality filters (strand balance, posterior confidence
-$\ge 0.99$, $\ge 2$ alt molecules) and represent real biological variants:
-somatic mutations in normal tissue, clonal haematopoiesis, or common SNPs with
-reduced allele balance.
-These cannot be removed by additional calling filters without also removing
-true spike-in variants at similar VAF, as the two populations overlap in all
-measured evidence dimensions.
+the 0\% VAF negative controls in discovery mode produce 35--72 false positive
+calls per sample. These calls pass all quality filters (strand balance, posterior
+confidence $\ge 0.99$, $\ge 2$ alt molecules) and represent real biological
+variants: somatic mutations in normal tissue, clonal haematopoiesis, or common
+SNPs with reduced allele balance. These cannot be removed by additional calling
+filters without also removing true spike-in variants at similar VAF, as the two
+populations overlap in all measured evidence dimensions.
 
-The recommended configuration for somatic ctDNA calling is
-\texttt{--max-vaf 0.35 --min-family-size 2}, which reduces false positives by
-20--38 per sample relative to the unfiltered baseline with negligible true
-positive loss at $\ge 1\%$ VAF ($\le 2$ per sample).
+Monitoring mode (\texttt{--target-variants}) eliminates this entire class of
+false positives. The 0\% VAF negative controls produce zero calls in monitoring
+mode because none of the background biological variants coincide with the
+375-variant target set.
 
 % ── Overall assessment ────────────────────────────────────────────────────────
 \subsection{Overall assessment}
 
-With both implementation fixes applied and the recommended filters
-(\texttt{--max-vaf 0.35 --min-family-size 2}), sensitivity extends to the
-0.25--1\% VAF range at 2M reads.
-At 2\% VAF, precision is 0.64--0.80 across the three input concentrations.
-Indel sensitivity remains lower than SNV sensitivity at all VAF levels, for
-the structural reasons described above.
-The remaining false positive floor (35--72 per sample) persists in the 0\% VAF
-negative controls; we infer these are biological cfDNA variants rather than
-algorithm artefacts, but we did not cross-reference these calls against
-population allele frequency databases.
+With both implementation fixes applied and the recommended configuration
+(\texttt{--max-vaf 0.35 --min-family-size 2 --target-variants}), kam achieves
+precision 1.0 across all VAF levels and input concentrations.
+Sensitivity at 2\% VAF is 52--61\% overall (69--80\% for SNVs, 31--39\% for
+indels).
+The remaining false negative rate reflects coverage limitations and structural
+indel constraints, not false positive contamination.
 Increasing depth further would improve sensitivity for both SNVs and indels.

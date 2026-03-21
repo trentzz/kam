@@ -187,6 +187,10 @@ pub fn write_vcf(calls: &[VariantCall], writer: &mut dyn Write) -> io::Result<()
         writer,
         "##FILTER=<ID=HighVaf,Description=\"VAF exceeds maximum threshold (likely germline)\">"
     )?;
+    writeln!(
+        writer,
+        "##FILTER=<ID=NotTargeted,Description=\"Allele not in --target-variants set (tumour-informed monitoring mode)\">"
+    )?;
     writeln!(writer, "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO")?;
 
     for call in calls {
@@ -301,6 +305,7 @@ fn filter_to_str(vf: VariantFilter) -> &'static str {
         VariantFilter::LowDuplex => "LowDuplex",
         VariantFilter::CollisionRisk => "CollisionRisk",
         VariantFilter::HighVaf => "HighVaf",
+        VariantFilter::NotTargeted => "NotTargeted",
     }
 }
 

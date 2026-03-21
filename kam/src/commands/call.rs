@@ -7,8 +7,9 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufWriter;
 
-use kam_call::caller::{call_variant, CallerConfig};
+use kam_call::caller::{call_variant, CallerConfig, VariantFilter};
 use kam_call::output::{write_variants, OutputFormat};
+use kam_call::targeting::{apply_target_filter, load_target_variants};
 use kam_core::qc::{write_qc, CallQc};
 use kam_core::serialize::read_bincode;
 
@@ -82,15 +83,26 @@ pub fn run_call(args: CallArgs) -> Result<(), Box<dyn std::error::Error>> {
                     &caller_config,
                 );
 
-                use kam_call::caller::VariantFilter;
-                if call.filter == VariantFilter::Pass {
-                    n_pass += 1;
-                } else {
-                    n_filtered += 1;
-                }
-
                 all_calls.push(call);
             }
+        }
+    }
+
+    // ── 5b. Apply tumour-informed filter if --target-variants provided ─────────
+    if let Some(ref vcf_path) = args.target_variants {
+        let targets = load_target_variants(vcf_path)?;
+        apply_target_filter(&mut all_calls, &targets);
+        eprintln!(
+            "[call] tumour-informed filter applied: {} target variants loaded",
+            targets.len()
+        );
+    }
+
+    for call in &all_calls {
+        if call.filter == VariantFilter::Pass {
+            n_pass += 1;
+        } else {
+            n_filtered += 1;
         }
     }
 
@@ -236,6 +248,7 @@ mod tests {
             strand_bias_threshold: None,
             min_alt_molecules: None,
             max_vaf: None,
+            target_variants: None,
         };
 
         run_call(args).expect("run_call should succeed");
@@ -268,6 +281,7 @@ mod tests {
             strand_bias_threshold: None,
             min_alt_molecules: None,
             max_vaf: None,
+            target_variants: None,
         };
 
         run_call(args).expect("run_call with empty input should succeed");

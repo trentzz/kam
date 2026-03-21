@@ -44,7 +44,7 @@ from pathlib import Path
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 REPO = Path(__file__).resolve().parents[2]
-_DEFAULT_RESULTS = REPO / "benchmarking/results/tables_v6d/titration_results_2mreads.tsv"
+_DEFAULT_RESULTS = REPO / "benchmarking/results/tables_v7/titration_results_2mreads.tsv"
 OUT_DIR = REPO / "docs/paper/figures"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -584,7 +584,7 @@ def parse_args():
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--results", type=Path, default=_DEFAULT_RESULTS,
                         help="Results TSV for single-run mode "
-                             "(default: benchmarking/results/tables_v6d/titration_results_2mreads.tsv)")
+                             "(default: benchmarking/results/tables_v7/titration_results_2mreads.tsv)")
     parser.add_argument("--compare", nargs="+", metavar="LABEL:PATH",
                         help="Compare mode: one or more label:path pairs, e.g. "
                              "250k:titration_results_250kreads.tsv. "

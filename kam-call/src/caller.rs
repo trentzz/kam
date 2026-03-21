@@ -81,6 +81,12 @@ pub enum VariantFilter {
     CollisionRisk,
     /// VAF exceeds the configured maximum (likely germline).
     HighVaf,
+    /// Variant does not match any entry in the target variants set.
+    ///
+    /// Applied in tumour-informed monitoring mode (`--target-variants`).
+    /// A call at this locus passed all statistical filters but the
+    /// called allele is not one of the expected somatic variants.
+    NotTargeted,
 }
 
 /// Caller configuration with sensible defaults.

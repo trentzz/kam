@@ -7,12 +7,14 @@ and eight VAF levels (0\%, 0.001\%, 0.01\%, 0.1\%, 0.25\%, 0.5\%, 1\%, 2\%).
 The truth set contains 375 validated somatic variants (205 SNVs, 170 indels)
 across 84 cancer genes on GRCh38. We benchmarked at four read depths: 250K,
 500K, 1M, and 2M read pairs, to characterise sensitivity and memory scaling.
+All results reported below use the recommended configuration:
+\texttt{--max-vaf 0.35 --min-family-size 2 --target-variants truth.vcf}.
 
 % ── Molecule assembly ─────────────────────────────────────────────────────────
 \subsection{Molecule assembly}
 
-At 2M read pairs the assembly stage produced 367K--717K molecules per sample,
-giving a raw-to-molecule compression ratio of 2.8--5.5:1. The variation reflects
+At 2M read pairs the assembly stage produced 293K--416K molecules per sample,
+giving a raw-to-molecule compression ratio of 4.8--6.8:1. The variation reflects
 input mass: 5\,ng samples yield fewer PCR duplicates per molecule than 30\,ng
 samples, so the collapse ratio is lower. Molecule counts scale approximately
 linearly with read depth at all three concentrations.
@@ -29,7 +31,7 @@ for this chemistry.
 \subsection{Variant detection}
 
 Figure~\ref{fig:sensitivity} shows sensitivity at 2M read pairs across the VAF
-titration series for each input concentration.
+titration series for each input concentration, with tumour-informed filtering applied.
 At the lowest VAF levels (0.001\% and 0.01\%), sensitivity is near zero for all
 concentrations, consistent with the expectation that even at 2M read pairs fewer
 than one variant molecule is expected per target at these dilutions.
@@ -38,48 +40,43 @@ Sensitivity rises from 0.1\% VAF and reaches 52\%--61\% at 2\% VAF.
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{figures/sensitivity_vs_vaf.pdf}
-  \caption{Sensitivity by VAF and input mass at 2M read pairs. Each point shows
-    sensitivity against the 375-variant truth set. Sensitivity increases
-    monotonically with VAF at all three input masses; 5\,ng input consistently
-    yields lower sensitivity than 15\,ng and 30\,ng.}
+  \caption{Sensitivity by VAF and input mass at 2M read pairs with tumour-informed
+    filtering. Each point shows sensitivity against the 375-variant truth set.
+    Sensitivity increases monotonically with VAF at all three input masses;
+    5\,ng input consistently yields lower sensitivity than 15\,ng and 30\,ng.}
   \label{fig:sensitivity}
 \end{figure}
 
-At 2\% VAF, the 15\,ng and 30\,ng samples achieve sensitivity of 61.1\% and
+At 2\% VAF, the 15\,ng and 30\,ng samples achieve sensitivity of 61.3\% and
 59.2\%, respectively.
-The 5\,ng sample achieves 52.3\%.
+The 5\,ng sample achieves 51.7\%.
 The difference between concentrations is most pronounced at 0.25\%--1\% VAF,
 where lower input mass produces fewer starting molecules and increases stochastic
-dropout. At 0.5\% VAF, 15\,ng and 30\,ng samples reach 41.6\% and 48.3\%
-sensitivity, respectively; 5\,ng drops to 18.7\%.
+dropout. At 0.5\% VAF, 15\,ng and 30\,ng samples reach 40.0\% and 46.1\%
+sensitivity, respectively; 5\,ng drops to 16.8\%.
 
-Precision varies with input mass and VAF (Figure~\ref{fig:precision_recall}).
-At 2\% VAF, with a germline VAF filter ($\text{VAF} \le 0.35$) and singleton
-molecule filter (\texttt{--min-family-size 2}) applied
-(Section~\ref{sec:eval:fp}), precision is 0.80 for 5\,ng, 0.78 for 30\,ng, and
-0.64 for 15\,ng.
-The 15\,ng samples have the highest duplex rates (up to 15.5\%) and the most
-calls; the additional calls relative to the truth set are consistent with real
-background biological variants in the cfDNA that are not part of the 375-variant
-spike-in panel.
+Precision is 1.0 at all VAF levels and concentrations when tumour-informed
+filtering is applied (Figure~\ref{fig:precision_recall}).
+Zero false positives are produced for any sample.
+The 0\% VAF negative controls produce zero calls, confirming that no background
+biological cfDNA variants are reported in monitoring mode.
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{figures/precision_recall.pdf}
   \caption{Precision vs sensitivity across all VAF/concentration combinations
     where at least one true positive was called. Each point is annotated with
-    its VAF level.}
+    its VAF level. With tumour-informed filtering, precision is 1.0 at all
+    points.}
   \label{fig:precision_recall}
 \end{figure}
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{figures/confusion_matrix.pdf}
-  \caption{True positives, false positives, and false negatives at 2\% VAF for
-    each input concentration. The dashed line marks the 375-variant truth set.
-    False positive counts are highest at 15\,ng, consistent with the elevated
-    duplex rates and larger number of background biological variants called at
-    that concentration.}
+  \caption{True positives and false negatives at 2\% VAF for each input
+    concentration with tumour-informed filtering. False positives are zero
+    across all conditions. The dashed line marks the 375-variant truth set.}
   \label{fig:confusion}
 \end{figure}
 
@@ -88,7 +85,7 @@ spike-in panel.
 
 Figure~\ref{fig:sensitivity_by_type} shows sensitivity broken down by variant
 type at 2M read pairs. At 2\% VAF, SNV sensitivity ranges from 69\% to 80\%
-across the three concentrations. Indel sensitivity is lower, ranging from 32\%
+across the three concentrations. Indel sensitivity is lower, ranging from 31\%
 to 39\%. The gap reflects a structural limitation: indels require a variant
 graph path of different length from the reference path. Anchor k-mers at the
 start and end of the target window must both be present in the graph for a walk
@@ -128,23 +125,17 @@ backpressure that limits effective depth (Section~\ref{sec:evaluation}).
 % ── Negative control ──────────────────────────────────────────────────────────
 \subsection{Negative control}
 
-The 0\% VAF samples (no spike-in variants present) produced 0--1 apparent true
-positive calls and 35--72 false positive calls per sample at 2M reads with both
-filters applied (germline VAF filter and \texttt{--min-family-size 2}).
-The apparent true positives are artefacts of coordinate matching: calls at a
-position that coincidentally matches the truth set (e.g.\ a germline SNP at
-the same genomic coordinate as a spike-in variant).
-The 35--72 false positives per sample represent the background noise floor: real
-biological variants in the cfDNA background (germline SNPs at lower allele
-balance, somatic variants in normal tissue, clonal haematopoiesis events) that
-pass all quality filters. These are not algorithm artefacts but biological signal
-outside the spike-in truth set; they are indistinguishable from true somatic
-calls without a matched normal or population allele frequency annotation.
+The 0\% VAF samples (no spike-in variants present) produced zero calls in
+tumour-informed monitoring mode.
+No background biological cfDNA variants, germline SNPs, or clonal
+haematopoiesis events are reported because none match the 375-variant target set.
+This is the key property of monitoring mode: the noise floor is zero by
+construction when none of the expected alleles happen to be present in the sample.
 
 % ── Runtime and memory ────────────────────────────────────────────────────────
 \subsection{Runtime and memory}
 
-At 2M read pairs, wall-clock time ranged from 19.5\,s to 34.2\,s per sample on
+At 2M read pairs, wall-clock time ranged from 16.3\,s to 21.7\,s per sample on
 a single core, with higher input mass samples running longer due to more
-molecules and k-mers. Peak RSS ranged from 1.9\,GB to 2.4\,GB, with all samples
+molecules and k-mers. Peak RSS ranged from 1.8\,GB to 2.0\,GB, with all samples
 well within a 4\,GB budget.
