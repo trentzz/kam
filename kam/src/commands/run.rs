@@ -257,9 +257,13 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
                 }
             };
 
-        // Guard: anchors must not overlap (target too short or very large window).
-        let end_anchor_pos = target_seq.len().saturating_sub(k + end_offset);
-        if start_offset + k > end_anchor_pos {
+        // Guard: start and end anchors must be distinct k-mers.  Identical
+        // k-mers arise when the target is extremely short (target_len < k+1)
+        // combined with aggressive soft anchoring from both ends.  Walk handles
+        // start==end as a single-kmer path, but that is meaningless for variant
+        // calling, so skip here.  Overlapping anchor WINDOWS are fine; what
+        // matters is that the encoded k-mers differ.
+        if start_raw == end_raw {
             n_walk_no_paths += 1;
             all_scored.push((target_id.clone(), vec![]));
             continue;

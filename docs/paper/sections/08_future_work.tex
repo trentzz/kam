@@ -1,12 +1,20 @@
 \section{Future Work}
 \label{sec:future}
 
-\paragraph{Replace O($n^2$) UMI grouping with hash partitioning.}
-The current pairwise comparison of all UMI strings within a sample scales
-quadratically. Partitioning reads by UMI prefix (first 3 bases gives
-64 buckets) and comparing only within each bucket reduces expected complexity
-to O($n$) and would allow processing 1--5 million read pairs within a 1\,GB
-RSS budget. This would extend the detectable VAF range to 0.1\% and below.
+\paragraph{Hash-partition UMI grouping for deeper sequencing.}
+The UMI read-grouping step has two complexity terms.
+The O($n \times u$) linear-scan lookup of read pairs against unique UMI entries has
+been replaced with a hash-map giving O($n$) total.
+The remaining Hamming-distance clustering step scales as O($u^2$) where $u$ is
+the number of unique canonical UMI pairs.
+At 2\,M reads this term does not dominate; at 10\,M reads, $u$ approaches the
+theoretical maximum of 524\,K pairs for 5-base duplex UMIs and clustering would
+become a hard wall.
+Partitioning UMIs by their first 3-base prefix (64 buckets) before clustering
+reduces this term by 64$\times$ to O($u^2/64$).
+These two changes together enable processing of 10--20\,M read pairs, giving
+5--10$\times$ more molecules per target and substantially reducing coverage-gap
+walk failures at low VAF.
 
 \paragraph{Relaxed end-anchor matching for indels.}
 The DFS walk requires an exact k-mer match at the reference end anchor. For an

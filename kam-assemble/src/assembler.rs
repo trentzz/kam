@@ -18,6 +18,7 @@
 //!    - Call duplex consensus when both strands are present.
 //!    - Build a [`Molecule`] from the results.
 
+use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 use kam_core::molecule::{CanonicalUmiPair, ConsensusRead, FamilyType, Molecule, Strand};
@@ -149,28 +150,31 @@ pub fn assemble_molecules(
     }
 
     // ── Step 1: Collect all unique canonical UMIs with read counts ────────────
+    // Hash-partition grouping: use a HashMap for O(1) UMI lookup instead of
+    // the O(n) linear scan that made the original O(n²) over all read pairs.
+    // This reduces step-1 complexity from O(n × u) to O(n), allowing processing
+    // of 10–20M read pairs within a practical time budget.
+    //
     // `unique_umis[i]` = (canonical_umi, read_count)
-    // `umi_index[i]`   = index into unique_umis for read_pairs[i]
+    // `read_to_umi[i]` = index into unique_umis for read_pairs[i]
+    let mut umi_to_index: HashMap<CanonicalUmiPair, usize> =
+        HashMap::with_capacity(read_pairs.len() / 4);
     let mut unique_umis: Vec<(CanonicalUmiPair, u32)> = Vec::new();
-    // Map from read_pair index → unique_umi index
     let mut read_to_umi: Vec<usize> = vec![0; read_pairs.len()];
 
     for (idx, pair) in read_pairs.iter().enumerate() {
-        let pos = unique_umis
-            .iter()
-            .position(|(u, _)| u == &pair.canonical_umi);
-        match pos {
-            Some(i) => {
-                unique_umis[i].1 += 1;
-                read_to_umi[idx] = i;
-            }
-            None => {
-                let i = unique_umis.len();
-                unique_umis.push((pair.canonical_umi.clone(), 1));
-                read_to_umi[idx] = i;
-            }
-        }
+        let i = if let Some(&i) = umi_to_index.get(&pair.canonical_umi) {
+            unique_umis[i].1 += 1;
+            i
+        } else {
+            let i = unique_umis.len();
+            umi_to_index.insert(pair.canonical_umi.clone(), i);
+            unique_umis.push((pair.canonical_umi.clone(), 1));
+            i
+        };
+        read_to_umi[idx] = i;
     }
+    drop(umi_to_index); // free the HashMap before the O(u²) clustering step
 
     // ── Step 2: Hamming-distance cluster all unique UMIs globally ─────────────
     let clusters = cluster_umi_pairs(&unique_umis, config.max_hamming_distance);
