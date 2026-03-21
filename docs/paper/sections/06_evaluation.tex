@@ -178,6 +178,59 @@ false positives. The 0\% VAF negative controls produce zero calls in monitoring
 mode because none of the background biological variants coincide with the
 375-variant target set.
 
+% ── Effect of target window length ────────────────────────────────────────────
+\subsection{Effect of target window length}
+\label{sec:eval:targetlength}
+
+We benchmarked sensitivity across target window lengths of 50--200\,bp to
+understand whether the current 100\,bp panel design is optimal.
+
+\paragraph{Minimum usable length.}
+For the anchored DFS walk to detect a variant, both start and end anchor
+k-mers must be shared between the reference and variant read paths. This
+requires the variant position to fall more than $k=31$ bases from both ends
+of the target window. For a centred variant in a window of length $L$ (actual
+sequence: $L+1$\,bp), the detectable range is non-empty only when $L > 2k = 62$.
+The 50\,bp and 60\,bp target files (51\,bp and 61\,bp actual sequences) fail
+this condition: all 375 targets return zero sensitivity regardless of VAF
+because no variant position can produce a path sharing both anchor k-mers
+with the reference.
+
+\paragraph{Sensitivity plateau at 80--100\,bp.}
+From 70\,bp upward, sensitivity rises steeply then plateaus.
+At 2\% VAF, 15\,ng input, sensitivity at 70\,bp is 0.603 (SNV 0.805, indel 0.359).
+At 80\,bp this rises to 0.616 (SNV 0.805, indel 0.388).
+From 80\,bp to 90\,bp to 100\,bp, sensitivity is unchanged: 0.613--0.616
+(SNV 0.800, indel 0.388).
+The indel gain from 70\,bp to 80\,bp reflects the wider window giving reads
+more room to reach the shifted end-anchor k-mer position.
+
+\paragraph{Decline at longer windows.}
+Counterintuitively, sensitivity falls for targets longer than 100\,bp.
+At 120\,bp sensitivity drops to 0.600; at 150\,bp to 0.584; at 200\,bp to 0.483.
+Pathfind time grows super-linearly: 1.7\,s at 100\,bp, 3.1\,s at 120\,bp,
+9.2\,s at 150\,bp, and 27\,s at 200\,bp.
+
+The cause is graph complexity and the walk budget. Longer targets contain more
+k-mers in the de~Bruijn graph, increasing the number of alternative paths.
+The DFS walker stops after finding 100 paths; for longer targets, the budget
+fills with spurious variant paths before the true variant path is reached.
+A pathfind diagnostic confirms this: 100\,bp targets produce 273 alt-path
+successes of which 230 (84\%) match the truth, while 120\,bp targets produce
+277 alt-path successes of which only 225 (81\%) match the truth.
+
+Additionally, for 200\,bp targets (201\,bp actual sequences), anchor coverage
+fails for 88 targets (vs.\ 67 at 100\,bp) because the anchor k-mers at the
+target boundaries lie beyond the reach of a single 150\,bp read.
+
+\paragraph{Recommendation.}
+The current 100\,bp panel is near the centre of the plateau.
+Shortening to 80\,bp would give a marginal indel improvement and faster
+pathfind; lengthening would hurt both sensitivity and runtime.
+Future work: increasing the walk budget (\texttt{max\_paths}) adaptively or
+using reference-first path prioritisation would extend the usable window to
+120--150\,bp without sensitivity loss.
+
 % ── Overall assessment ────────────────────────────────────────────────────────
 \subsection{Overall assessment}
 

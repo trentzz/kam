@@ -25,6 +25,18 @@ coverage is the primary cause of the 61--68\% indel false-negative rate.
 Relaxing the end-anchor requirement to allow termination within a $\pm \ell$-kmer
 window would recover the majority of missed indels without affecting SNV calls.
 
+\paragraph{Adaptive walk budget and reference-first path prioritisation.}
+For target windows longer than 100\,bp, the DFS walk fills its path budget
+(currently 100 paths) with spurious variant paths before finding the true
+variant path.
+Two complementary fixes would extend the usable window to 120--150\,bp: first,
+increase \texttt{max\_paths} proportionally to the reference path length
+(rather than a fixed cap); second, prioritise the reference path during DFS
+so that the true variant, which diverges from reference at only one or a few
+positions, is explored early.
+These changes are straightforward but require validation that they do not
+introduce false positives through excessive path enumeration.
+
 Beyond algorithm fixes, the following extensions are planned.
 
 \paragraph{De novo variant discovery.}

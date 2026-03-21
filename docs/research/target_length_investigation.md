@@ -80,19 +80,21 @@ Results focus on the 15ng 2% VAF and 30ng 2% VAF samples as the primary sensitiv
 benchmark. SNV and indel sensitivity are reported separately because they have different
 sensitivity ceilings and respond differently to target length changes.
 
-*(Table to be filled once all benchmark runs complete.)*
+Note: target FASTA files contain sequences that are L+1 bp long (e.g., "50bp" files contain
+51bp sequences) due to inclusive coordinate generation. The actual sequence length is used in
+the minimum-length analysis above.
 
-| Target length | 15ng 2% sens | 15ng 2% SNV | 15ng 2% indel | 30ng 2% sens | Notes |
-|--------------|-------------|-------------|---------------|-------------|-------|
-| 50bp  | TBD | TBD | TBD | TBD | Anchor overlap guard bug fixed |
-| 60bp  | TBD | TBD | TBD | TBD | Anchor overlap guard bug fixed |
-| 70bp  | TBD | TBD | TBD | TBD | |
-| 80bp  | TBD | TBD | TBD | TBD | |
-| 90bp  | TBD | TBD | TBD | TBD | |
-| 100bp | 0.613 | 0.800 | 0.388 | 0.592 | Baseline (v10) |
-| 120bp | TBD | TBD | TBD | TBD | |
-| 150bp | TBD | TBD | TBD | TBD | |
-| 200bp | TBD | TBD | TBD | TBD | |
+| Target label | Actual seq len | 15ng 2% sens | 15ng 2% SNV | 15ng 2% indel | 30ng 2% sens | 5ng 2% sens | Pathfind ms | Notes |
+|-------------|---------------|-------------|-------------|---------------|-------------|-------------|-------------|-------|
+| 50bp  | 51 bp  | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | ~590  | Below 2k minimum; algorithmic limit |
+| 60bp  | 61 bp  | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | ~600  | Below 2k minimum; algorithmic limit |
+| 70bp  | 71 bp  | 0.603 | 0.805 | 0.359 | 0.581 | 0.507 | 940   | Just above minimum; narrow margin |
+| 80bp  | 81 bp  | 0.616 | 0.805 | 0.388 | 0.595 | 0.517 | 1224  | **Peak sensitivity** |
+| 90bp  | 91 bp  | 0.613 | 0.800 | 0.388 | 0.592 | 0.517 | 1326  | Same as 100bp |
+| 100bp | 101 bp | 0.613 | 0.800 | 0.388 | 0.592 | 0.517 | 1726  | Baseline (current panel) |
+| 120bp | 121 bp | 0.600 | 0.780 | 0.382 | 0.581 | 0.512 | 3132  | Spurious paths; slightly worse |
+| 150bp | 151 bp | 0.584 | 0.761 | 0.371 | 0.568 | 0.507 | 9165  | Notably worse; 5.3× pathfind time |
+| 200bp | 201 bp | 0.483 | 0.620 | 0.318 | 0.531 | 0.499 | 27103 | Severely degraded; 15.7× pathfind time |
 
 ---
 
@@ -164,16 +166,60 @@ evidence at the walk boundaries.
 
 ---
 
-## Key Measurement: Indel Sensitivity vs Target Length
+## Root Cause: Why Longer Targets Degrade Sensitivity
 
-Indel sensitivity is expected to be the metric most responsive to target length. The 61–68%
-indel false-negative rate at 100bp is dominated by end-anchor displacement. Longer windows
-reduce displacement.
+For 120bp and beyond, sensitivity declines despite reads easily spanning the full target.
+The cause is graph complexity and the `max_paths=100` walk limit.
 
-A clean result would show indel sensitivity rising monotonically with target length up to
-some plateau, while SNV sensitivity shows a smaller or flat response (SNVs do not have
-end-anchor displacement; their missed calls come from per-target coverage imbalance which
-is less target-length-dependent).
+**Pathfind diagnostics (15ng 2% VAF):**
+
+| Target | no_paths | ref_only | alt_found | time_ms |
+|--------|---------|----------|-----------|---------|
+| 100bp  | 67      | 35       | 273       | 1701    |
+| 120bp  | 69      | 29       | 277       | 3228    |
+| 150bp  | 75      | 22       | 278       | 9252    |
+| 200bp  | 88      | 11       | 276       | 26776   |
+
+`alt_found` stays high (and even increases) with longer targets — the walk succeeds in
+finding alt paths for more targets. But sensitivity falls because the paths found do not
+match the truth. Longer targets have more k-mers in the graph, more branching points, and
+more spurious variant paths. Once the DFS fills the `max_paths=100` budget with spurious
+paths, the true variant path is not reached, and the call scores as non-truth.
+
+The truth-matching call rate falls from 230/273 (84%) at 100bp to 225/277 (81%) at 120bp
+to approximately 219/278 (79%) at 150bp. Each alt path found has a lower probability of
+being the truth variant.
+
+The `no_paths` increase at 200bp (88 vs 67 at 100bp) reflects a different mechanism:
+anchor coverage failures. For 201bp targets with 150bp reads, the anchors at positions
+0–31 and 170–200 cannot be fully covered by a single read. Coverage at the far boundaries
+degrades, causing the walk to fail before starting.
+
+**Practical impact:** the 200bp pathfind time of 27 seconds per sample is 15.7× the
+1.7-second 100bp pathfind. Even without the sensitivity penalty, 200bp targets are
+unusable for high-throughput pipelines.
+
+---
+
+## Key Measurements
+
+**Indel sensitivity vs target length**: Indel sensitivity rises from 0.359 at 70bp to 0.388
+at 80bp (same as 100bp), then declines for longer targets (0.371 at 150bp, 0.318 at 200bp).
+The improvement from 70bp to 80bp confirms the theoretical prediction that a wider window
+gives more coverage for shifted end-anchor positions. The plateau at 80–100bp and decline
+beyond indicates that the spurious path and coverage gap effects dominate.
+
+**SNV sensitivity vs target length**: SNV sensitivity is roughly constant at 0.800–0.805
+from 70bp to 100bp, then falls to 0.761 at 150bp and 0.620 at 200bp. SNVs do not have
+end-anchor displacement (they don't change path length), so the gain from 70bp to 80bp is
+smaller than for indels. The decline at 120bp+ is entirely due to spurious path crowding.
+
+**Conclusion**: the optimal target length for k=31 with 150bp paired-end reads is
+**80–100bp**. The current panel uses 100bp, which is near-optimal.
+
+Recommended setting: do NOT change to longer targets. The current 100bp panel design is
+within the plateau and avoids the spurious path problem. If re-designing for a future panel,
+80bp would give marginally better indel sensitivity with marginally faster pathfind.
 
 ---
 
