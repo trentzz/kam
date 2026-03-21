@@ -22,7 +22,7 @@ after fixing a duplex orientation comparison bug (Section~\ref{sec:evaluation}).
 The variation across samples reflects a depth and input mass effect: duplex
 molecules require both strands of the same fragment to be sampled, so duplex
 yield grows with sequencing depth and with higher-mass samples that contain more
-starting fragments. These rates are consistent with the 5--15\% range expected
+starting fragments. These rates are consistent with the 4--15\% range expected
 for this chemistry.
 
 % ── Variant detection ─────────────────────────────────────────────────────────
@@ -54,9 +54,10 @@ dropout. At 0.5\% VAF, 15\,ng and 30\,ng samples reach 41.6\% and 48.3\%
 sensitivity, respectively; 5\,ng drops to 18.7\%.
 
 Precision varies with input mass and VAF (Figure~\ref{fig:precision_recall}).
-At 2\% VAF, with a germline VAF filter applied ($\text{VAF} \le 0.35$;
-Section~\ref{sec:eval:fp}), precision is 0.78 for 5\,ng, 0.73 for 30\,ng, and
-0.58 for 15\,ng.
+At 2\% VAF, with a germline VAF filter ($\text{VAF} \le 0.35$) and singleton
+molecule filter (\texttt{--min-family-size 2}) applied
+(Section~\ref{sec:eval:fp}), precision is 0.80 for 5\,ng, 0.78 for 30\,ng, and
+0.64 for 15\,ng.
 The 15\,ng samples have the highest duplex rates (up to 15.5\%) and the most
 calls; the additional calls relative to the truth set are consistent with real
 background biological variants in the cfDNA that are not part of the 375-variant
@@ -128,12 +129,12 @@ backpressure that limits effective depth (Section~\ref{sec:evaluation}).
 \subsection{Negative control}
 
 The 0\% VAF samples (no spike-in variants present) produced 0--1 apparent true
-positive calls and 50--96 false positive calls per sample at 2M reads with the
-germline VAF filter applied.
+positive calls and 35--72 false positive calls per sample at 2M reads with both
+filters applied (germline VAF filter and \texttt{--min-family-size 2}).
 The apparent true positives are artefacts of coordinate matching: calls at a
 position that coincidentally matches the truth set (e.g.\ a germline SNP at
 the same genomic coordinate as a spike-in variant).
-The 50--96 false positives per sample represent the background noise floor: real
+The 35--72 false positives per sample represent the background noise floor: real
 biological variants in the cfDNA background (germline SNPs at lower allele
 balance, somatic variants in normal tissue, clonal haematopoiesis events) that
 pass all quality filters. These are not algorithm artefacts but biological signal

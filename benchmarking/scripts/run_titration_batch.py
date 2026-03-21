@@ -44,6 +44,7 @@ TRUTH_PANEL_SIZE = 375        # total truth variants in the panel
 # Optional caller flags (set to non-None to pass them to kam run).
 KAM_MAX_VAF: float | None = None
 KAM_MIN_ALT_MOLECULES: int | None = None
+KAM_MIN_FAMILY_SIZE: int | None = None
 
 # ── Truth variants ─────────────────────────────────────────────────────────────
 def load_truth_set(vcf_path):
@@ -318,6 +319,8 @@ def run_sample(sample, truth_set, tmp_dir):
         cmd += ["--max-vaf", str(KAM_MAX_VAF)]
     if KAM_MIN_ALT_MOLECULES is not None:
         cmd += ["--min-alt-molecules", str(KAM_MIN_ALT_MOLECULES)]
+    if KAM_MIN_FAMILY_SIZE is not None:
+        cmd += ["--min-family-size", str(KAM_MIN_FAMILY_SIZE)]
 
     print(f"  [{name}] running kam...", flush=True)
     t0 = time.time()
@@ -508,7 +511,7 @@ def run_sample(sample, truth_set, tmp_dir):
 def main():
     global KAM, TARGETS, TRUTH_VCF, FASTQ_DIR, RESULTS_DIR, RESULTS_FILE
     global READS_PER_SAMPLE, PEAK_RSS_LIMIT_MB
-    global KAM_MAX_VAF, KAM_MIN_ALT_MOLECULES
+    global KAM_MAX_VAF, KAM_MIN_ALT_MOLECULES, KAM_MIN_FAMILY_SIZE
 
     parser = argparse.ArgumentParser(
         description="Run kam on all titration samples and score against truth variants."
@@ -536,6 +539,9 @@ def main():
                              "Use 0.35 to exclude germline heterozygous variants.")
     parser.add_argument("--min-alt-molecules", type=int, default=None,
                         help="Minimum alt-supporting molecules to emit a call (default: 2).")
+    parser.add_argument("--min-family-size", type=int, default=None,
+                        help="Minimum reads per UMI family to keep a molecule (default: 1). "
+                             "Use 2 to replicate HUMID-style singleton filtering.")
     args = parser.parse_args()
 
     KAM             = args.kam_binary
@@ -547,6 +553,7 @@ def main():
     PEAK_RSS_LIMIT_MB = int(args.rss_limit_gb * 1024)
     KAM_MAX_VAF           = args.max_vaf
     KAM_MIN_ALT_MOLECULES = args.min_alt_molecules
+    KAM_MIN_FAMILY_SIZE   = args.min_family_size
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     if args.output:

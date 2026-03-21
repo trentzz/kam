@@ -5,20 +5,24 @@ kam is a proof of concept that alignment-free variant detection is feasible for
 Twist duplex UMI panel sequencing.
 The pipeline preserves molecule-level information from raw FASTQ to variant call
 without any alignment step, detecting 52--61\% of truth variants at 2\% VAF
-with precision 0.58--0.78 using 2M read pairs per sample, running in 19--35
+with precision 0.64--0.80 using 2M read pairs per sample, running in 19--35
 seconds on a single core.
 
-Two implementation bugs were identified and fixed during evaluation: a strand
+Evaluation identified and fixed two implementation bugs: a strand
 bias overcounting bug that inflated the Fisher exact test sample size
 approximately 70-fold, and a duplex orientation comparison bug that prevented
 genuine duplex pairs from being grouped correctly.
 With both fixes applied, sensitivity extends to the 0.25--0.5\% VAF range at
 15--30\,ng input.
 A germline VAF filter (\texttt{--max-vaf 0.35}) reduces false positive counts
-by 8--11 per sample by removing heterozygous germline SNPs at VAF $\approx 0.5$;
-this filter is recommended for somatic variant calling in cfDNA where matched
-normal is not available.
-The remaining false positive floor (50--96 per sample) reflects background
+by 8--11 per sample by removing heterozygous germline SNPs at VAF $\approx 0.5$.
+A singleton molecule filter (\texttt{--min-family-size 2}) removes a further
+13--27 FPs per sample by requiring at least two reads per UMI family before
+admitting a molecule to the k-mer index, replicating the deduplication behaviour
+of HUMID at the molecule-assembly stage.
+Together these filters are recommended for somatic variant calling in cfDNA
+where matched normal is not available.
+The remaining false positive floor (35--72 per sample) reflects background
 biological signal in the cfDNA that is indistinguishable from spike-in calls
 without external annotation.
 The primary depth limitation is the O($n^2$) UMI grouping step, which caps
