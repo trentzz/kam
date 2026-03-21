@@ -44,6 +44,7 @@ TRUTH_PANEL_SIZE = 375        # total truth variants in the panel
 # Optional caller flags (set to non-None to pass them to kam run).
 KAM_MAX_VAF: float | None = None
 KAM_MIN_ALT_MOLECULES: int | None = None
+KAM_MIN_CONFIDENCE: float | None = None
 KAM_MIN_FAMILY_SIZE: int | None = None
 KAM_TARGET_VARIANTS: Path | None = None
 
@@ -320,6 +321,8 @@ def run_sample(sample, truth_set, tmp_dir):
         cmd += ["--max-vaf", str(KAM_MAX_VAF)]
     if KAM_MIN_ALT_MOLECULES is not None:
         cmd += ["--min-alt-molecules", str(KAM_MIN_ALT_MOLECULES)]
+    if KAM_MIN_CONFIDENCE is not None:
+        cmd += ["--min-confidence", str(KAM_MIN_CONFIDENCE)]
     if KAM_MIN_FAMILY_SIZE is not None:
         cmd += ["--min-family-size", str(KAM_MIN_FAMILY_SIZE)]
     if KAM_TARGET_VARIANTS is not None:
@@ -542,6 +545,8 @@ def main():
                              "Use 0.35 to exclude germline heterozygous variants.")
     parser.add_argument("--min-alt-molecules", type=int, default=None,
                         help="Minimum alt-supporting molecules to emit a call (default: 2).")
+    parser.add_argument("--min-confidence", type=float, default=None,
+                        help="Minimum posterior confidence to emit a call (default: 0.99).")
     parser.add_argument("--min-family-size", type=int, default=None,
                         help="Minimum reads per UMI family to keep a molecule (default: 1). "
                              "Use 2 to replicate HUMID-style singleton filtering.")
@@ -560,6 +565,7 @@ def main():
     PEAK_RSS_LIMIT_MB = int(args.rss_limit_gb * 1024)
     KAM_MAX_VAF           = args.max_vaf
     KAM_MIN_ALT_MOLECULES = args.min_alt_molecules
+    KAM_MIN_CONFIDENCE    = args.min_confidence
     KAM_MIN_FAMILY_SIZE   = args.min_family_size
     KAM_TARGET_VARIANTS   = args.target_variants
 

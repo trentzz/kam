@@ -135,7 +135,26 @@ construction when none of the expected alleles happen to be present in the sampl
 % ── Runtime and memory ────────────────────────────────────────────────────────
 \subsection{Runtime and memory}
 
-At 2M read pairs, wall-clock time ranged from 16.3\,s to 21.7\,s per sample on
-a single core, with higher input mass samples running longer due to more
-molecules and k-mers. Peak RSS ranged from 1.8\,GB to 2.0\,GB, with all samples
+Figure~\ref{fig:runtime} shows per-sample wall-clock time broken down by
+pipeline stage at 2M read pairs.
+Molecule assembly dominates runtime: it accounts for 62--79\% of total wall
+time and ranges from 10.5\,s to 18.0\,s depending on input mass.
+Index construction takes 3.1--7.2\,s; path finding 0.3--2.1\,s; variant
+calling and output are negligible ($<$5\,ms combined).
+The bottom panel shows molecules assembled per sample, which drives runtime:
+30\,ng samples assemble 310--417K molecules vs.\ 347--372K for 5\,ng due to
+different PCR duplication rates.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/runtime_per_sample.pdf}
+  \caption{Per-sample runtime at 2M read pairs. Top: wall-clock time stacked
+    by pipeline stage. Bottom: molecules assembled per sample. Samples are
+    ordered by input mass (5\,ng, 15\,ng, 30\,ng) then ascending VAF. Molecule
+    assembly dominates runtime across all conditions.}
+  \label{fig:runtime}
+\end{figure}
+
+Total wall-clock time ranged from 16.3\,s to 21.7\,s per sample on
+a single core. Peak RSS ranged from 1.8\,GB to 2.0\,GB, with all samples
 well within a 4\,GB budget.

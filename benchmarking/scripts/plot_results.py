@@ -380,6 +380,99 @@ def plot_stage_breakdown(rows):
     print("Saved stage_breakdown")
 
 
+# ── Figure: Per-sample runtime with stage breakdown ────────────────────────────
+
+def plot_runtime_per_sample(rows):
+    """Two-panel figure: per-sample stacked runtime (stage breakdown) and molecule count.
+
+    Top panel: stacked horizontal bar chart of wall time per sample, broken down by
+    stage (assemble, index, pathfind, call+output). Samples ordered by concentration
+    then VAF.
+
+    Bottom panel: molecule count per sample, showing sequencing yield as context for
+    the runtime variation.
+    """
+    stages = ["assemble", "index", "pathfind", "call"]
+    stage_labels = ["Assemble", "Index", "Pathfind", "Call/Output"]
+    stage_colours = ["#4575b4", "#74add1", "#abd9e9", "#fee090"]
+    timing_key = lambda s: f"t_{s}_ms"
+
+    # Sort samples: concentration group (5ng, 15ng, 30ng) then ascending VAF.
+    ng_order = {"5ng": 0, "15ng": 1, "30ng": 2}
+    data = sorted(
+        [r for r in rows if r.get("t_assemble_ms", 0) > 0],
+        key=lambda r: (ng_order.get(r["ng"], 9), r["vaf"]),
+    )
+
+    if not data:
+        print("Skipping runtime_per_sample: no per-stage timing data")
+        return
+
+    # Build x-tick labels: "15ng\n2%" style.
+    labels = []
+    for r in data:
+        vaf = r["vaf"]
+        if vaf < 0.01:
+            vaf_str = f"{vaf*100:.3f}%"
+        elif vaf < 0.1:
+            vaf_str = f"{vaf*100:.2f}%"
+        elif vaf < 1.0:
+            vaf_str = f"{vaf*100:.1f}%"
+        else:
+            vaf_str = f"{int(vaf*100)}%" if vaf*100 == int(vaf*100) else f"{vaf*100:.1f}%"
+        labels.append(f"{r['ng']}\n{vaf_str}")
+
+    x = np.arange(len(data))
+    bar_w = 0.72
+
+    fig, (ax1, ax2) = plt.subplots(
+        2, 1,
+        figsize=(COL_W * 2.0, COL_W * 1.4),
+        gridspec_kw={"height_ratios": [3, 1], "hspace": 0.35},
+    )
+
+    # ── Top panel: stacked time bars ──
+    bottom = np.zeros(len(data))
+    for stage, label, colour in zip(stages, stage_labels, stage_colours):
+        vals = np.array([r.get(timing_key(stage), 0) / 1000.0 for r in data])
+        ax1.bar(x, vals, bar_w, bottom=bottom, label=label, color=colour,
+                linewidth=0.3, edgecolor="white")
+        bottom += vals
+
+    ax1.set_ylabel("Wall time (s)")
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(labels, fontsize=6)
+    ax1.set_xlim(-0.5, len(data) - 0.5)
+    ax1.set_ylim(bottom=0)
+    ax1.spines[["top", "right"]].set_visible(False)
+    ax1.legend(loc="upper right", fontsize=6, frameon=False)
+
+    # Add thin vertical dividers between concentration groups.
+    boundaries = []
+    for i in range(1, len(data)):
+        if data[i]["ng"] != data[i - 1]["ng"]:
+            boundaries.append(i - 0.5)
+    for b in boundaries:
+        ax1.axvline(b, color="grey", linewidth=0.4, linestyle="--")
+
+    # ── Bottom panel: molecule count ──
+    mol_vals = np.array([r["molecules"] / 1000.0 for r in data])
+    ax2.bar(x, mol_vals, bar_w, color="#aaaaaa", linewidth=0.3, edgecolor="white")
+    ax2.set_ylabel("Molecules\n(×1 000)")
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(labels, fontsize=6)
+    ax2.set_xlim(-0.5, len(data) - 0.5)
+    ax2.set_ylim(bottom=0)
+    ax2.spines[["top", "right"]].set_visible(False)
+    for b in boundaries:
+        ax2.axvline(b, color="grey", linewidth=0.4, linestyle="--")
+
+    fig.savefig(OUT_DIR / "runtime_per_sample.pdf")
+    fig.savefig(OUT_DIR / "runtime_per_sample.png", dpi=DPI)
+    plt.close(fig)
+    print("Saved runtime_per_sample")
+
+
 # ── Figure 7: Confusion matrix at 2% VAF ──────────────────────────────────────
 
 def plot_confusion_matrix(rows):
@@ -621,6 +714,7 @@ def main():
         plot_sensitivity_by_type(rows)
         plot_fp_by_vaf(rows)
         plot_stage_breakdown(rows)
+        plot_runtime_per_sample(rows)
         plot_confusion_matrix(rows)
         plot_fn_analysis(rows)
 

@@ -8,14 +8,16 @@ quadratically. Partitioning reads by UMI prefix (first 3 bases gives
 to O($n$) and would allow processing 1--5 million read pairs within a 1\,GB
 RSS budget. This would extend the detectable VAF range to 0.1\% and below.
 
-\paragraph{Tune the calling thresholds.}
-With duplex signal and greater depth, the minimum alt molecule threshold and
-the posterior confidence threshold can be re-calibrated on a held-out truth set.
-The current defaults (min 2 alt molecules, min 0.99 posterior confidence) were
-set conservatively without calibration data; tuned thresholds will improve the
-sensitivity-precision trade-off.
+\paragraph{Relaxed end-anchor matching for indels.}
+The DFS walk requires an exact k-mer match at the reference end anchor. For an
+indel of length $\ell$, the variant path is $\ell$ k-mers shorter or longer than
+the reference path, and reads must span from the variant junction to the shifted
+anchor position. An investigation of missed variants confirms that end-anchor
+coverage is the primary cause of the 61--68\% indel false-negative rate.
+Relaxing the end-anchor requirement to allow termination within a $\pm \ell$-kmer
+window would recover the majority of missed indels without affecting SNV calls.
 
-Beyond correctness fixes, the following extensions are planned.
+Beyond algorithm fixes, the following extensions are planned.
 
 \paragraph{De novo variant discovery.}
 The current pipeline operates in targeted mode: it builds an allowlist from

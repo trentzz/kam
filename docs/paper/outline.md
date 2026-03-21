@@ -92,6 +92,7 @@ Required figures:
 - `confusion_matrix.pdf` — TP/FP/FN at 2% VAF
 - `sensitivity_by_type.pdf` — SNV vs indel breakdown
 - `compare_sensitivity_vs_vaf.pdf` — depth scaling
+- `runtime_per_sample.pdf` — per-sample wall-clock time stacked by stage (assemble/index/pathfind/call) with molecule count per sample as a second panel; shows assembly dominates and runtime scales with molecule yield
 
 ### 6. Evaluation
 Focus: how did we validate the implementation and what is the operating envelope?
