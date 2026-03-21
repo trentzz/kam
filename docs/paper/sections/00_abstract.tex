@@ -20,10 +20,11 @@ bias overcounting bug that inflated the Fisher exact test sample size
 approximately 70-fold, and a duplex orientation comparison bug that prevented
 genuine duplex pairs from being grouped correctly.
 With both fixes applied and 2M read pairs per sample, duplex identification
-rates are 4.6--15.5\% of molecules. kam detects 52--61\% of truth variants
-at 2\% VAF, running end-to-end in under 30 seconds per sample on a single
-core. SNV sensitivity reaches 69--80\% at 2\% VAF; indel sensitivity is
-32--39\%. Sensitivity extends to the 0.25--0.5\% VAF range at 15--30\,ng
-input, reaching 7--49\% across those concentrations.
+rates are 4.6--15.5\% of molecules. With a germline VAF filter applied
+($\text{VAF} \le 0.35$), kam detects 52--61\% of truth variants at 2\% VAF
+with precision 0.58--0.78, running end-to-end in 19--35 seconds per sample
+on a single core. SNV sensitivity reaches 69--80\% at 2\% VAF; indel
+sensitivity is 32--39\%. Sensitivity extends to the 0.25--0.5\% VAF range
+at 15--30\,ng input, reaching 7--48\% across those concentrations.
 
 kam is implemented in Rust and is available as an open-source workspace.

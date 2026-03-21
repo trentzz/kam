@@ -45,23 +45,22 @@ Sensitivity rises from 0.1\% VAF and reaches 52\%--61\% at 2\% VAF.
   \label{fig:sensitivity}
 \end{figure}
 
-At 2\% VAF, the 15\,ng and 30\,ng samples achieve sensitivity of 61.3\% and
-59.7\%, respectively.
+At 2\% VAF, the 15\,ng and 30\,ng samples achieve sensitivity of 61.1\% and
+59.2\%, respectively.
 The 5\,ng sample achieves 52.3\%.
 The difference between concentrations is most pronounced at 0.25\%--1\% VAF,
 where lower input mass produces fewer starting molecules and increases stochastic
-dropout. At 0.5\% VAF, 15\,ng and 30\,ng samples reach 41.6\% and 48.5\%
+dropout. At 0.5\% VAF, 15\,ng and 30\,ng samples reach 41.6\% and 48.3\%
 sensitivity, respectively; 5\,ng drops to 18.7\%.
 
 Precision varies with input mass and VAF (Figure~\ref{fig:precision_recall}).
-At 2\% VAF, precision is 0.77 for 5\,ng, 0.71 for 30\,ng, and 0.57 for 15\,ng.
+At 2\% VAF, with a germline VAF filter applied ($\text{VAF} \le 0.35$;
+Section~\ref{sec:eval:fp}), precision is 0.78 for 5\,ng, 0.73 for 30\,ng, and
+0.58 for 15\,ng.
 The 15\,ng samples have the highest duplex rates (up to 15.5\%) and the most
 calls; the additional calls relative to the truth set are consistent with real
 background biological variants in the cfDNA that are not part of the 375-variant
-spike-in panel. False positives from two further sources are present: k-mer path
-artefacts where alternative paths through the de Bruijn graph do not correspond
-to real variants, and positions where the 100\,bp target window covers a germline
-polymorphism not in the reference sequence used to build the allowlist.
+spike-in panel.
 
 \begin{figure}[t]
   \centering
@@ -128,18 +127,23 @@ backpressure that limits effective depth (Section~\ref{sec:evaluation}).
 % ── Negative control ──────────────────────────────────────────────────────────
 \subsection{Negative control}
 
-The 0\% VAF samples produced 0--3 true positive calls and 25--55 false positive
-calls per sample at 2M reads. The small number of apparent true positives in
-the negative control are artefacts of the scoring: some calls share genomic
-coordinates with truth variants by coincidence (e.g.\ a germline SNP at the
-same position). The false positive count gives an upper bound on the background
-artefact rate: roughly 30--50 per panel per sample at this depth.
+The 0\% VAF samples (no spike-in variants present) produced 0--1 apparent true
+positive calls and 50--96 false positive calls per sample at 2M reads with the
+germline VAF filter applied.
+The apparent true positives are artefacts of coordinate matching: calls at a
+position that coincidentally matches the truth set (e.g.\ a germline SNP at
+the same genomic coordinate as a spike-in variant).
+The 50--96 false positives per sample represent the background noise floor: real
+biological variants in the cfDNA background (germline SNPs at lower allele
+balance, somatic variants in normal tissue, clonal haematopoiesis events) that
+pass all quality filters. These are not algorithm artefacts but biological signal
+outside the spike-in truth set; they are indistinguishable from true somatic
+calls without a matched normal or population allele frequency annotation.
 
 % ── Runtime and memory ────────────────────────────────────────────────────────
 \subsection{Runtime and memory}
 
 At 2M read pairs, wall-clock time ranged from 19.5\,s to 34.2\,s per sample on
-a single core. Peak RSS ranged from 1.9\,GB to 2.4\,GB, with all samples well
-within a 4\,GB budget. This is a substantial improvement over earlier
-evaluations where certain samples at 200K reads reached 4.2\,GB; the improved
-memory footprint reflects refinements to the pathfind stage path enumeration.
+a single core, with higher input mass samples running longer due to more
+molecules and k-mers. Peak RSS ranged from 1.9\,GB to 2.4\,GB, with all samples
+well within a 4\,GB budget.

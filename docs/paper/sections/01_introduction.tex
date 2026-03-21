@@ -25,7 +25,7 @@ Both look the same in a table of integer k-mer counts.
 We present kam, a single Rust tool that replaces the full four-tool pipeline and preserves molecule provenance from raw FASTQ reads through to variant calls.
 kam extracts UMIs directly from FASTQ reads, groups reads into duplex molecule families, builds consensus sequences with quality-weighted error correction, and indexes k-mers with per-k-mer \texttt{MoleculeEvidence}: the number of distinct molecules, the number with duplex support, the strand breakdown, and per-base error probabilities.
 Variant calling operates on molecule counts, not read counts, and uses a statistical model that weights duplex-confirmed evidence above simplex evidence.
-On the Twist cfDNA Pan-Cancer Reference Standard v2 titration series, kam detects 52--61\% of truth variants at 2\% VAF with precision of 0.57--0.77 using 2 million read pairs per sample, running in under 30 seconds per sample on a single core.
+On the Twist cfDNA Pan-Cancer Reference Standard v2 titration series, kam detects 52--61\% of truth variants at 2\% VAF with precision 0.58--0.78 (with a germline VAF filter applied) using 2 million read pairs per sample, running in 19--35 seconds per sample on a single core.
 
 Section~\ref{sec:background} covers duplex UMI sequencing and k-mer variant detection.
 Section~\ref{sec:related_work} reviews existing tools and their limitations.

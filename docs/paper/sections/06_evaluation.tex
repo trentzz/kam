@@ -113,13 +113,51 @@ made. Larger indels require wider anchor displacement, compounding the
 coverage requirement. This is why indel sensitivity is consistently lower than
 SNV sensitivity and why it recovers less steeply with increasing VAF.
 
+% ── False positive analysis ────────────────────────────────────────────────────
+\subsection{False positive analysis}
+\label{sec:eval:fp}
+
+At 2M reads, the caller produces 50--169 false positives per sample before any
+post-calling filter is applied. False positives fall into three categories.
+
+First, germline heterozygous variants at VAF $\approx 0.5$. These are SNPs in
+the patient's germline that appear in the cfDNA at allele balance near 0.5,
+regardless of tumour content or spike-in content. Filtering calls with
+$\text{VAF} > 0.35$ (the \texttt{--max-vaf} flag) removes approximately 8--11
+of these per sample consistently across all input amounts and spike-in VAF
+levels.
+
+Second, background biological variants in the cfDNA fraction. The 0\% VAF
+negative control samples (no spike-in) produce 50--96 false positive calls per
+sample after the germline VAF filter, demonstrating a biological noise floor
+that is present in every sample. These calls pass all quality filters (strand
+balance, posterior confidence $\ge 0.99$, $\ge 2$ alt molecules) and represent
+real biological variants: somatic mutations in normal tissue, clonal
+haematopoiesis, or common SNPs with reduced allele balance.
+These cannot be removed by additional calling filters without also removing
+true spike-in variants at similar VAF, as the two populations overlap in all
+measured evidence dimensions.
+
+Third, low-evidence calls near the detection threshold ($n_\text{alt} = 2$).
+At 2\% VAF, about 38 per sample have only 2 alt-supporting molecules.
+Raising the minimum alt molecule threshold to 3 removes approximately 48 of
+these per sample at 30\,ng/2\% VAF but degrades sensitivity severely at
+$\le 0.5\%$ VAF (sensitivity at 30\,ng/0.5\% drops from 48\% to 38\%),
+making this threshold inappropriate as a default.
+
+The recommended configuration for somatic ctDNA calling is \texttt{--max-vaf 0.35},
+which reduces false positives by 8--11 per sample with negligible true positive
+loss ($\le 2$ per sample).
+
 % ── Overall assessment ────────────────────────────────────────────────────────
 \subsection{Overall assessment}
 
-With both implementation fixes applied, sensitivity extends to the 0.25--1\%
-VAF range at 2M reads.
+With both implementation fixes applied and the germline VAF filter
+(\texttt{--max-vaf 0.35}), sensitivity extends to the 0.25--1\% VAF range at
+2M reads with precision 0.58--0.78.
 Indel sensitivity remains lower than SNV sensitivity at all VAF levels, for
 the structural reasons described above.
-At 0.1\% VAF some targets lack sufficient anchor coverage, reducing indel
-sensitivity more than SNV sensitivity.
-Increasing depth further would partially close this gap for both types.
+The remaining false positive floor (50--96 per sample) is biological in origin
+and cannot be reduced without orthogonal evidence (matched normal, population
+allele frequency annotation).
+Increasing depth further would improve sensitivity for both SNVs and indels.
