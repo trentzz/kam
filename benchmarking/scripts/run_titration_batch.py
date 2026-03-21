@@ -47,6 +47,7 @@ KAM_MIN_ALT_MOLECULES: int | None = None
 KAM_MIN_CONFIDENCE: float | None = None
 KAM_MIN_FAMILY_SIZE: int | None = None
 KAM_TARGET_VARIANTS: Path | None = None
+KAM_KMER_SIZE: int | None = None
 
 # ── Truth variants ─────────────────────────────────────────────────────────────
 def load_truth_set(vcf_path):
@@ -327,6 +328,8 @@ def run_sample(sample, truth_set, tmp_dir):
         cmd += ["--min-family-size", str(KAM_MIN_FAMILY_SIZE)]
     if KAM_TARGET_VARIANTS is not None:
         cmd += ["--target-variants", str(KAM_TARGET_VARIANTS)]
+    if KAM_KMER_SIZE is not None:
+        cmd += ["-k", str(KAM_KMER_SIZE)]
 
     print(f"  [{name}] running kam...", flush=True)
     t0 = time.time()
@@ -554,6 +557,10 @@ def main():
                         help="VCF of expected somatic variants for tumour-informed monitoring "
                              "mode. Only calls matching (CHROM, POS, REF, ALT) in this VCF "
                              "are marked PASS. Suppresses background biological FPs.")
+    parser.add_argument("--kmer-size", type=int, default=None,
+                        help="K-mer size for indexing and path walking (default: 31). "
+                             "Must satisfy k < read_length/2. Smaller k lowers the minimum "
+                             "detectable target length but increases spurious branching.")
     args = parser.parse_args()
 
     KAM             = args.kam_binary
@@ -568,6 +575,7 @@ def main():
     KAM_MIN_CONFIDENCE    = args.min_confidence
     KAM_MIN_FAMILY_SIZE   = args.min_family_size
     KAM_TARGET_VARIANTS   = args.target_variants
+    KAM_KMER_SIZE         = args.kmer_size
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     if args.output:
