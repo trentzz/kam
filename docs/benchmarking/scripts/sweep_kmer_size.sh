@@ -26,7 +26,7 @@ RESULTS_BASE="$REPO/benchmarking/results/kmer_size"
 TARGETS="$REPO/benchmarking/scripts/targets_100bp.fa"
 TRUTH_VCF="$REPO/benchmarking/scripts/truth_variants.vcf"
 KAM="${KAM_BIN:-$REPO/target/release/kam}"
-FASTQ_DIR="${KAM_FASTQ_DIR:-/mnt/tzeng-local/tzeng-thesis/titration-nondedup/fastqs}"
+FASTQ_DIR="${KAM_FASTQ_DIR:?KAM_FASTQ_DIR must be set to the titration FASTQ directory}"
 READS=2000000
 
 # K values to sweep. Odd numbers preferred (avoids palindrome edge cases),

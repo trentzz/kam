@@ -5,9 +5,8 @@
 # targeted to the panel BED, with mutations spiked in from the titration truth
 # set at seven VAF levels.
 #
-# The truth variants come from:
-#   /mnt/tzeng-local/tzeng-thesis/titration.probes.QC.pass.tsv
-# That TSV (columns: Number, Chromosome, Position, Ref, Alt, Type) must be
+# The truth variants come from the titration truth TSV
+# (columns: Number, Chromosome, Position, Ref, Alt, Type), which must be
 # converted to a bgzipped, tabix-indexed VCF before running this config.
 # A conversion script is at benchmarking/scripts/tsv_to_vcf.py.
 #
@@ -25,7 +24,7 @@
 # Run:
 #   varforge simulate --config benchmarking/scripts/configs/twist_titration_series.yaml
 
-reference: /mnt/tzeng-local/tzeng-thesis/data/ref/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna
+reference: /path/to/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna  # set to your local GRCh38 reference
 
 output:
   directory: benchmarking/synthetic_data/twist_titration
@@ -55,7 +54,7 @@ tumour:
 # Spike in the panel truth variants from the titration experiment.
 # Convert titration.probes.QC.pass.tsv to VCF first (see note above).
 mutations:
-  vcf: /mnt/tzeng-local/tzeng-thesis/titration.probes.QC.pass.vcf.gz
+  vcf: /path/to/titration.probes.QC.pass.vcf.gz  # bgzipped, tabix-indexed truth VCF
 
 # Twist duplex UMI chemistry: 5-mer inline UMI, duplex mode.
 # Read structure 5M2S+T — the UMI is the first 5 bases of each read.
@@ -69,7 +68,7 @@ umi:
 
 capture:
   enabled: true
-  targets_bed: /mnt/tzeng-local/tzeng-thesis/titration-dedup/bams/panel.bed
+  targets_bed: /path/to/panel.bed  # set to your capture panel BED file
   off_target_fraction: 0.03
   coverage_uniformity: 0.25
   edge_dropoff_bases: 30

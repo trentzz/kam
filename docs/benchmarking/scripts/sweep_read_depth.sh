@@ -25,7 +25,7 @@ RESULTS_BASE="$REPO/benchmarking/results/read_depth"
 TARGETS="$REPO/benchmarking/scripts/targets_100bp.fa"
 TRUTH_VCF="$REPO/benchmarking/scripts/truth_variants.vcf"
 KAM="${KAM_BIN:-$REPO/target/release/kam}"
-FASTQ_DIR="${KAM_FASTQ_DIR:-/mnt/tzeng-local/tzeng-thesis/titration-nondedup/fastqs}"
+FASTQ_DIR="${KAM_FASTQ_DIR:?KAM_FASTQ_DIR must be set to the titration FASTQ directory}"
 
 # Read depths to sweep (read pairs per sample).
 DEPTHS=(200000 500000 1000000 2000000 5000000 10000000)

@@ -17,7 +17,7 @@
 # Run:
 #   varforge simulate --config benchmarking/scripts/configs/high_depth_amplicon.yaml
 
-reference: /mnt/tzeng-local/tzeng-thesis/data/ref/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna
+reference: /path/to/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna  # set to your local GRCh38 reference
 
 output:
   directory: benchmarking/synthetic_data/high_depth_amplicon
