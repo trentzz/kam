@@ -191,11 +191,22 @@ pub fn write_vcf(calls: &[VariantCall], writer: &mut dyn Write) -> io::Result<()
         writer,
         "##FILTER=<ID=NotTargeted,Description=\"Allele not in --target-variants set (tumour-informed monitoring mode)\">"
     )?;
+    writeln!(
+        writer,
+        "##INFO=<ID=SVTYPE,Number=1,Type=String,Description=\"Type of structural variant\">"
+    )?;
+    writeln!(
+        writer,
+        "##INFO=<ID=SVLEN,Number=1,Type=Integer,Description=\"Difference in length between REF and ALT alleles\">"
+    )?;
+    writeln!(writer, "##ALT=<ID=DEL,Description=\"Deletion\">")?;
+    writeln!(writer, "##ALT=<ID=DUP,Description=\"Tandem duplication\">")?;
+    writeln!(writer, "##ALT=<ID=INV,Description=\"Inversion\">")?;
     writeln!(writer, "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO")?;
 
     for call in calls {
         let filter_str = filter_to_str(call.filter);
-        let info = format!(
+        let base_info = format!(
             "VAF={:.6};VAF_LO={:.6};VAF_HI={:.6};NREF={};NALT={};NDUPALT={};NSIMALT={};SBP={:.6};CONF={:.6}",
             call.vaf,
             call.vaf_ci_low,
@@ -208,6 +219,12 @@ pub fn write_vcf(calls: &[VariantCall], writer: &mut dyn Write) -> io::Result<()
             call.confidence,
         );
 
+        // Structural variants use symbolic allele notation in VCF.
+        if is_sv_type(call.variant_type) {
+            write_sv_vcf_record(call, filter_str, &base_info, writer)?;
+            continue;
+        }
+
         // When target_id encodes a genomic coordinate (chrN:START-END), emit a
         // properly placed VCF record with minimal left-normalised alleles.
         // Fall back to the alignment-free format (target_id as CHROM, POS=1)
@@ -218,7 +235,7 @@ pub fn write_vcf(calls: &[VariantCall], writer: &mut dyn Write) -> io::Result<()
             writeln!(
                 writer,
                 "{}\t{}\t.\t{}\t{}\t.\t{}\t{}",
-                a.chrom, a.pos, a.ref_allele, a.alt_allele, filter_str, info
+                a.chrom, a.pos, a.ref_allele, a.alt_allele, filter_str, base_info
             )?;
         } else {
             let ref_str = bytes_to_str(&call.ref_sequence);
@@ -226,9 +243,75 @@ pub fn write_vcf(calls: &[VariantCall], writer: &mut dyn Write) -> io::Result<()
             writeln!(
                 writer,
                 "{}\t1\t.\t{}\t{}\t.\t{}\t{}",
-                call.target_id, ref_str, alt_str, filter_str, info
+                call.target_id, ref_str, alt_str, filter_str, base_info
             )?;
         }
+    }
+    Ok(())
+}
+
+/// Return true when the variant type is a structural variant.
+fn is_sv_type(vt: VariantType) -> bool {
+    matches!(
+        vt,
+        VariantType::LargeDeletion | VariantType::TandemDuplication | VariantType::Inversion
+    )
+}
+
+/// Write a VCF record for a structural variant using symbolic allele notation.
+///
+/// Uses the minimal allele extractor to get the correct anchor coordinate, then
+/// emits `<DEL>`, `<DUP>`, or `<INV>` in the ALT field with SVTYPE and SVLEN
+/// appended to the INFO string.
+fn write_sv_vcf_record(
+    call: &VariantCall,
+    filter_str: &str,
+    base_info: &str,
+    writer: &mut dyn Write,
+) -> io::Result<()> {
+    let (sym_alt, svtype_str) = match call.variant_type {
+        VariantType::LargeDeletion => ("<DEL>", "DEL"),
+        VariantType::TandemDuplication => ("<DUP>", "DUP"),
+        VariantType::Inversion => ("<INV>", "INV"),
+        _ => unreachable!("write_sv_vcf_record called with non-SV type"),
+    };
+
+    // SVLEN: negative for deletions, positive for duplications, 0 for inversions.
+    let svlen: i64 = match call.variant_type {
+        VariantType::LargeDeletion => {
+            -((call.ref_sequence.len() as i64) - (call.alt_sequence.len() as i64))
+        }
+        VariantType::TandemDuplication => {
+            (call.alt_sequence.len() as i64) - (call.ref_sequence.len() as i64)
+        }
+        VariantType::Inversion => 0,
+        _ => unreachable!(),
+    };
+
+    let info = format!("{base_info};SVTYPE={svtype_str};SVLEN={svlen}");
+
+    // Use the minimal allele extractor to get the correct coordinate; fall back to POS=1.
+    if let Some(a) = extract_minimal_allele(&call.target_id, &call.ref_sequence, &call.alt_sequence)
+    {
+        // For symbolic alleles the REF field must contain only the anchor base.
+        let ref_anchor = &a.ref_allele[..1];
+        writeln!(
+            writer,
+            "{}\t{}\t.\t{}\t{}\t.\t{}\t{}",
+            a.chrom, a.pos, ref_anchor, sym_alt, filter_str, info
+        )?;
+    } else {
+        // Alignment-free fallback: REF = first base of ref_sequence.
+        let ref_anchor = if call.ref_sequence.is_empty() {
+            "N".to_string()
+        } else {
+            (call.ref_sequence[0] as char).to_string()
+        };
+        writeln!(
+            writer,
+            "{}\t1\t.\t{}\t{}\t.\t{}\t{}",
+            call.target_id, ref_anchor, sym_alt, filter_str, info
+        )?;
     }
     Ok(())
 }
@@ -294,6 +377,9 @@ fn variant_type_to_str(vt: VariantType) -> &'static str {
         VariantType::Deletion => "Deletion",
         VariantType::Mnv => "MNV",
         VariantType::Complex => "Complex",
+        VariantType::LargeDeletion => "LargeDeletion",
+        VariantType::TandemDuplication => "TandemDuplication",
+        VariantType::Inversion => "Inversion",
     }
 }
 
@@ -475,7 +561,27 @@ mod tests {
         assert_eq!(fields[4], "T", "ALT");
     }
 
-    // Test 9: write_variants dispatches to the correct format.
+    // Test 9: write_vcf uses symbolic allele for LargeDeletion.
+    #[test]
+    fn vcf_large_deletion_uses_symbolic_allele() {
+        // Simulate a deletion junction target: ref is longer than alt by 60 bp.
+        let ref_seq: Vec<u8> = b"ACGT".repeat(25).to_vec(); // 100 bp
+        let alt_seq: Vec<u8> = b"ACGT".repeat(10).to_vec(); // 40 bp
+        let mut call = make_call("chr5:1000-1100", &ref_seq, &alt_seq);
+        call.variant_type = VariantType::LargeDeletion;
+        let mut buf = Vec::new();
+        write_vcf(&[call], &mut buf).unwrap();
+        let text = String::from_utf8(buf).unwrap();
+        // Must contain the symbolic allele.
+        assert!(text.contains("<DEL>"), "expected <DEL> in VCF output");
+        // Must contain SVTYPE and SVLEN in INFO.
+        assert!(text.contains("SVTYPE=DEL"), "expected SVTYPE=DEL");
+        assert!(text.contains("SVLEN="), "expected SVLEN");
+        // Must contain the ALT header definition.
+        assert!(text.contains("##ALT=<ID=DEL"), "expected ##ALT=<ID=DEL");
+    }
+
+    // Test 10: write_variants dispatches to the correct format.
     #[test]
     fn write_variants_dispatches_correctly() {
         let calls = vec![make_call("test", b"A", b"T")];

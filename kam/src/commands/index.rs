@@ -50,7 +50,25 @@ pub fn run_index(args: IndexArgs) -> Result<(), Box<dyn std::error::Error>> {
 
     // ── 3. Build allowlist from targets ───────────────────────────────────────
     let target_slices: Vec<&[u8]> = targets.iter().map(|(_id, seq)| seq.as_slice()).collect();
-    let allowlist = build_allowlist(&target_slices, k);
+    let mut allowlist = build_allowlist(&target_slices, k);
+
+    // Augment allowlist with SV junction k-mers when provided.
+    // SV breakpoint sequences (e.g. deletion junctions, duplication junctions)
+    // contain k-mers not present in the reference targets and would otherwise
+    // be discarded by the allowlist filter.
+    if let Some(ref junctions_path) = args.sv_junctions {
+        let junctions = read_fasta(junctions_path)?;
+        let junction_slices: Vec<&[u8]> =
+            junctions.iter().map(|(_id, seq)| seq.as_slice()).collect();
+        let junction_allowlist = build_allowlist(&junction_slices, k);
+        let n_junction = junction_allowlist.len();
+        allowlist.extend(junction_allowlist);
+        eprintln!(
+            "[index] sv_junctions: added {n_junction} junction k-mers ({} total)",
+            allowlist.len()
+        );
+    }
+
     let n_target_kmers = allowlist.len() as u64;
 
     // ── 4. Build raw HashKmerIndex from molecules ─────────────────────────────
@@ -242,6 +260,7 @@ mod tests {
             targets: targets_path,
             output: output_path.clone(),
             kmer_size: 8,
+            sv_junctions: None,
         };
 
         run_index(args).expect("run_index should succeed");
@@ -274,6 +293,7 @@ mod tests {
             targets: targets_path,
             output: output_path.clone(),
             kmer_size: 4,
+            sv_junctions: None,
         };
 
         run_index(args).expect("run_index with empty molecules should succeed");

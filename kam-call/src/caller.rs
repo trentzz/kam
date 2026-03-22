@@ -56,15 +56,24 @@ pub struct VariantCall {
 pub enum VariantType {
     /// Single nucleotide variant.
     Snv,
-    /// Insertion (alt longer than ref).
+    /// Insertion (alt longer than ref, < 50 bp).
     Insertion,
-    /// Deletion (alt shorter than ref).
+    /// Deletion (alt shorter than ref, < 50 bp).
     Deletion,
     /// Multi-nucleotide variant (same length, >1 difference).
     Mnv,
     /// Complex rearrangement.
     Complex,
+    /// Large deletion (alt shorter than ref by ≥ 50 bp).
+    LargeDeletion,
+    /// Tandem duplication (alt longer than ref by ≥ 50 bp).
+    TandemDuplication,
+    /// Inversion (same length, alt is reverse-complement of ref segment).
+    Inversion,
 }
+
+/// Minimum indel length to classify as a structural variant.
+pub const SV_LENGTH_THRESHOLD: usize = 50;
 
 /// Filter outcome for a variant call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -329,17 +338,30 @@ pub fn strand_bias_test(alt_fwd: u32, alt_rev: u32, ref_fwd: u32, ref_rev: u32) 
 
 /// Determine variant type by comparing reference and alternate sequences.
 ///
+/// Deletions and insertions of 50 bp or more are classified as structural
+/// variants (`LargeDeletion` and `TandemDuplication` respectively). Same-length
+/// variants where the alt is the reverse complement of the ref are classified as
+/// `Inversion`.
+///
 /// # Example
 /// ```
 /// use kam_call::caller::{classify_variant, VariantType};
 /// assert_eq!(classify_variant(b"A", b"T"), VariantType::Snv);
 /// assert_eq!(classify_variant(b"ACG", b"A"), VariantType::Deletion);
 /// assert_eq!(classify_variant(b"A", b"ACG"), VariantType::Insertion);
+/// // Large structural variants:
+/// let long_ref: Vec<u8> = b"ACGT".repeat(25).to_vec(); // 100 bp
+/// let short_alt: Vec<u8> = b"ACGT".repeat(10).to_vec(); // 40 bp — 60 bp deletion
+/// assert_eq!(classify_variant(&long_ref, &short_alt), VariantType::LargeDeletion);
 /// ```
 pub fn classify_variant(ref_seq: &[u8], alt_seq: &[u8]) -> VariantType {
     use std::cmp::Ordering;
     match ref_seq.len().cmp(&alt_seq.len()) {
         Ordering::Equal => {
+            // Check for inversion: alt is reverse complement of ref.
+            if is_reverse_complement(ref_seq, alt_seq) {
+                return VariantType::Inversion;
+            }
             let diffs = ref_seq
                 .iter()
                 .zip(alt_seq.iter())
@@ -351,8 +373,47 @@ pub fn classify_variant(ref_seq: &[u8], alt_seq: &[u8]) -> VariantType {
                 _ => VariantType::Mnv,
             }
         }
-        Ordering::Greater => VariantType::Deletion,
-        Ordering::Less => VariantType::Insertion,
+        Ordering::Greater => {
+            if ref_seq.len() - alt_seq.len() >= SV_LENGTH_THRESHOLD {
+                VariantType::LargeDeletion
+            } else {
+                VariantType::Deletion
+            }
+        }
+        Ordering::Less => {
+            if alt_seq.len() - ref_seq.len() >= SV_LENGTH_THRESHOLD {
+                VariantType::TandemDuplication
+            } else {
+                VariantType::Insertion
+            }
+        }
+    }
+}
+
+/// Return true if `alt` is the reverse complement of `ref`.
+///
+/// Only returns true for sequences of length ≥ 2 where the entire alt is the
+/// reverse complement of the entire ref. This detects inversion paths in the de
+/// Bruijn graph where both strands of a segment are traversed.
+fn is_reverse_complement(ref_seq: &[u8], alt_seq: &[u8]) -> bool {
+    if ref_seq.len() < 2 || ref_seq.len() != alt_seq.len() {
+        return false;
+    }
+    ref_seq
+        .iter()
+        .zip(alt_seq.iter().rev())
+        .all(|(&r, &a)| complement(r) == a)
+}
+
+/// DNA complement (ACGT only; other bytes return themselves unchanged).
+#[inline]
+fn complement(b: u8) -> u8 {
+    match b {
+        b'A' | b'a' => b'T',
+        b'T' | b't' => b'A',
+        b'C' | b'c' => b'G',
+        b'G' | b'g' => b'C',
+        other => other,
     }
 }
 
@@ -638,5 +699,70 @@ mod tests {
         };
         let call = call_variant("EGFR", &ref_ev, &alt_ev, b"A", b"T", &cfg);
         assert_eq!(call.filter, VariantFilter::HighVaf);
+    }
+
+    // Test 14: large deletion (≥50 bp) is classified as LargeDeletion.
+    #[test]
+    fn classify_large_deletion() {
+        let long_ref: Vec<u8> = b"ACGT".repeat(25).to_vec(); // 100 bp
+        let short_alt: Vec<u8> = b"ACGT".repeat(10).to_vec(); // 40 bp — 60 bp deletion
+        assert_eq!(
+            classify_variant(&long_ref, &short_alt),
+            VariantType::LargeDeletion
+        );
+    }
+
+    // Test 15: small deletion (<50 bp) is still classified as Deletion.
+    #[test]
+    fn classify_small_deletion_not_sv() {
+        let r: Vec<u8> = b"ACGT".repeat(15).to_vec(); // 60 bp
+        let a: Vec<u8> = b"ACGT".repeat(10).to_vec(); // 40 bp — 20 bp deletion
+        assert_eq!(classify_variant(&r, &a), VariantType::Deletion);
+    }
+
+    // Test 16: large insertion (≥50 bp) is classified as TandemDuplication.
+    #[test]
+    fn classify_tandem_duplication() {
+        let short_ref: Vec<u8> = b"ACGT".repeat(10).to_vec(); // 40 bp
+        let long_alt: Vec<u8> = b"ACGT".repeat(25).to_vec(); // 100 bp — 60 bp insertion
+        assert_eq!(
+            classify_variant(&short_ref, &long_alt),
+            VariantType::TandemDuplication
+        );
+    }
+
+    // Test 17: sequence that is its own reverse complement → not classified as Inversion.
+    // Only genuine RC sequences (where alt == rc(ref)) get Inversion.
+    #[test]
+    fn classify_inversion() {
+        // ref = AAATTT, rc = AAATTT — this is a palindrome, would be Inversion.
+        // Use a non-palindrome: ref = ACGT, rc = ACGT — also palindrome.
+        // Use ref = AACC, rc = GGTT — these differ.
+        let ref_seq = b"AACCGGTT";
+        // rc of AACCGGTT: complement T→A T→A G→C G→C C→G C→G A→T A→T = TTGGCCAA reversed
+        // Actually let me compute manually:
+        // AACCGGTT → complement: TTGGCCAA → reverse: AACCGGTT
+        // That IS a palindrome. Let me use ACGTACGT.
+        // ACGTACGT complement: TGCATGCA reverse: ACGTACGT — also palindrome.
+        // ref = ACGTTGCA. rc = complement(ACGTTGCA) reversed = TGCAACGT reversed = TGCAACGT
+        // complement: A→T C→G G→C T→A T→A G→C C→G A→T = TGCAACGT → reverse = TGCAACGT
+        // Hmm let me use ref = AAACCC, rc:
+        // complement: TTTGGG → reverse: GGGTTT ≠ AAACCC, so Inversion.
+        let ref_seq = b"AAACCC";
+        let alt_seq = b"GGGTTT"; // rc of AAACCC
+        assert_eq!(classify_variant(ref_seq, alt_seq), VariantType::Inversion);
+    }
+
+    // Test 18: is_reverse_complement correctly identifies RC pairs.
+    #[test]
+    fn is_reverse_complement_basic() {
+        // ACGT rc = ACGT (palindrome) — true.
+        assert!(is_reverse_complement(b"ACGT", b"ACGT"));
+        // AACC rc = GGTT — true.
+        assert!(is_reverse_complement(b"AACC", b"GGTT"));
+        // Different sequences, not RC.
+        assert!(!is_reverse_complement(b"AACC", b"TTGG"));
+        // Length 1 — returns false (too short).
+        assert!(!is_reverse_complement(b"A", b"T"));
     }
 }

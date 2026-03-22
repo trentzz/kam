@@ -102,11 +102,16 @@ pub fn run_pathfind(args: PathfindArgs) -> Result<(), Box<dyn std::error::Error>
         // far outside the target window, which was the primary memory cost.
         // Number of k-mers in the reference path = target_len - k + 1.
         // Allow 50 extra k-mers of headroom for indels.
-        let target_max_path = if k > 1 {
+        //
+        // SV targets can override this via a `_maxpathN` suffix in the ID
+        // (e.g. `chr17:100-300_DEL_maxpath200`). Larger deletions may need a
+        // reference path that exceeds the default headroom.
+        let default_max_path = if k > 1 {
             target_seq.len().saturating_sub(k - 1) + 50
         } else {
             150
         };
+        let target_max_path = parse_maxpath_from_id(target_id).unwrap_or(default_max_path);
         let walk_config = kam_pathfind::walk::WalkConfig {
             max_path_length: target_max_path,
             ..Default::default()
@@ -176,6 +181,23 @@ pub fn run_pathfind(args: PathfindArgs) -> Result<(), Box<dyn std::error::Error>
     Ok(())
 }
 
+/// Parse a per-target `max_path_length` override from a target ID suffix.
+///
+/// SV junction targets can embed a path-length override by appending
+/// `_maxpathN` to the FASTA record ID (e.g. `chr17:100-300_DEL_maxpath200`).
+/// This allows the DFS to explore longer paths when the reference allele spans
+/// more k-mers than the default headroom.
+///
+/// Returns `None` if no override is present.
+pub fn parse_maxpath_from_id(id: &str) -> Option<usize> {
+    let lower = id.to_ascii_lowercase();
+    let pos = lower.rfind("_maxpath")?;
+    let suffix = &lower[pos + "_maxpath".len()..];
+    // Take digits only (ignore any further suffix after the number).
+    let digits: String = suffix.chars().take_while(|c| c.is_ascii_digit()).collect();
+    digits.parse().ok()
+}
+
 /// Attempt to infer `k` from a set of encoded k-mers.
 ///
 /// The k-mer with the fewest leading zero bits gives a lower bound on k.
@@ -195,6 +217,31 @@ fn infer_k_from_entries(entries: &[KmerEntry]) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
+    use super::parse_maxpath_from_id;
+
+    #[test]
+    fn parse_maxpath_from_id_with_suffix() {
+        assert_eq!(
+            parse_maxpath_from_id("chr17:100-300_DEL_maxpath200"),
+            Some(200)
+        );
+        assert_eq!(
+            parse_maxpath_from_id("chr3:50-250_INV_maxpath250"),
+            Some(250)
+        );
+    }
+
+    #[test]
+    fn parse_maxpath_from_id_no_suffix() {
+        assert_eq!(parse_maxpath_from_id("chr17:100-300"), None);
+        assert_eq!(parse_maxpath_from_id("TP53_exon7"), None);
+    }
+
+    #[test]
+    fn parse_maxpath_from_id_case_insensitive() {
+        assert_eq!(parse_maxpath_from_id("chr1:0-100_MAXPATH150"), Some(150));
+    }
+
     use super::*;
     use std::io::Write as IoWrite;
     use std::path::PathBuf;
@@ -256,6 +303,7 @@ mod tests {
             targets: targets_path.clone(),
             output: index_path.clone(),
             kmer_size: k,
+            sv_junctions: None,
         };
         run_index(idx_args).expect("run_index should succeed");
 

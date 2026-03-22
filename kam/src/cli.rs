@@ -101,6 +101,15 @@ pub struct IndexArgs {
     /// K-mer size.
     #[arg(short = 'k', long, default_value_t = 31u32)]
     pub kmer_size: u32,
+
+    /// Optional FASTA of SV junction sequences to augment the k-mer allowlist.
+    ///
+    /// When provided, k-mers from these junction sequences are added to the
+    /// allowlist alongside the target reference k-mers. This is required for
+    /// detecting structural variants (deletions, tandem duplications, inversions)
+    /// whose breakpoint k-mers are not in the reference target sequences.
+    #[arg(long)]
+    pub sv_junctions: Option<PathBuf>,
 }
 
 /// Arguments for the `pathfind` subcommand.
@@ -245,6 +254,15 @@ pub struct RunArgs {
     /// suppress background biological false positives.
     #[arg(long)]
     pub target_variants: Option<PathBuf>,
+
+    /// Optional FASTA of SV junction sequences to augment the k-mer allowlist.
+    ///
+    /// When provided, k-mers from these junction sequences are added to the
+    /// allowlist alongside the target reference k-mers. This is required for
+    /// detecting structural variants (deletions, tandem duplications, inversions)
+    /// whose breakpoint k-mers are not in the reference target sequences.
+    #[arg(long)]
+    pub sv_junctions: Option<PathBuf>,
 
     /// Output format(s), comma-separated (tsv, csv, json, vcf).
     #[arg(long, default_value = "tsv")]

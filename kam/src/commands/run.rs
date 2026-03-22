@@ -28,6 +28,7 @@ use kam_pathfind::walk::{GraphPath, WalkConfig};
 
 use crate::cli::RunArgs;
 use crate::commands::index::{molecules_to_consensus_reads, read_fasta};
+use crate::commands::pathfind::parse_maxpath_from_id;
 
 /// Run the full pipeline end-to-end in memory (zero-copy hot path).
 ///
@@ -102,7 +103,22 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     let t_index = std::time::Instant::now();
     let targets = read_fasta(&args.targets)?;
     let target_slices: Vec<&[u8]> = targets.iter().map(|(_id, seq)| seq.as_slice()).collect();
-    let allowlist = build_allowlist(&target_slices, k);
+    let mut allowlist = build_allowlist(&target_slices, k);
+
+    // Augment allowlist with SV junction k-mers when provided.
+    if let Some(ref junctions_path) = args.sv_junctions {
+        let junctions = read_fasta(junctions_path)?;
+        let junction_slices: Vec<&[u8]> =
+            junctions.iter().map(|(_id, seq)| seq.as_slice()).collect();
+        let junction_allowlist = build_allowlist(&junction_slices, k);
+        let n_junction = junction_allowlist.len();
+        allowlist.extend(junction_allowlist);
+        eprintln!(
+            "[run/index] sv_junctions: added {n_junction} junction k-mers ({} total)",
+            allowlist.len()
+        );
+    }
+
     let n_target_kmers = allowlist.len() as u64;
 
     // Two-pass indexing: include ALL k-mers from molecules that overlap a
@@ -281,12 +297,14 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
 
         // Number of k-mers in the effective (inward-trimmed) reference path.
         // Allow 50 extra k-mers of headroom for indels.
+        // SV targets can override this via a `_maxpathN` suffix in the ID.
         let effective_len = target_seq.len() - start_offset - end_offset;
-        let target_max_path = if k > 1 {
+        let default_max_path = if k > 1 {
             effective_len.saturating_sub(k - 1) + 50
         } else {
             150
         };
+        let target_max_path = parse_maxpath_from_id(target_id).unwrap_or(default_max_path);
         let walk_config = WalkConfig {
             max_path_length: target_max_path,
             ..Default::default()
@@ -605,6 +623,7 @@ mod tests {
             min_alt_molecules: None,
             min_alt_duplex: None,
             max_vaf: None,
+            sv_junctions: None,
             target_variants: None,
             output_format: "tsv".to_string(),
             qc_output: None,
@@ -671,6 +690,7 @@ mod tests {
             min_alt_molecules: None,
             min_alt_duplex: None,
             max_vaf: None,
+            sv_junctions: None,
             target_variants: None,
             output_format: "tsv".to_string(),
             qc_output: None,
