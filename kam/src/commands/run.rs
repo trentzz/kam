@@ -505,6 +505,12 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             .min_alt_duplex
             .unwrap_or(CallerConfig::default().min_alt_duplex),
         max_vaf: args.max_vaf.or(CallerConfig::default().max_vaf),
+        sv_min_confidence: args
+            .sv_min_confidence
+            .unwrap_or(CallerConfig::default().sv_min_confidence),
+        sv_min_alt_molecules: args
+            .sv_min_alt_molecules
+            .unwrap_or(CallerConfig::default().sv_min_alt_molecules),
         ..CallerConfig::default()
     };
 
@@ -813,6 +819,8 @@ mod tests {
             strand_bias_threshold: None,
             min_alt_molecules: None,
             min_alt_duplex: None,
+            sv_min_confidence: None,
+            sv_min_alt_molecules: None,
             max_vaf: None,
             sv_junctions: None,
             target_variants: None,
@@ -880,6 +888,8 @@ mod tests {
             strand_bias_threshold: None,
             min_alt_molecules: None,
             min_alt_duplex: None,
+            sv_min_confidence: None,
+            sv_min_alt_molecules: None,
             max_vaf: None,
             sv_junctions: None,
             target_variants: None,

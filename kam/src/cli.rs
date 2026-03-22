@@ -36,7 +36,7 @@ pub enum Commands {
     /// Call variants from scored graph paths.
     Call(CallArgs),
     /// Run the full pipeline end-to-end.
-    Run(RunArgs),
+    Run(Box<RunArgs>),
 }
 
 /// Arguments for the `assemble` subcommand.
@@ -230,6 +230,20 @@ pub struct RunArgs {
     /// Minimum alt-supporting molecules to emit a call.
     #[arg(long)]
     pub min_alt_molecules: Option<u32>,
+
+    /// Minimum posterior probability for a structural variant PASS call.
+    ///
+    /// Applies to LargeDeletion, TandemDuplication, and Inversion types.
+    /// Default: 0.95.
+    #[arg(long)]
+    pub sv_min_confidence: Option<f64>,
+
+    /// Minimum alt-supporting molecules for a structural variant PASS call.
+    ///
+    /// Applies to LargeDeletion, TandemDuplication, and Inversion types.
+    /// Default: 1.
+    #[arg(long)]
+    pub sv_min_alt_molecules: Option<u32>,
 
     /// Minimum variant-specific duplex molecules required for a PASS call.
     ///

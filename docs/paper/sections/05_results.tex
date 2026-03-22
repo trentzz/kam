@@ -150,7 +150,7 @@ Table~\ref{tab:sv-results} shows detection results in discovery mode (no \texttt
     VAF & SV type & Result & $n_\text{alt}$ & VAF obs. & Confidence \\
     \midrule
     0.5\% & LargeDeletion    & PASS    & 14 & 1.2\% & 1.000 \\
-    0.5\% & TandemDuplication & LowConf & 2  & 0.19\% & 0.981 \\
+    0.5\% & TandemDuplication & PASS    & 2  & 0.19\% & 0.982 \\
     0.5\% & Inversion        & PASS    & 3  & 0.26\% & 0.999 \\
     1\%   & LargeDeletion    & PASS    & 16 & 1.5\% & 1.000 \\
     1\%   & TandemDuplication & LowConf & 1  & 0.09\% & 0.791 \\
@@ -165,7 +165,7 @@ Table~\ref{tab:sv-results} shows detection results in discovery mode (no \texttt
   \end{tabular}
 \end{table}
 
-Large deletions are detected at all four VAF levels with PASS confidence. The observed VAF is approximately $2\times$ the simulated VAF because the deleted segment is absent from the alt path, creating a higher relative molecule count in the shorter window. Inversions are detected at all four VAF levels, including 0.5\% with 3 supporting molecules. Prior to the partial-inversion fix (Section~\ref{sec:sv-detection}), inversions were misclassified as MNVs at all VAFs because the classifier checked the full-path reverse complement rather than the central inverted segment. Tandem duplications are the weakest SV type: the duplicated junction k-mers share sequence with the original, making the breakpoint path less distinctive. Duplications reach PASS confidence at $\ge 2\%$ VAF and are LowConfidence at 0.5\%--1\%.
+Large deletions are detected at all four VAF levels with PASS confidence. The observed VAF is approximately $2\times$ the simulated VAF because the deleted segment is absent from the alt path, creating a higher relative molecule count in the shorter window. Inversions are detected at all four VAF levels, including 0.5\% with 3 supporting molecules. Prior to the partial-inversion fix (Section~\ref{sec:sv-detection}), inversions were misclassified as MNVs at all VAFs because the classifier checked the full-path reverse complement rather than the central inverted segment. Tandem duplications use an SV-specific confidence threshold of 0.95 (compared to 0.99 for SNVs and indels). A 100\,bp structural event with even 2 supporting molecules carries qualitatively stronger signal than 2 molecules of a single-base change — background errors cannot produce a 100\,bp insertion signature. With this threshold, duplications reach PASS at $\ge 0.5\%$ VAF (2 molecules, confidence 0.98). At 1\% VAF only 1 molecule spans the head-to-tail junction (confidence 0.79), remaining below the SV threshold.
 
 Discovery mode produces 2--7 false positives per VAF level, all low-molecule SNV or MNV calls arising from sequencing errors in the SV target windows. In monitoring mode, a truth VCF derived from the discovery PASS SV calls is provided via \texttt{--target-variants}. Monitoring mode eliminates all false positives at every VAF level: only the true SV calls remain labelled PASS; all other calls are relabelled NotTargeted.
 

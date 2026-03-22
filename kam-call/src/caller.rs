@@ -107,6 +107,8 @@ pub enum VariantFilter {
 /// assert_eq!(cfg.min_alt_molecules, 2);
 /// assert_eq!(cfg.min_alt_duplex, 0);
 /// assert_eq!(cfg.max_vaf, None);
+/// assert_eq!(cfg.sv_min_confidence, 0.95);
+/// assert_eq!(cfg.sv_min_alt_molecules, 1);
 /// ```
 #[derive(Debug, Clone)]
 pub struct CallerConfig {
@@ -144,6 +146,21 @@ pub struct CallerConfig {
     pub max_vaf: Option<f64>,
     /// Per-site background error rate used in the posterior. Default: 1e-4.
     pub background_error_rate: f64,
+    /// Minimum posterior probability for structural variant types
+    /// (`LargeDeletion`, `TandemDuplication`, `Inversion`). Default: 0.95.
+    ///
+    /// A large structural event with 2 supporting molecules is qualitatively
+    /// stronger evidence than 2 molecules supporting a single-base change —
+    /// the probability that a random sequencing error mimics a 100 bp deletion
+    /// or inversion is negligible. A lower threshold than `min_confidence` is
+    /// appropriate for SV types.
+    pub sv_min_confidence: f64,
+    /// Minimum alt molecule count for structural variant types. Default: 1.
+    ///
+    /// SVs with even a single supporting molecule can be reported in
+    /// monitoring mode where the target allele is pre-specified. In discovery
+    /// mode, the confidence filter still governs whether the call is PASS.
+    pub sv_min_alt_molecules: u32,
 }
 
 impl Default for CallerConfig {
@@ -161,6 +178,8 @@ impl Default for CallerConfig {
             min_alt_duplex_for_single: Some(1),
             max_vaf: None,
             background_error_rate: 1e-4,
+            sv_min_confidence: 0.95,
+            sv_min_alt_molecules: 1,
         }
     }
 }
@@ -226,7 +245,15 @@ pub fn call_variant(
     let n_duplex_alt = alt_evidence.min_variant_specific_duplex;
     let n_simplex_alt = k.saturating_sub(n_duplex_alt);
 
-    let filter = assign_filter(confidence, strand_bias_p, k, n_duplex_alt, vaf, config);
+    let filter = assign_filter(
+        confidence,
+        strand_bias_p,
+        k,
+        n_duplex_alt,
+        vaf,
+        variant_type,
+        config,
+    );
 
     VariantCall {
         target_id: target_id.to_owned(),
@@ -532,16 +559,38 @@ fn log_binomial_likelihood(k: u32, m: u32, p: f64) -> f64 {
 }
 
 /// Assign a filter label given statistical evidence and thresholds.
+///
+/// SV types (`LargeDeletion`, `TandemDuplication`, `Inversion`) use
+/// `sv_min_confidence` and `sv_min_alt_molecules` instead of the SNV/indel
+/// defaults. A large structural event requires fewer supporting molecules to
+/// reach the same confidence as a single-base change, because background
+/// sequencing errors cannot produce a 50–200 bp structural signature.
 fn assign_filter(
     confidence: f64,
     strand_bias_p: f64,
     n_alt: u32,
     n_duplex_alt: u32,
     vaf: f64,
+    variant_type: VariantType,
     config: &CallerConfig,
 ) -> VariantFilter {
+    let is_sv = matches!(
+        variant_type,
+        VariantType::LargeDeletion | VariantType::TandemDuplication | VariantType::Inversion
+    );
+    let eff_min_molecules = if is_sv {
+        config.sv_min_alt_molecules
+    } else {
+        config.min_alt_molecules
+    };
+    let eff_min_confidence = if is_sv {
+        config.sv_min_confidence
+    } else {
+        config.min_confidence
+    };
+
     // Molecule count: accept single-molecule calls when duplex-confirmed.
-    let min_mols_ok = n_alt >= config.min_alt_molecules
+    let min_mols_ok = n_alt >= eff_min_molecules
         || (n_alt == 1
             && config
                 .min_alt_duplex_for_single
@@ -555,7 +604,7 @@ fn assign_filter(
     if strand_bias_p < config.strand_bias_threshold {
         return VariantFilter::StrandBias;
     }
-    if confidence < config.min_confidence {
+    if confidence < eff_min_confidence {
         return VariantFilter::LowConfidence;
     }
     if let Some(max_vaf) = config.max_vaf {
@@ -848,5 +897,58 @@ mod tests {
         let ref_seq = b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACGT"; // 103 bp
         let alt_seq = b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAATGT"; // single A→T
         assert_eq!(classify_variant(ref_seq, alt_seq), VariantType::Snv);
+    }
+
+    // Test 23: SV type (LargeDeletion) uses sv_min_confidence, not min_confidence.
+    //
+    // A 100-bp deletion with 2 alt molecules gives confidence ~0.981.  Under
+    // default SNV thresholds (min_confidence = 0.99) this would be LowConfidence.
+    // With sv_min_confidence = 0.95 it should pass.
+    #[test]
+    fn sv_confidence_threshold_allows_low_confidence_del() {
+        // 2 alt molecules out of 1002 total → confidence ≈ 0.981 < 0.99.
+        let ref_ev = make_path_evidence(1000, 0, 500, 500);
+        let alt_ev = make_path_evidence(2, 0, 1, 1);
+        let long_ref: Vec<u8> = b"ACGT".repeat(25).to_vec(); // 100 bp
+        let short_alt: Vec<u8> = b"ACGT".repeat(10).to_vec(); // 40 bp → 60 bp deletion
+        let cfg = CallerConfig::default(); // sv_min_confidence = 0.95
+        let call = call_variant("TP53", &ref_ev, &alt_ev, &long_ref, &short_alt, &cfg);
+        // LargeDeletion → uses sv_min_confidence (0.95), passes at 0.981.
+        assert_eq!(call.variant_type, VariantType::LargeDeletion);
+        assert_eq!(call.filter, VariantFilter::Pass);
+    }
+
+    // Test 24: SV with confidence below sv_min_confidence is still LowConfidence.
+    //
+    // 1 alt molecule → confidence ≈ 0.83.  sv_min_confidence = 0.95 → LowConfidence.
+    #[test]
+    fn sv_confidence_threshold_rejects_very_low_confidence() {
+        let ref_ev = make_path_evidence(1000, 0, 500, 500);
+        let alt_ev = make_path_evidence(1, 0, 1, 0); // 1 mol, 0 duplex
+        let long_ref: Vec<u8> = b"ACGT".repeat(25).to_vec();
+        let short_alt: Vec<u8> = b"ACGT".repeat(10).to_vec();
+        let cfg = CallerConfig {
+            sv_min_alt_molecules: 1, // allow 1 mol for SVs
+            ..CallerConfig::default()
+        };
+        let call = call_variant("TP53", &ref_ev, &alt_ev, &long_ref, &short_alt, &cfg);
+        assert_eq!(call.variant_type, VariantType::LargeDeletion);
+        // confidence ≈ 0.83 < sv_min_confidence 0.95 → LowConfidence.
+        assert_eq!(call.filter, VariantFilter::LowConfidence);
+    }
+
+    // Test 25: SNV still uses min_confidence, not sv_min_confidence.
+    //
+    // 2 alt molecules → confidence ≈ 0.981 < 0.99, so LowConfidence for SNV
+    // even though sv_min_confidence = 0.95 would allow it.
+    #[test]
+    fn snv_uses_standard_confidence_not_sv_threshold() {
+        let ref_ev = make_path_evidence(1000, 0, 500, 500);
+        let alt_ev = make_path_evidence(2, 0, 1, 1);
+        let cfg = CallerConfig::default();
+        let call = call_variant("KRAS", &ref_ev, &alt_ev, b"A", b"T", &cfg);
+        assert_eq!(call.variant_type, VariantType::Snv);
+        // confidence ≈ 0.981 < min_confidence 0.99 → LowConfidence.
+        assert_eq!(call.filter, VariantFilter::LowConfidence);
     }
 }

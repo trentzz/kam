@@ -18,7 +18,7 @@ fn main() {
         Commands::Index(args) => commands::index::run_index(args),
         Commands::Pathfind(args) => commands::pathfind::run_pathfind(args),
         Commands::Call(args) => commands::call::run_call(args),
-        Commands::Run(args) => commands::run::run_pipeline(args),
+        Commands::Run(args) => commands::run::run_pipeline(*args),
     };
 
     if let Err(e) = result {
