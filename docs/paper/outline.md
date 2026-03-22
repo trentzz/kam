@@ -8,7 +8,7 @@ is included here as context only and should not appear in the paper body.
 
 ## Context (for author reference only, not in paper)
 
-The thesis (Trent Zeng, UNSW, Nov 2025: `docs/research/thesis_c_notes.md`) evaluated
+The thesis (UNSW, Nov 2025) evaluated
 HUMID+km on the same Twist STDV2 titration dataset. That pipeline achieved near-zero FPs
 through tumour-informed filtering: it only reported km hits matching the exact expected
 alt allele for each known target mutation. Background cfDNA variants were invisible by

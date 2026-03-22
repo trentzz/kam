@@ -192,8 +192,7 @@ Full sensitivity benchmarking against synthetic varforge data requires:
 5. Scoring against the truth VCF.
 
 The FASTQ data for the titration samples was not available on this machine.
-Varforge is available at `/home/tzeng/tfiles/code/varforge`. The pipeline
-integration is ready to test as soon as reference data is available.
+The pipeline integration is ready to test as soon as reference data is available.
 
 The sensitivity targets from the design document remain as goals:
 
