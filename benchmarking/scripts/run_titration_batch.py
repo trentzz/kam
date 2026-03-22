@@ -50,6 +50,13 @@ KAM_TARGET_VARIANTS: Path | None = None
 KAM_KMER_SIZE: int | None = None
 KAM_MIN_ALT_DUPLEX: int | None = None
 
+# When set, save per-sample VCFs to this directory.
+# Each sample produces:
+#   <name>.monitoring.vcf  — calls with tumour-informed filter applied (PASS = truth matches)
+#   <name>.discovery.vcf   — calls in discovery mode (no truth filter; PASS = all quality-passing calls)
+# If --target-variants is not set, only <name>.discovery.vcf is written.
+VCF_SAVE_DIR: Path | None = None
+
 # ── Truth variants ─────────────────────────────────────────────────────────────
 def load_truth_set(vcf_path):
     """Load truth variants as (chrom, pos, ref, alt) tuples for positional matching.
@@ -506,6 +513,46 @@ def run_sample(sample, truth_set, tmp_dir):
         "exit_code": proc.returncode,
     }
 
+    # ── Save per-sample VCFs if requested ─────────────────────────────────────
+    if VCF_SAVE_DIR is not None and proc.returncode == 0:
+        VCF_SAVE_DIR.mkdir(parents=True, exist_ok=True)
+        src_vcf = out_dir / "variants.vcf"
+        if src_vcf.exists():
+            if KAM_TARGET_VARIANTS is not None:
+                # This run used monitoring mode → save as .monitoring.vcf
+                dst = VCF_SAVE_DIR / f"{name}.monitoring.vcf"
+                shutil.copy(src_vcf, dst)
+                # Also run a second pass in discovery mode for the pre-filter view.
+                disc_out = tmp_dir / "kam_disc"
+                disc_out.mkdir()
+                disc_cmd = [
+                    str(KAM), "run",
+                    "--r1", str(r1_sub), "--r2", str(r2_sub),
+                    "--targets", str(TARGETS),
+                    "--output-dir", str(disc_out),
+                    "--output-format", "vcf",
+                ]
+                if KAM_MAX_VAF is not None:
+                    disc_cmd += ["--max-vaf", str(KAM_MAX_VAF)]
+                if KAM_MIN_ALT_MOLECULES is not None:
+                    disc_cmd += ["--min-alt-molecules", str(KAM_MIN_ALT_MOLECULES)]
+                if KAM_MIN_CONFIDENCE is not None:
+                    disc_cmd += ["--min-confidence", str(KAM_MIN_CONFIDENCE)]
+                if KAM_MIN_FAMILY_SIZE is not None:
+                    disc_cmd += ["--min-family-size", str(KAM_MIN_FAMILY_SIZE)]
+                if KAM_KMER_SIZE is not None:
+                    disc_cmd += ["-k", str(KAM_KMER_SIZE)]
+                if KAM_MIN_ALT_DUPLEX is not None:
+                    disc_cmd += ["--min-alt-duplex", str(KAM_MIN_ALT_DUPLEX)]
+                # Deliberately omit --target-variants for discovery mode.
+                disc_proc = subprocess.run(disc_cmd, capture_output=True)
+                disc_vcf = disc_out / "variants.vcf"
+                if disc_vcf.exists():
+                    shutil.copy(disc_vcf, VCF_SAVE_DIR / f"{name}.discovery.vcf")
+            else:
+                # No monitoring filter — this is already discovery mode.
+                shutil.copy(src_vcf, VCF_SAVE_DIR / f"{name}.discovery.vcf")
+
     status = "OK" if proc.returncode == 0 else "FAIL"
     print(f"  [{name}] {status} | "
           f"mols={molecules:,} | "
@@ -523,7 +570,8 @@ def run_sample(sample, truth_set, tmp_dir):
 def main():
     global KAM, TARGETS, TRUTH_VCF, FASTQ_DIR, RESULTS_DIR, RESULTS_FILE
     global READS_PER_SAMPLE, PEAK_RSS_LIMIT_MB
-    global KAM_MAX_VAF, KAM_MIN_ALT_MOLECULES, KAM_MIN_FAMILY_SIZE, KAM_TARGET_VARIANTS
+    global KAM_MAX_VAF, KAM_MIN_ALT_MOLECULES, KAM_MIN_CONFIDENCE, KAM_MIN_FAMILY_SIZE
+    global KAM_TARGET_VARIANTS, KAM_KMER_SIZE, KAM_MIN_ALT_DUPLEX, VCF_SAVE_DIR
 
     parser = argparse.ArgumentParser(
         description="Run kam on all titration samples and score against truth variants."
@@ -564,6 +612,11 @@ def main():
                         help="Minimum variant-specific duplex molecules for a PASS call "
                              "(default: 0, disabled). Set to 1 to require duplex confirmation "
                              "on every call. Calls below threshold are labelled LowDuplex.")
+    parser.add_argument("--save-vcfs", type=Path, default=None,
+                        help="Directory to save per-sample VCF outputs. When set, each sample "
+                             "produces <name>.monitoring.vcf (tumour-informed calls) and "
+                             "<name>.discovery.vcf (all quality-passing calls, no truth filter). "
+                             "If --target-variants is not set, only discovery VCFs are written.")
     parser.add_argument("--kmer-size", type=int, default=None,
                         help="K-mer size for indexing and path walking (default: 31). "
                              "Must satisfy k < read_length/2. Smaller k lowers the minimum "
@@ -584,6 +637,7 @@ def main():
     KAM_TARGET_VARIANTS   = args.target_variants
     KAM_MIN_ALT_DUPLEX    = args.min_alt_duplex
     KAM_KMER_SIZE         = args.kmer_size
+    VCF_SAVE_DIR          = args.save_vcfs
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     if args.output:
