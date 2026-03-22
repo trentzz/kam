@@ -146,6 +146,15 @@ pub struct CallArgs {
     #[arg(long)]
     pub min_alt_molecules: Option<u32>,
 
+    /// Minimum variant-specific duplex molecules required for a PASS call.
+    ///
+    /// Counts only duplex molecules whose k-mers overlap the variant site
+    /// (alt-path-specific k-mers).  Setting 1 requires at least one duplex
+    /// confirmation on the alt allele.  Calls without sufficient duplex support
+    /// are labelled LowDuplex.  Default: 0 (disabled).
+    #[arg(long)]
+    pub min_alt_duplex: Option<u32>,
+
     /// Maximum VAF for a PASS call. Calls above this are labelled HighVaf.
     /// Useful for ctDNA somatic calling where germline heterozygous variants
     /// (VAF ≈ 0.5) should be excluded. Example: --max-vaf 0.35.
@@ -212,6 +221,15 @@ pub struct RunArgs {
     /// Minimum alt-supporting molecules to emit a call.
     #[arg(long)]
     pub min_alt_molecules: Option<u32>,
+
+    /// Minimum variant-specific duplex molecules required for a PASS call.
+    ///
+    /// Counts only duplex molecules whose k-mers overlap the variant site
+    /// (alt-path-specific k-mers).  Setting 1 requires at least one duplex
+    /// confirmation on the alt allele.  Calls without sufficient duplex support
+    /// are labelled LowDuplex.  Default: 0 (disabled).
+    #[arg(long)]
+    pub min_alt_duplex: Option<u32>,
 
     /// Maximum VAF for a PASS call. Calls above this are labelled HighVaf.
     /// Useful for ctDNA somatic calling where germline heterozygous variants

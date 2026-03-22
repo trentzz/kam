@@ -45,6 +45,9 @@ pub fn run_call(args: CallArgs) -> Result<(), Box<dyn std::error::Error>> {
         min_alt_molecules: args
             .min_alt_molecules
             .unwrap_or(CallerConfig::default().min_alt_molecules),
+        min_alt_duplex: args
+            .min_alt_duplex
+            .unwrap_or(CallerConfig::default().min_alt_duplex),
         max_vaf: args.max_vaf.or(CallerConfig::default().max_vaf),
         ..CallerConfig::default()
     };
@@ -247,6 +250,7 @@ mod tests {
             min_confidence: None,
             strand_bias_threshold: None,
             min_alt_molecules: None,
+            min_alt_duplex: None,
             max_vaf: None,
             target_variants: None,
         };
@@ -280,6 +284,7 @@ mod tests {
             min_confidence: None,
             strand_bias_threshold: None,
             min_alt_molecules: None,
+            min_alt_duplex: None,
             max_vaf: None,
             target_variants: None,
         };

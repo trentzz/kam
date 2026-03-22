@@ -48,6 +48,7 @@ KAM_MIN_CONFIDENCE: float | None = None
 KAM_MIN_FAMILY_SIZE: int | None = None
 KAM_TARGET_VARIANTS: Path | None = None
 KAM_KMER_SIZE: int | None = None
+KAM_MIN_ALT_DUPLEX: int | None = None
 
 # ── Truth variants ─────────────────────────────────────────────────────────────
 def load_truth_set(vcf_path):
@@ -330,6 +331,8 @@ def run_sample(sample, truth_set, tmp_dir):
         cmd += ["--target-variants", str(KAM_TARGET_VARIANTS)]
     if KAM_KMER_SIZE is not None:
         cmd += ["-k", str(KAM_KMER_SIZE)]
+    if KAM_MIN_ALT_DUPLEX is not None:
+        cmd += ["--min-alt-duplex", str(KAM_MIN_ALT_DUPLEX)]
 
     print(f"  [{name}] running kam...", flush=True)
     t0 = time.time()
@@ -557,6 +560,10 @@ def main():
                         help="VCF of expected somatic variants for tumour-informed monitoring "
                              "mode. Only calls matching (CHROM, POS, REF, ALT) in this VCF "
                              "are marked PASS. Suppresses background biological FPs.")
+    parser.add_argument("--min-alt-duplex", type=int, default=None,
+                        help="Minimum variant-specific duplex molecules for a PASS call "
+                             "(default: 0, disabled). Set to 1 to require duplex confirmation "
+                             "on every call. Calls below threshold are labelled LowDuplex.")
     parser.add_argument("--kmer-size", type=int, default=None,
                         help="K-mer size for indexing and path walking (default: 31). "
                              "Must satisfy k < read_length/2. Smaller k lowers the minimum "
@@ -575,6 +582,7 @@ def main():
     KAM_MIN_CONFIDENCE    = args.min_confidence
     KAM_MIN_FAMILY_SIZE   = args.min_family_size
     KAM_TARGET_VARIANTS   = args.target_variants
+    KAM_MIN_ALT_DUPLEX    = args.min_alt_duplex
     KAM_KMER_SIZE         = args.kmer_size
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
