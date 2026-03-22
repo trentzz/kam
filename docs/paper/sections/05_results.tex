@@ -132,6 +132,43 @@ haematopoiesis events are reported because none match the 375-variant target set
 This is the key property of monitoring mode: the noise floor is zero by
 construction when none of the expected alleles happen to be present in the sample.
 
+% ── Structural variant detection ──────────────────────────────────────────────
+\subsection{Structural variant detection}
+\label{sec:sv-results}
+
+We evaluated targeted SV detection on a 2000\,bp synthetic reference with three embedded SV types: a 100\,bp deletion (chr1:200--299), a 100\,bp tandem duplication (chr1:500--599), and a 100\,bp inversion (chr1:900--999). Each SV was simulated at four VAF levels (0.5\%, 1\%, 2\%, 5\%) with 5000$\times$ raw read depth ($\approx$1000 molecule families per target), using Twist duplex UMI chemistry. SV junction k-mers were provided via \texttt{--sv-junctions}.
+
+Table~\ref{tab:sv-results} shows detection results in discovery mode (no \texttt{--target-variants}).
+
+\begin{table}[h]
+  \centering
+  \caption{SV detection sensitivity in discovery mode. ``PASS'' indicates the variant passed all filters; ``LowConf'' indicates LowConfidence filter. $n_\text{alt}$: supporting alt molecules.}
+  \label{tab:sv-results}
+  \small
+  \begin{tabular}{lccccc}
+    \toprule
+    VAF & SV type & Result & $n_\text{alt}$ & VAF obs. & Confidence \\
+    \midrule
+    0.5\% & LargeDeletion    & PASS    & 14 & 1.2\% & 1.000 \\
+    0.5\% & TandemDuplication & LowConf & 2  & 0.19\% & 0.981 \\
+    0.5\% & Inversion        & PASS    & 3  & 0.26\% & 0.999 \\
+    1\%   & LargeDeletion    & PASS    & 16 & 1.5\% & 1.000 \\
+    1\%   & TandemDuplication & LowConf & 1  & 0.09\% & 0.791 \\
+    1\%   & Inversion        & PASS    & 6  & 0.54\% & 1.000 \\
+    2\%   & LargeDeletion    & PASS    & 43 & 3.7\% & 1.000 \\
+    2\%   & TandemDuplication & PASS   & 4  & 0.42\% & 1.000 \\
+    2\%   & Inversion        & PASS    & 6  & 0.54\% & 1.000 \\
+    5\%   & LargeDeletion    & PASS    & 98 & 9.3\% & 1.000 \\
+    5\%   & TandemDuplication & PASS   & 16 & 1.8\% & 1.000 \\
+    5\%   & Inversion        & PASS    & 23 & 2.1\% & 1.000 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Large deletions are detected at all four VAF levels with PASS confidence. The observed VAF is approximately $2\times$ the simulated VAF because the deleted segment is absent from the alt path, creating a higher relative molecule count in the shorter window. Inversions are detected at all four VAF levels, including 0.5\% with 3 supporting molecules. Prior to the partial-inversion fix (Section~\ref{sec:sv-detection}), inversions were misclassified as MNVs at all VAFs because the classifier checked the full-path reverse complement rather than the central inverted segment. Tandem duplications are the weakest SV type: the duplicated junction k-mers share sequence with the original, making the breakpoint path less distinctive. Duplications reach PASS confidence at $\ge 2\%$ VAF and are LowConfidence at 0.5\%--1\%.
+
+Discovery mode produces 2--7 false positives per VAF level, all low-molecule SNV or MNV calls arising from sequencing errors in the SV target windows. In monitoring mode, a truth VCF derived from the discovery PASS SV calls is provided via \texttt{--target-variants}. Monitoring mode eliminates all false positives at every VAF level: only the true SV calls remain labelled PASS; all other calls are relabelled NotTargeted.
+
 % ── Runtime and memory ────────────────────────────────────────────────────────
 \subsection{Runtime and memory}
 

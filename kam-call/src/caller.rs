@@ -359,8 +359,18 @@ pub fn classify_variant(ref_seq: &[u8], alt_seq: &[u8]) -> VariantType {
     match ref_seq.len().cmp(&alt_seq.len()) {
         Ordering::Equal => {
             // Check for inversion: alt is reverse complement of ref.
+            // Full-path case: entire window is RC (rare).
             if is_reverse_complement(ref_seq, alt_seq) {
                 return VariantType::Inversion;
+            }
+            // Partial-inversion case: a contiguous central segment is RC'd
+            // while the flanking bases match. This is the common case for
+            // targeted SV detection where the target window is wider than
+            // the inverted region.
+            if let Some(inv_len) = partial_inversion_len(ref_seq, alt_seq) {
+                if inv_len >= SV_LENGTH_THRESHOLD {
+                    return VariantType::Inversion;
+                }
             }
             let diffs = ref_seq
                 .iter()
@@ -387,6 +397,35 @@ pub fn classify_variant(ref_seq: &[u8], alt_seq: &[u8]) -> VariantType {
                 VariantType::Insertion
             }
         }
+    }
+}
+
+/// Detect a partial inversion: a contiguous central segment where alt is the
+/// reverse complement of the corresponding ref region, with matching flanks.
+///
+/// Returns `Some(length)` where `length` is the number of bases in the inverted
+/// segment if such a segment exists, or `None` otherwise.
+///
+/// Only considers segments of length ≥ 2 (required by `is_reverse_complement`).
+fn partial_inversion_len(ref_seq: &[u8], alt_seq: &[u8]) -> Option<usize> {
+    if ref_seq.len() != alt_seq.len() {
+        return None;
+    }
+    let left = ref_seq
+        .iter()
+        .zip(alt_seq.iter())
+        .position(|(r, a)| r != a)?;
+    let right = ref_seq
+        .iter()
+        .zip(alt_seq.iter())
+        .rposition(|(r, a)| r != a)?;
+    if right < left {
+        return None;
+    }
+    if is_reverse_complement(&ref_seq[left..=right], &alt_seq[left..=right]) {
+        Some(right - left + 1)
+    } else {
+        None
     }
 }
 
@@ -764,5 +803,50 @@ mod tests {
         assert!(!is_reverse_complement(b"AACC", b"TTGG"));
         // Length 1 — returns false (too short).
         assert!(!is_reverse_complement(b"A", b"T"));
+    }
+
+    // Test 19: partial inversion in the central region with matching flanks.
+    //
+    // ref = AA [AAACCC] AA  (6 bp central, flanked by 2 bp each)
+    // alt = AA [GGGTTT] AA  (central is rc of AAACCC)
+    // Expected: Some(6) — 6 bp inverted segment.
+    #[test]
+    fn partial_inversion_len_central_segment() {
+        // Flanks: AA ... AA.  Central 6 bp: AAACCC / GGGTTT.
+        let ref_seq = b"AAAAACCCAA";
+        let alt_seq = b"AAGGGTTTAA";
+        assert_eq!(partial_inversion_len(ref_seq, alt_seq), Some(6));
+    }
+
+    // Test 20: partial inversion below SV_LENGTH_THRESHOLD is classified as MNV.
+    //
+    // A 6 bp inversion (< 50 bp) must not be promoted to VariantType::Inversion.
+    #[test]
+    fn partial_inversion_below_threshold_is_mnv() {
+        // Same as test 19 — 6 bp inversion, below the 50 bp threshold.
+        let ref_seq = b"AAAAACCCAA";
+        let alt_seq = b"AAGGGTTTAA";
+        assert_eq!(classify_variant(ref_seq, alt_seq), VariantType::Mnv);
+    }
+
+    // Test 21: full-path inversion still classified correctly after partial_inversion_len addition.
+    //
+    // Ensures the full-path RC check is not broken by the new code path.
+    #[test]
+    fn full_path_inversion_still_works() {
+        // AAACCC rc = GGGTTT — full path RC, both checks should fire.
+        let ref_seq = b"AAACCC";
+        let alt_seq = b"GGGTTT";
+        assert_eq!(classify_variant(ref_seq, alt_seq), VariantType::Inversion);
+    }
+
+    // Test 22: a single SNV inside an otherwise identical window → still SNV.
+    //
+    // partial_inversion_len must not confuse a single mismatch with an inversion.
+    #[test]
+    fn single_snv_not_misclassified_as_inversion() {
+        let ref_seq = b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACGT"; // 103 bp
+        let alt_seq = b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAATGT"; // single A→T
+        assert_eq!(classify_variant(ref_seq, alt_seq), VariantType::Snv);
     }
 }

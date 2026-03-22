@@ -386,9 +386,9 @@ Let $|R|$ and $|A|$ denote their lengths:
 
 \begin{itemize}
   \item $|R| = |A|$ with exactly 1 differing base: SNV.
-  \item $|R| = |A|$ with $>1$ differing bases: MNV.
-  \item $|R| > |A|$: deletion.
-  \item $|R| < |A|$: insertion.
+  \item $|R| = |A|$ with $>1$ differing bases: MNV (or Inversion — see Section~\ref{sec:sv-detection}).
+  \item $|R| > |A|$: deletion (or LargeDeletion if $|R| - |A| \ge 50$).
+  \item $|R| < |A|$: insertion (or TandemDuplication if $|A| - |R| \ge 50$).
 \end{itemize}
 
 \subsubsection{Filter Assignment}
@@ -418,3 +418,22 @@ This places the variant at the leftmost possible position in any repeat context.
 Third, the anchor base is prepended as required by the VCF specification: for a deletion, REF\,=\,anchor\,+\,deleted\,bases and ALT\,=\,anchor; for an insertion, REF\,=\,anchor and ALT\,=\,anchor\,+\,inserted\,bases.
 
 Genomic coordinates are derived from the target header (\texttt{chrN:START-END}), where START is the 1-based genomic position of the first base in the stored sequence. A sequence index $i$ (0-based) maps to VCF position $\text{START} + i$.
+
+\subsection{Targeted Structural Variant Detection}
+\label{sec:sv-detection}
+
+kam extends the de Bruijn graph framework to detect large structural variants (SVs) using junction k-mer injection. When the \texttt{--sv-junctions} flag is provided, a FASTA of SV breakpoint junction sequences is loaded during k-mer indexing. The junction k-mers are added to the allowlist alongside the panel target k-mers, making them eligible for inclusion in the de Bruijn graph.
+
+Junction sequences span each SV breakpoint: for a deletion, the sequence joining the left flank of the deleted region to the right flank; for a tandem duplication, the head-to-tail junction; for an inversion, both the left and right inversion junctions. Each junction sequence is 60--80\,bp, long enough to provide $\ge 30$ overlapping 31-mers across the breakpoint. These k-mers create a continuous path through the graph from the upstream anchor to the downstream anchor via the SV allele, enabling path discovery for large events that would otherwise have no connecting path.
+
+SV classification is applied when the reconstructed reference and alternate paths have a length difference $\ge 50$\,bp or when same-length paths carry a partial inversion. Specifically:
+
+\begin{itemize}
+  \item $|R| - |A| \ge 50$: \textit{LargeDeletion}.
+  \item $|A| - |R| \ge 50$: \textit{TandemDuplication}.
+  \item $|R| = |A|$ and a contiguous central segment $[l, r]$ satisfies $\text{RC}(R[l..r]) = A[l..r]$ with $r - l + 1 \ge 50$: \textit{Inversion}.
+\end{itemize}
+
+The inversion classifier finds the leftmost and rightmost positions where the reference and alternate paths differ. If the subsequence spanning those positions is the reverse complement of the corresponding reference subsequence, the variant is classified as an inversion. This partial-inversion check is required because real inversions only invert a central segment of the reference window; the full-path reverse complement check always fails.
+
+SV calls pass through the same confidence and filter pipeline as SNVs and indels. The duplex requirement is relaxed by default for SV benchmarking (\texttt{--min-duplex-alt-molecules 0}), as synthetic SV simulations may produce only simplex molecule evidence. In monitoring mode (\texttt{--target-variants}), the SV allele representation in the target VCF must match the key extracted by the pipeline; a Python helper (\texttt{make\_monitoring\_vcf.py}) generates monitoring VCFs directly from discovery results to guarantee exact key matching.

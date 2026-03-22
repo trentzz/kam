@@ -39,13 +39,26 @@ introduce false positives through excessive path enumeration.
 
 Beyond algorithm fixes, the following extensions are planned.
 
+\paragraph{Extended structural variant types.}
+Targeted SV detection is implemented for large deletions, tandem duplications,
+and inversions via junction k-mer injection (Section~\ref{sec:sv-detection}).
+Two extensions would improve sensitivity at low VAF. First, a synthetic path
+construction fallback for inversions: at very low VAF, the junction k-mers for
+a partial inversion may be absent from the graph; constructing a synthetic
+alt path from the reference by reverse-complementing the central segment
+would recover these cases. Second, for tandem duplications below 2\% VAF,
+the duplicated junction k-mers share sequence with the original segment, making
+the alt path ambiguous; augmenting the allowlist with a synthetic head-to-tail
+junction path would boost the supporting molecule count. Translocations and
+foreign insertions require cross-target junction detection and are deferred to
+a later phase.
+
 \paragraph{De novo variant discovery.}
 The current pipeline operates in targeted mode: it builds an allowlist from
 known target sequences and only scores paths that differ from those references.
 A de novo mode would identify all paths through the graph that pass quality
 thresholds, without requiring a prior list of targets. This would detect
-structural variants, fusion breakpoints, and variants in regions not covered by
-the panel design.
+fusion breakpoints and variants in regions not covered by the panel design.
 
 \paragraph{Nextflow integration.}
 A Nextflow wrapper module will expose kam as a drop-in replacement for the

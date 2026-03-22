@@ -92,6 +92,10 @@ pub fn load_target_variants<P: AsRef<Path>>(
 /// the (chrom, pos, ref_allele, alt_allele) key using the same algorithm as
 /// the benchmarking script's `extract_called_variants`.
 ///
+/// The `pos` field is 1-based (standard VCF convention) so that keys produced
+/// here can be compared directly against entries loaded by `load_target_variants`.
+/// Target FASTA headers use 0-based coordinates, so `pos = target_start + offset + 1`.
+///
 /// Returns `None` if the sequences are identical (no variant) or if the
 /// target_id cannot be parsed.
 ///
@@ -102,7 +106,8 @@ pub fn load_target_variants<P: AsRef<Path>>(
 /// let ref_seq = b"ACGTACGT";
 /// let alt_seq = b"ACTTACGT";
 /// let key = extract_variant_key("chr1:100-108", ref_seq, alt_seq);
-/// assert_eq!(key, Some(("chr1".to_string(), 102, "G".to_string(), "T".to_string())));
+/// // SNV at 0-based window offset 2, target_start=100 (0-based) → VCF pos 103.
+/// assert_eq!(key, Some(("chr1".to_string(), 103, "G".to_string(), "T".to_string())));
 /// ```
 pub fn extract_variant_key(
     target_id: &str,
@@ -142,10 +147,10 @@ pub fn extract_variant_key(
     };
 
     if ref_seq.len() == alt_seq.len() {
-        // SNV / MNV.
+        // SNV / MNV.  Convert 0-based target offset to 1-based VCF position.
         let ref_allele = bytes_to_str(ref_trimmed);
         let alt_allele = bytes_to_str(alt_trimmed);
-        let genomic_pos = target_start + diff_pos as i64;
+        let genomic_pos = target_start + diff_pos as i64 + 1;
         Some((chrom, genomic_pos, ref_allele, alt_allele))
     } else {
         indel_key(
@@ -299,7 +304,8 @@ fn deletion_key(
         let mut ref_allele = vec![anchor];
         ref_allele.extend_from_slice(&del_seq);
         let alt_allele = vec![anchor];
-        let genomic_pos = target_start + anchor_pos;
+        // Convert 0-based anchor offset to 1-based VCF position.
+        let genomic_pos = target_start + anchor_pos + 1;
         Some((
             chrom,
             genomic_pos,
@@ -307,7 +313,7 @@ fn deletion_key(
             bytes_to_str(&alt_allele),
         ))
     } else {
-        let genomic_pos = target_start + indel_start as i64;
+        let genomic_pos = target_start + indel_start as i64 + 1;
         Some((chrom, genomic_pos, bytes_to_str(&del_seq), String::new()))
     }
 }
@@ -339,7 +345,8 @@ fn insertion_key(
         let ref_allele = vec![anchor];
         let mut alt_allele = vec![anchor];
         alt_allele.extend_from_slice(&ins_seq);
-        let genomic_pos = target_start + anchor_pos;
+        // Convert 0-based anchor offset to 1-based VCF position.
+        let genomic_pos = target_start + anchor_pos + 1;
         Some((
             chrom,
             genomic_pos,
@@ -347,7 +354,7 @@ fn insertion_key(
             bytes_to_str(&alt_allele),
         ))
     } else {
-        let genomic_pos = target_start + indel_start as i64;
+        let genomic_pos = target_start + indel_start as i64 + 1;
         Some((chrom, genomic_pos, String::new(), bytes_to_str(&ins_seq)))
     }
 }
@@ -358,7 +365,8 @@ fn insertion_key(
 mod tests {
     use super::*;
 
-    // Test 1: SNV at position 2 within the window.
+    // Test 1: SNV at 0-based window offset 2, target starts at 100 (0-based).
+    // 1-based VCF pos = 100 + 2 + 1 = 103.
     #[test]
     fn extract_snv_key() {
         let ref_seq = b"ACGTACGT";
@@ -366,7 +374,7 @@ mod tests {
         let key = extract_variant_key("chr1:100-108", ref_seq, alt_seq);
         assert_eq!(
             key,
-            Some(("chr1".to_string(), 102, "G".to_string(), "T".to_string()))
+            Some(("chr1".to_string(), 103, "G".to_string(), "T".to_string()))
         );
     }
 
@@ -439,7 +447,7 @@ mod tests {
         };
 
         let mut targets = TargetVariantSet::new();
-        targets.insert(("chr1".to_string(), 102, "G".to_string(), "T".to_string()));
+        targets.insert(("chr1".to_string(), 103, "G".to_string(), "T".to_string()));
 
         let mut calls = vec![call];
         apply_target_filter(&mut calls, &targets);
