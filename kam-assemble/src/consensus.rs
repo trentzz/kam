@@ -167,9 +167,9 @@ pub fn single_strand_consensus(
             let (winner_idx, winner_weight) = weight_sum
                 .iter()
                 .enumerate()
-                .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+                .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
                 .map(|(i, &w)| (i, w))
-                .unwrap();
+                .expect("weight_sum is non-empty when total_weight > 0");
             let raw_error = 1.0 - winner_weight / total_weight;
             // Floor at 0 to avoid -0.0 artefacts from floating point.
             let error_prob = raw_error.max(0.0);

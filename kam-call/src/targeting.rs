@@ -284,10 +284,11 @@ fn deletion_key(
     // Left-normalise: shift anchor left while last base of del_seq matches anchor.
     while anchor_pos > 0
         && !del_seq.is_empty()
-        && ref_seq[anchor_pos as usize] == *del_seq.last().unwrap()
+        && ref_seq[anchor_pos as usize]
+            == *del_seq.last().expect("del_seq non-empty in while guard")
     {
         // Rotate right: move last element to front.
-        let last = *del_seq.last().unwrap();
+        let last = *del_seq.last().expect("del_seq non-empty in while guard");
         del_seq.rotate_right(1);
         del_seq[0] = last;
         anchor_pos -= 1;
@@ -324,9 +325,10 @@ fn insertion_key(
     // Left-normalise: shift anchor left while last base of ins_seq matches anchor.
     while anchor_pos > 0
         && !ins_seq.is_empty()
-        && ref_seq[anchor_pos as usize] == *ins_seq.last().unwrap()
+        && ref_seq[anchor_pos as usize]
+            == *ins_seq.last().expect("ins_seq non-empty in while guard")
     {
-        let last = *ins_seq.last().unwrap();
+        let last = *ins_seq.last().expect("ins_seq non-empty in while guard");
         ins_seq.rotate_right(1);
         ins_seq[0] = last;
         anchor_pos -= 1;

@@ -42,12 +42,14 @@ _DEFAULT_FASTQ = Path(os.environ.get("KAM_FASTQ_DIR", "/data/titration-nondedup/
 PATTERN = re.compile(r"TWIST_STDV2_(\d+ng)_VAF_(\w+)pc_.*_R1\.fastq\.gz$")
 READS_PER_SAMPLE = 2_000_000
 
-TIMING_COLS = ["sample", "mode", "n_reads", "total_ms",
-               "assemble_ms", "index_ms", "pathfind_ms", "call_ms"]
+TIMING_COLS = ["sample", "mode", "n_reads", "molecules", "duplex",
+               "total_ms", "assemble_ms", "index_ms", "pathfind_ms", "call_ms"]
 
-# Regexes for stage timings in kam stderr.
+# Regexes for stage timings and assembly stats in kam stderr.
 _RE = {
     "assemble_ms":  re.compile(r"\[run/assemble\].*time_ms=(\d+)"),
+    "molecules":    re.compile(r"\[run/assemble\] molecules=(\d+)"),
+    "duplex":       re.compile(r"\[run/assemble\] molecules=\d+ duplex=(\d+)"),
     "index_ms":     re.compile(r"\[run/index\].*time_ms=(\d+)"),
     "pathfind_ms":  re.compile(r"\[run/pathfind\].*time_ms=(\d+)"),
     "call_ms":      re.compile(r"\[run/call\].*time_ms=(\d+)"),

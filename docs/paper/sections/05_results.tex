@@ -137,12 +137,12 @@ construction when none of the expected alleles happen to be present in the sampl
 
 Figure~\ref{fig:runtime} shows per-sample wall-clock time broken down by
 pipeline stage at 2M read pairs.
-Molecule assembly dominates runtime: it accounts for 62--79\% of total wall
-time and ranges from 10.5\,s to 18.0\,s depending on input mass.
-Index construction takes 3.1--7.2\,s; path finding 0.3--2.1\,s; variant
+Molecule assembly dominates runtime: it accounts for 46--76\% of total wall
+time and ranges from 11.4\,s to 20.1\,s depending on input mass.
+Index construction takes 4.6--8.3\,s; path finding 0.6--8.3\,s; variant
 calling and output are negligible ($<$5\,ms combined).
 The bottom panel shows molecules assembled per sample, which drives runtime:
-30\,ng samples assemble 310--417K molecules vs.\ 347--372K for 5\,ng due to
+30\,ng samples assemble 327--417K molecules vs.\ 346--371K for 5\,ng due to
 different PCR duplication rates.
 
 \begin{figure}[t]
@@ -155,6 +155,6 @@ different PCR duplication rates.
   \label{fig:runtime}
 \end{figure}
 
-Total wall-clock time ranged from 16.3\,s to 21.7\,s per sample on
+Total wall-clock time ranged from 18.1\,s to 30.5\,s per sample on
 a single core. Peak RSS ranged from 1.8\,GB to 2.0\,GB, with all samples
 well within a 4\,GB budget.

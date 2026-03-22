@@ -43,8 +43,8 @@ import numpy as np
 from pathlib import Path
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-REPO = Path(__file__).resolve().parents[2]
-_DEFAULT_RESULTS = REPO / "benchmarking/results/tables_v7/titration_results_2mreads.tsv"
+REPO = Path(__file__).resolve().parents[3]
+_DEFAULT_RESULTS = REPO / "docs/benchmarking/snvindel/summary/titration_results_2mreads.tsv"
 OUT_DIR = REPO / "docs/paper/figures"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -687,7 +687,7 @@ def parse_args():
 
 def main():
     args = parse_args()
-    tables_dir = REPO / "benchmarking/results/tables"
+    tables_dir = REPO / "docs/benchmarking/snvindel/summary"
 
     if args.compare:
         datasets = []

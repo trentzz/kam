@@ -261,17 +261,6 @@ mod tests {
         }
     }
 
-    #[allow(dead_code)]
-    fn write_fastq(path: &PathBuf, records: &[(&str, &str, &str)]) {
-        let mut f = std::fs::File::create(path).expect("create fastq");
-        for (name, seq, qual) in records {
-            writeln!(f, "@{name}").unwrap();
-            writeln!(f, "{seq}").unwrap();
-            writeln!(f, "+").unwrap();
-            writeln!(f, "{qual}").unwrap();
-        }
-    }
-
     fn build_test_index(dir: &std::path::Path, target_seq: &str, k: u32) -> (PathBuf, PathBuf) {
         // Build a molecule whose consensus contains the target sequence.
         let template = target_seq.as_bytes();
