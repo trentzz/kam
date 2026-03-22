@@ -24,7 +24,7 @@ use kam_index::HashKmerIndex;
 use kam_pathfind::anchor::{validate_anchors, DEFAULT_ANCHOR_THRESHOLD};
 use kam_pathfind::graph::DeBruijnGraph;
 use kam_pathfind::score::{score_and_rank_paths, ScoredPath};
-use kam_pathfind::walk::{GraphPath, WalkConfig};
+use kam_pathfind::walk::{find_alt_paths_from_reference, walk_paths_biased, GraphPath, WalkConfig};
 
 use crate::cli::RunArgs;
 use crate::commands::index::{molecules_to_consensus_reads, read_fasta};
@@ -106,17 +106,27 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     let mut allowlist = build_allowlist(&target_slices, k);
 
     // Augment allowlist with SV junction k-mers when provided.
+    // Keep a separate canonical k-mer set for use in the reference-guided alt
+    // path search: only explore branches matching known junction k-mers.
+    // The raw junction sequences are kept for synthetic alt path construction
+    // when graph-based junction traversal fails (e.g. DUP at low VAF where
+    // only J[0..2] are covered by reads).
+    let mut junction_canonical_kmers: std::collections::HashSet<u64> =
+        std::collections::HashSet::new();
+    let mut sv_junctions_data: Option<Vec<(String, Vec<u8>)>> = None;
     if let Some(ref junctions_path) = args.sv_junctions {
         let junctions = read_fasta(junctions_path)?;
         let junction_slices: Vec<&[u8]> =
             junctions.iter().map(|(_id, seq)| seq.as_slice()).collect();
         let junction_allowlist = build_allowlist(&junction_slices, k);
         let n_junction = junction_allowlist.len();
+        junction_canonical_kmers = junction_allowlist.clone();
         allowlist.extend(junction_allowlist);
         eprintln!(
             "[run/index] sv_junctions: added {n_junction} junction k-mers ({} total)",
             allowlist.len()
         );
+        sv_junctions_data = Some(junctions);
     }
 
     let n_target_kmers = allowlist.len() as u64;
@@ -225,7 +235,6 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
 
     for (target_id, target_seq) in &targets {
         n_targets_queried += 1;
-
         // validate_anchors checks canonical anchor uniqueness in the canonical
         // evidence index — used to warn about repeat regions.
         let anchor_result = validate_anchors(target_seq, k, &index, DEFAULT_ANCHOR_THRESHOLD);
@@ -296,8 +305,12 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // Number of k-mers in the effective (inward-trimmed) reference path.
-        // Allow 50 extra k-mers of headroom for indels.
-        // SV targets can override this via a `_maxpathN` suffix in the ID.
+        // The initial DFS uses a small headroom (50) — it only needs to find the
+        // reference path and nearby short-indel variants.
+        // The reference-guided alt search uses a larger headroom when sv-junctions
+        // are provided, to accommodate tandem duplications (which add up to ~200bp
+        // to the alt path length).
+        // SV targets can override the base limit via a `_maxpathN` suffix in the ID.
         let effective_len = target_seq.len() - start_offset - end_offset;
         let default_max_path = if k > 1 {
             effective_len.saturating_sub(k - 1) + 50
@@ -305,12 +318,26 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             150
         };
         let target_max_path = parse_maxpath_from_id(target_id).unwrap_or(default_max_path);
+        // Alt path search allows 300 extra k-mers when sv-junctions are active.
+        let alt_max_path = if args.sv_junctions.is_some() {
+            target_max_path + 250
+        } else {
+            target_max_path
+        };
         let walk_config = WalkConfig {
             max_path_length: target_max_path,
             ..Default::default()
         };
 
-        let raw_paths = kam_pathfind::walk::walk_paths(&graph, start_raw, end_raw, &walk_config);
+        // Use evidence-biased DFS: sort successors by molecule count descending
+        // so the high-evidence reference path is found before max_paths is
+        // exhausted by low-evidence error-k-mer branches.
+        let raw_paths = walk_paths_biased(&graph, start_raw, end_raw, &walk_config, |raw_km| {
+            index
+                .get(canonical(raw_km, k))
+                .map(|e| e.n_molecules)
+                .unwrap_or(0)
+        });
 
         // Categorise walk outcome.
         if raw_paths.is_empty() {
@@ -338,6 +365,93 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
                 })
                 .collect()
         };
+
+        // Reference-guided alt path search.
+        //
+        // Exhaustive DFS (even evidence-biased) is dominated by single-base
+        // error bubbles: each sequencing error along the ~170-k-mer reference
+        // path generates a complete error path, exhausting max_paths=100
+        // before the DFS backtracks to an early SV branch point (e.g. at
+        // position 20/170 for a deletion). This second pass walks the
+        // reference path and explicitly searches for high-evidence non-
+        // reference branches at each position.
+        // Clone the reference path k-mers before moving `paths`.
+        let ref_path_kmers: Option<Vec<u64>> = paths
+            .iter()
+            .find(|p| p.sequence == target_seq.as_slice())
+            .map(|p| p.kmers.clone());
+        let mut paths = paths;
+        if let Some(ref_kmers) = ref_path_kmers {
+            // Branch filter: when junction k-mers are available, only explore
+            // branches that are known junction k-mers (prevents running DFS
+            // from every error-bubble branch, which causes 5-minute runtimes).
+            // Without junction k-mers, fall back to a generous evidence
+            // threshold.
+            let use_junction_filter = !junction_canonical_kmers.is_empty();
+
+            let guided = find_alt_paths_from_reference(
+                &graph,
+                &ref_kmers,
+                end_raw,
+                alt_max_path,
+                1,
+                |raw_km| {
+                    let can_km = canonical(raw_km, k);
+                    if use_junction_filter {
+                        // Require the junction k-mer to have at least 3
+                        // supporting molecules to avoid launching sub-DFS from
+                        // spurious accidental k-mer collisions between the
+                        // junction allowlist and the target graph, which would
+                        // cause an exhaustive search over the full graph.
+                        junction_canonical_kmers.contains(&can_km)
+                            && index
+                                .get(can_km)
+                                .map(|e| e.n_molecules >= 3)
+                                .unwrap_or(false)
+                    } else {
+                        index
+                            .get(can_km)
+                            .map(|e| e.n_molecules >= 10)
+                            .unwrap_or(false)
+                    }
+                },
+                |raw_km| {
+                    index
+                        .get(canonical(raw_km, k))
+                        .map(|e| e.n_molecules)
+                        .unwrap_or(0)
+                },
+            );
+            // Synthetic fallback for DUP junctions: when graph-based traversal
+            // finds no alt path (junction chain J[3..29] absent from raw graph
+            // at low VAF), reconstruct the alt sequence directly from the
+            // target and junction sequences. This bypasses the de Bruijn graph
+            // for the junction portion; the path is scored via the canonical index.
+            // Add guided alt paths not already present (by sequence).
+            let mut existing_seqs: std::collections::HashSet<Vec<u8>> =
+                paths.iter().map(|p| p.sequence.clone()).collect();
+            for alt_path in guided {
+                if existing_seqs.insert(alt_path.sequence.clone()) {
+                    paths.push(alt_path);
+                }
+            }
+
+            // Always try synthetic DUP alt paths from the junction file.
+            // The graph-based traversal cannot find DUP paths at low VAF because
+            // the full junction k-mer chain is not in the raw graph; graph-derived
+            // paths (SNVs, chimeric bridges) may already be in `paths` but are
+            // unrelated to the DUP. The synthetic path is added unconditionally so
+            // it is scored alongside any graph-derived paths.
+            if let Some(ref jdata) = sv_junctions_data {
+                for (_junc_id, junc_seq) in jdata {
+                    if let Some(alt_path) = synthesize_dup_alt_path(target_seq, junc_seq, k) {
+                        if existing_seqs.insert(alt_path.sequence.clone()) {
+                            paths.push(alt_path);
+                        }
+                    }
+                }
+            }
+        }
 
         // Score against the canonical evidence index; score_path canonicalizes
         // each raw path k-mer before the lookup.
@@ -559,6 +673,83 @@ fn format_extension(fmt: OutputFormat) -> &'static str {
         OutputFormat::Json => "json",
         OutputFormat::Vcf => "vcf",
     }
+}
+
+/// Construct a synthetic [`GraphPath`] for a tandem duplication alt allele.
+///
+/// At low VAF, reads barely cross the D1→D2 boundary, covering only the first
+/// few junction k-mers (J[0..2]) but not J[3..29].  Graph-based traversal
+/// therefore cannot find the alt path.  This function bypasses the graph by
+/// reconstructing the expected alt sequence directly from the target and
+/// junction sequences.
+///
+/// The DUP junction sequence is `last_half bp of D` + `first_half bp of D`,
+/// where D = target[dup_start..dup_end] is the duplicated region.
+/// - `junction[0..half]`  = target[dup_end-half..dup_end]  → locates dup_end
+/// - `junction[half..2*half]` = target[dup_start..dup_start+half] → locates dup_start
+///
+/// In the VCF representation, REF = target[dup_start] (anchor base) and
+/// ALT = target[dup_start] + D.  The copy is therefore inserted right after
+/// the anchor base, not at the end of D.  Alt sequence:
+///   target[0..dup_start+1] + D + target[dup_start+1..]
+///
+/// This matches the alt genome produced by a typical SV simulator: the inserted
+/// copy immediately follows the anchor base, and the original reference continues
+/// from target[dup_start+1] after the copy.
+///
+/// The returned path uses raw (forward) k-mer encodings and is scored by the
+/// caller via the canonical index.
+///
+/// Returns `None` if the junction does not match this target (either half is
+/// absent from the target sequence, or dup_start ≥ dup_end).
+fn synthesize_dup_alt_path(target_seq: &[u8], junc_seq: &[u8], k: usize) -> Option<GraphPath> {
+    if junc_seq.len() < 2 || !junc_seq.len().is_multiple_of(2) {
+        return None;
+    }
+    let half = junc_seq.len() / 2;
+
+    // left half = last `half` bp of D → dup_end = pos + half
+    let dup_end = find_subseq(target_seq, &junc_seq[..half])? + half;
+    // right half = first `half` bp of D → dup_start = pos (anchor base)
+    let dup_start = find_subseq(target_seq, &junc_seq[half..])?;
+
+    if dup_start >= dup_end || dup_end > target_seq.len() {
+        return None;
+    }
+
+    // The VCF inserts the copy right after the anchor (dup_start).
+    // Alt = target[0..dup_start+1] + D + target[dup_start+1..]
+    let anchor_end = dup_start + 1;
+    if anchor_end > target_seq.len() {
+        return None;
+    }
+    let dup_len = dup_end - dup_start;
+    let mut alt_seq = Vec::with_capacity(target_seq.len() + dup_len);
+    alt_seq.extend_from_slice(&target_seq[..anchor_end]);
+    alt_seq.extend_from_slice(&target_seq[dup_start..dup_end]);
+    alt_seq.extend_from_slice(&target_seq[anchor_end..]);
+
+    let kmers: Vec<u64> = KmerIterator::new(&alt_seq, k).map(|(_, km)| km).collect();
+    let length = kmers.len();
+    if length == 0 {
+        return None;
+    }
+
+    Some(GraphPath {
+        kmers,
+        sequence: alt_seq,
+        length,
+    })
+}
+
+/// Find the first occurrence of `needle` in `haystack`.
+///
+/// Returns the start index, or `None` if absent.
+fn find_subseq(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() || needle.len() > haystack.len() {
+        return None;
+    }
+    haystack.windows(needle.len()).position(|w| w == needle)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

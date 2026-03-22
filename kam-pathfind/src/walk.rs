@@ -169,6 +169,211 @@ pub fn walk_paths(
     completed
 }
 
+/// Find alt paths by branching off the reference path at each position.
+///
+/// Exhaustive DFS (even evidence-biased) may not find early-branching SV alt
+/// paths within `max_paths`: single-base error bubbles form complete paths for
+/// every position in the reference path, exhausting the budget before the DFS
+/// backtracks to the SV branch point (which may be only 20–50 k-mers from the
+/// start for a large deletion).
+///
+/// This function walks `reference_kmers` and at each position checks for
+/// successors NOT on the reference path with molecule evidence >=
+/// `min_alt_evidence`. For each such "high-evidence branch", a short DFS
+/// (`max_alt_paths_per_branch` paths) is run from the branch k-mer to
+/// `end_kmer`. The resulting paths are stitched with the reference prefix to
+/// form complete alt paths.
+///
+/// # Arguments
+///
+/// - `reference_kmers`: ordered k-mers of the identified reference path.
+/// - `end_kmer`: the end anchor k-mer (same as used in the original DFS).
+/// - `max_path_length`: maximum k-mers in a sub-path (same as `WalkConfig`).
+/// - `max_alt_paths_per_branch`: `max_paths` for each sub-DFS. 3–5 is enough
+///   for most SV alt paths.
+/// - `branch_filter`: closure that returns `true` for non-reference successors
+///   that should be explored. Use this to require junction k-mer membership
+///   (preventing error-bubble DFS runs) and/or a minimum evidence threshold.
+/// - `molecule_count`: closure returning molecule count for a raw k-mer.
+pub fn find_alt_paths_from_reference(
+    graph: &DeBruijnGraph,
+    reference_kmers: &[u64],
+    end_kmer: u64,
+    max_path_length: usize,
+    max_alt_paths_per_branch: usize,
+    branch_filter: impl Fn(u64) -> bool,
+    molecule_count: impl Fn(u64) -> u32 + Copy,
+) -> Vec<GraphPath> {
+    let k = graph.k();
+
+    // Build a set of raw k-mers on the reference path for fast exclusion.
+    let ref_kmer_set: std::collections::HashSet<u64> = reference_kmers.iter().copied().collect();
+
+    let mut alt_paths: Vec<GraphPath> = Vec::new();
+    // Deduplicate by sequence bytes to handle multiple branch points that
+    // produce the same alt sequence.
+    let mut seen_sequences: std::collections::HashSet<Vec<u8>> = std::collections::HashSet::new();
+
+    for (i, &ref_kmer) in reference_kmers.iter().enumerate() {
+        for &successor in graph.successors(ref_kmer) {
+            // Skip k-mers already on the reference path.
+            if ref_kmer_set.contains(&successor) {
+                continue;
+            }
+            // Apply branch filter (junction membership / evidence threshold).
+            if !branch_filter(successor) {
+                continue;
+            }
+
+            // Sub-path budget: cap the sub-walk tightly so the DFS stays
+            // bounded. The sub-walk from `successor` to `end_kmer` can use at
+            // most (max_path_length - (i+1)) k-mers (the full alt path minus
+            // the already-committed reference prefix).  Hard-cap at 300 to
+            // prevent exponential search when a spurious junction k-mer match
+            // triggers a DFS into a highly connected region far from end_kmer.
+            let sub_budget = max_path_length.saturating_sub(i + 1).clamp(1, 300);
+            let walk_config = WalkConfig {
+                max_path_length: sub_budget,
+                max_paths: max_alt_paths_per_branch,
+            };
+
+            // Walk from `successor` to `end_kmer`.
+            let rest_paths =
+                walk_paths_biased(graph, successor, end_kmer, &walk_config, molecule_count);
+            for rest in rest_paths {
+                // Stitch: reference_kmers[0..=i] + rest.kmers.
+                // rest.kmers[0] == successor, which is a graph-valid successor
+                // of reference_kmers[i], so the concatenation is a valid path.
+                let total_len = (i + 1) + rest.kmers.len();
+                let mut full_kmers = Vec::with_capacity(total_len);
+                full_kmers.extend_from_slice(&reference_kmers[..=i]);
+                full_kmers.extend_from_slice(&rest.kmers);
+
+                let sequence = reconstruct_sequence(&full_kmers, k);
+
+                if seen_sequences.contains(&sequence) {
+                    continue;
+                }
+                seen_sequences.insert(sequence.clone());
+
+                alt_paths.push(GraphPath {
+                    length: full_kmers.len(),
+                    kmers: full_kmers,
+                    sequence,
+                });
+            }
+        }
+    }
+
+    alt_paths
+}
+
+/// Find all paths from `start_kmer` to `end_kmer`, exploring high-evidence
+/// successors first.
+///
+/// Identical to [`walk_paths`] except that at each DFS node the successors are
+/// sorted by `molecule_count(kmer)` descending before exploration. This ensures
+/// the high-evidence reference path is encountered early, before `max_paths` is
+/// exhausted by low-evidence error-k-mer branches that branch off the main path.
+///
+/// The `molecule_count` closure should canonicalize the raw k-mer and query the
+/// evidence index. Successors with equal evidence are explored in their natural
+/// order (stable sort).
+///
+/// # Example
+/// ```
+/// use kam_pathfind::graph::DeBruijnGraph;
+/// use kam_pathfind::walk::{walk_paths_biased, WalkConfig};
+///
+/// let mut g = DeBruijnGraph::new(4);
+/// g.add_edge(0, 1);
+/// g.add_edge(1, 2);
+/// let paths = walk_paths_biased(&g, 0, 2, &WalkConfig::default(), |_| 1);
+/// assert_eq!(paths.len(), 1);
+/// assert_eq!(paths[0].kmers, vec![0, 1, 2]);
+/// ```
+pub fn walk_paths_biased(
+    graph: &DeBruijnGraph,
+    start_kmer: u64,
+    end_kmer: u64,
+    config: &WalkConfig,
+    molecule_count: impl Fn(u64) -> u32,
+) -> Vec<GraphPath> {
+    let k = graph.k();
+    let mut completed: Vec<GraphPath> = Vec::new();
+
+    if start_kmer == end_kmer {
+        if graph.contains(start_kmer) {
+            let kmers = vec![start_kmer];
+            let sequence = decode_kmer(start_kmer, k);
+            completed.push(GraphPath {
+                length: kmers.len(),
+                kmers,
+                sequence,
+            });
+        }
+        return completed;
+    }
+
+    if !graph.contains(start_kmer) {
+        return completed;
+    }
+
+    // Stack stores (node, pre-sorted successors, next index to try).
+    // Successors are sorted descending by molecule count on first visit so the
+    // DFS explores the highest-evidence branch first.
+    let sorted_start_succs = {
+        let mut s = graph.successors(start_kmer).to_vec();
+        s.sort_by_key(|&km| std::cmp::Reverse(molecule_count(km)));
+        s
+    };
+    let mut stack: Vec<(u64, Vec<u64>, usize)> = vec![(start_kmer, sorted_start_succs, 0)];
+    let mut current_path: Vec<u64> = vec![start_kmer];
+    let mut visited: HashSet<u64> = HashSet::from([start_kmer]);
+
+    while let Some((_node, succs, succ_idx)) = stack.last_mut() {
+        if completed.len() >= config.max_paths {
+            break;
+        }
+
+        if *succ_idx >= succs.len() {
+            let popped = current_path.pop().expect("path never empty during DFS");
+            visited.remove(&popped);
+            stack.pop();
+            continue;
+        }
+
+        let next = succs[*succ_idx];
+        *succ_idx += 1;
+
+        if visited.contains(&next) {
+            continue;
+        }
+        if current_path.len() >= config.max_path_length {
+            continue;
+        }
+
+        if next == end_kmer {
+            let mut path_kmers = current_path.clone();
+            path_kmers.push(next);
+            let sequence = reconstruct_sequence(&path_kmers, k);
+            completed.push(GraphPath {
+                length: path_kmers.len(),
+                kmers: path_kmers,
+                sequence,
+            });
+        } else {
+            visited.insert(next);
+            current_path.push(next);
+            let mut next_succs = graph.successors(next).to_vec();
+            next_succs.sort_by_key(|&km| std::cmp::Reverse(molecule_count(km)));
+            stack.push((next, next_succs, 0));
+        }
+    }
+
+    completed
+}
+
 /// Reconstruct the DNA sequence from an ordered list of encoded k-mers.
 ///
 /// Successive k-mers overlap by k−1 bases. The first k-mer contributes all `k`

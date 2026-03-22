@@ -267,6 +267,26 @@ pub fn score_and_rank_paths(
         }
     }
 
+    // Fallback: if no exact sequence match was found (e.g. DFS exhausted
+    // max_paths before reaching the true reference path), identify the
+    // reference by evidence. The true reference path has far higher molecule
+    // support than error-k-mer paths (min_mol=1). Sort by evidence and mark
+    // the strongest path as reference so alt calling can proceed.
+    if !scored.iter().any(|sp| sp.is_reference) && !scored.is_empty() {
+        scored.sort_by(|a, b| {
+            b.aggregate_evidence
+                .min_molecules
+                .cmp(&a.aggregate_evidence.min_molecules)
+                .then_with(|| {
+                    b.aggregate_evidence
+                        .mean_molecules
+                        .partial_cmp(&a.aggregate_evidence.mean_molecules)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+        });
+        scored[0].is_reference = true;
+    }
+
     // Build a set of canonical k-mers from the reference path.
     // These are the anchor k-mers shared with every alt path.  Duplex evidence
     // at these k-mers reflects reference molecules, not alt-supporting molecules,
