@@ -6,7 +6,7 @@ For each sample, runs kam twice:
   2. Monitoring mode: --target-variants truth_variants.vcf. Only calls matching
      the truth somatic panel are labelled PASS; all others are NotTargeted.
 
-Output: two TSV files per sample in docs/benchmarking/results/titration/snvindel/:
+Output: two TSV files per sample in docs/benchmarking/snvindel/per_sample/:
   <sample>_discovery.tsv
   <sample>_monitoring.tsv
 
@@ -30,7 +30,7 @@ REPO = Path(__file__).resolve().parents[3]
 KAM          = REPO / "target/release/kam"
 TARGETS      = REPO / "docs/benchmarking/scripts/targets_100bp.fa"
 TRUTH_VCF    = REPO / "docs/benchmarking/scripts/truth_variants.vcf"
-_DEFAULT_OUT = REPO / "docs/benchmarking/results/titration/snvindel"
+_DEFAULT_OUT = REPO / "docs/benchmarking/snvindel/per_sample"
 _DEFAULT_FASTQ = Path(os.environ.get("KAM_FASTQ_DIR", "/data/titration-nondedup/fastqs"))
 
 PATTERN = re.compile(r"TWIST_STDV2_(\d+ng)_VAF_(\w+)pc_.*_R1\.fastq\.gz$")

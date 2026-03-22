@@ -159,105 +159,110 @@ def svlen(ref: str, alt: str, info: dict, stype: str) -> int:
 def make_deletion_junction(
     ref_path: Path, chrom: str, pos: int, sv_len: int, window: int
 ) -> tuple[str, str] | None:
-    """Construct a junction window for a deletion.
+    """Construct a reference-window target for a deletion.
 
-    The junction is the point where the left flank meets the right flank after
-    the deleted sequence is removed.  The window captures ``window // 2`` bp of
-    left flank and ``window // 2`` bp of right flank.
+    The target is the full genomic reference window spanning ``window // 2``
+    bases of left context, the entire deleted region (with anchor), and
+    ``window // 2`` bases of right context.  This is the reference sequence;
+    the alt path (via junction k-mers from --sv-junctions) is shorter by
+    exactly ``sv_len`` bases.
 
-    pos is 1-based (VCF convention); the deleted region starts at pos.
+    Using the reference window as the target ensures that reference molecules
+    are on-target (via the target k-mers in the allowlist) and that the
+    reference path reconstructed by the DFS matches ``target_seq``, allowing
+    the caller to correctly identify it as the reference allele.
+
+    pos is 1-based (VCF convention).
     """
     half = window // 2
-    # Left flank: bases immediately before the deleted region (0-based: pos-1-half to pos-1).
-    left_start = pos - 1 - half
-    left_end = pos - 1  # exclusive
-    # Right flank: bases immediately after the deleted region.
-    right_start = pos - 1 + sv_len
-    right_end = right_start + half
+    # In 0-based coordinates:
+    #   anchor   = pos - 1
+    #   deleted  = [pos : pos + sv_len]   (100 bases for sv_len=100)
+    #   right of deletion starts at pos + sv_len
+    left_start = pos - 1 - half        # 50 bp before anchor
+    right_end = pos + sv_len + half    # 50 bp after deletion end
 
     if left_start < 0:
         return None
 
     try:
-        left = fetch_reference(ref_path, chrom, left_start, left_end)
-        right = fetch_reference(ref_path, chrom, right_start, right_end)
+        target_seq = fetch_reference(ref_path, chrom, left_start, right_end)
     except Exception as e:
         print(f"  WARNING: could not fetch reference for {chrom}:{pos}: {e}", file=sys.stderr)
         return None
 
-    junction_seq = left + right
-    if len(junction_seq) < 2:
+    if len(target_seq) < 2:
         return None
 
-    target_id = f"{chrom}:{left_start}-{right_end}_DEL_{sv_len}bp_maxpath{window + sv_len}"
-    return target_id, junction_seq
+    target_id = f"{chrom}:{left_start}-{right_end}_DEL_{sv_len}bp"
+    return target_id, target_seq
 
 
 def make_duplication_junction(
     ref_path: Path, chrom: str, pos: int, sv_len: int, window: int
 ) -> tuple[str, str] | None:
-    """Construct a junction window for a tandem duplication.
+    """Construct a reference-window target for a tandem duplication.
 
-    The junction k-mers are at the boundary where the duplicated segment meets
-    a copy of itself.  The target captures the last ``half`` bp of the
-    duplicated region + the first ``half`` bp of the duplicated region again.
+    The target is the genomic reference window spanning ``window // 2`` bases
+    of left context, the duplicated region, and ``window // 2`` bases of right
+    context.  The reference path matches this window.  The alt path (tandem
+    duplicate) is longer by exactly ``sv_len`` bases and is found via the DUP
+    junction k-mers in --sv-junctions.
+
+    pos is 1-based (VCF convention).
     """
     half = window // 2
-    # Duplicated region: pos-1 to pos-1+sv_len (0-based, exclusive end).
-    dup_start = pos - 1
-    dup_end = pos - 1 + sv_len
+    dup_start = pos - 1       # 0-based start of duplicated region
+    dup_end = pos - 1 + sv_len  # 0-based exclusive end
+    left_start = dup_start - half
+    right_end = dup_end + half
 
-    # Junction: last half of dup + first half of dup.
-    seg_end_start = max(dup_start, dup_end - half)
-    seg_end_end = dup_end
-    seg_begin_start = dup_start
-    seg_begin_end = dup_start + half
+    if left_start < 0:
+        return None
 
     try:
-        seg_end = fetch_reference(ref_path, chrom, seg_end_start, seg_end_end)
-        seg_begin = fetch_reference(ref_path, chrom, seg_begin_start, seg_begin_end)
+        target_seq = fetch_reference(ref_path, chrom, left_start, right_end)
     except Exception as e:
         print(f"  WARNING: could not fetch reference for {chrom}:{pos}: {e}", file=sys.stderr)
         return None
 
-    junction_seq = seg_end + seg_begin
-    if len(junction_seq) < 2:
+    if len(target_seq) < 2:
         return None
 
-    target_id = f"{chrom}:{dup_start}-{dup_end}_DUP_{sv_len}bp"
-    return target_id, junction_seq
+    target_id = f"{chrom}:{left_start}-{right_end}_DUP_{sv_len}bp"
+    return target_id, target_seq
 
 
 def make_inversion_junction(
     ref_path: Path, chrom: str, pos: int, sv_len: int, window: int
 ) -> tuple[str, str] | None:
-    """Construct a junction window for an inversion.
+    """Construct a reference-window target for an inversion.
 
-    The left breakpoint junction captures the left flank + the rev-comp of the
-    first ``half`` bp of the inverted region.
+    The target is the genomic reference window spanning ``window // 2`` bases
+    of left context, the inverted region, and ``window // 2`` bases of right
+    context.  The reference path matches this window.  The alt path has the
+    same length but the central region is replaced by the reverse complement,
+    and it is found via the INV junction k-mers in --sv-junctions.
+
+    pos is 1-based (VCF convention).
     """
     half = window // 2
-    inv_start = pos - 1  # 0-based
+    inv_start = pos - 1       # 0-based
     inv_end = pos - 1 + sv_len
-
-    left_flank_start = max(0, inv_start - half)
-    left_flank_end = inv_start
-    inv_region_start = inv_start
-    inv_region_end = min(inv_end, inv_start + half)
+    left_start = max(0, inv_start - half)
+    right_end = inv_end + half
 
     try:
-        left_flank = fetch_reference(ref_path, chrom, left_flank_start, left_flank_end)
-        inv_region = fetch_reference(ref_path, chrom, inv_region_start, inv_region_end)
+        target_seq = fetch_reference(ref_path, chrom, left_start, right_end)
     except Exception as e:
         print(f"  WARNING: could not fetch reference for {chrom}:{pos}: {e}", file=sys.stderr)
         return None
 
-    junction_seq = left_flank + reverse_complement(inv_region)
-    if len(junction_seq) < 2:
+    if len(target_seq) < 2:
         return None
 
-    target_id = f"{chrom}:{left_flank_start}-{inv_end}_INV_{sv_len}bp"
-    return target_id, junction_seq
+    target_id = f"{chrom}:{left_start}-{right_end}_INV_{sv_len}bp"
+    return target_id, target_seq
 
 
 # ── Junction k-mer allowlist FASTA ────────────────────────────────────────────
@@ -273,9 +278,11 @@ def make_deletion_junction_kmer_seq(
     the alt-specific k-mers for the deletion.
     """
     flank = k - 1
-    left_end = pos - 1
+    # Include anchor base in the left flank (left_end = pos, exclusive).
+    left_end = pos
     left_start = left_end - flank
-    right_start = pos - 1 + sv_len
+    # Right flank starts after deleted region: [pos:pos+sv_len] deleted → right at pos+sv_len.
+    right_start = pos + sv_len
     right_end = right_start + flank
 
     if left_start < 0:
@@ -316,6 +323,41 @@ def make_duplication_junction_kmer_seq(
         return None
 
     return seg_end + seg_begin
+
+
+def make_inversion_junction_kmer_seq(
+    ref_path: Path, chrom: str, pos: int, sv_len: int, k: int
+) -> str | None:
+    """Return synthetic junction sequences for an inversion (both breakpoints).
+
+    An inversion at [inv_start, inv_end) creates junction k-mers at two sites:
+      - Left breakpoint: last (k-1) bases of left flank + first (k-1) bases of
+        rc(inverted region).
+      - Right breakpoint: last (k-1) bases of rc(inverted region) + first (k-1)
+        bases of right flank.
+
+    Both junction sequences are concatenated and returned as a single FASTA
+    entry.  They provide the alt-path edges the DFS needs to traverse the
+    inversion without following the reference sequence.
+    """
+    flank = k - 1
+    inv_start = pos - 1   # 0-based
+    inv_end = pos - 1 + sv_len
+
+    try:
+        left_context = fetch_reference(ref_path, chrom, inv_start - flank, inv_start)
+        inv_region = fetch_reference(ref_path, chrom, inv_start, inv_end)
+        right_context = fetch_reference(ref_path, chrom, inv_end, inv_end + flank)
+    except Exception as e:
+        print(f"  WARNING: INV junction k-mer fetch failed for {chrom}:{pos}: {e}", file=sys.stderr)
+        return None
+
+    rc_inv = reverse_complement(inv_region)
+    # Left breakpoint junction: last (k-1) of left context + first (k-1) of rc(inv).
+    left_junc = left_context + rc_inv[:flank]
+    # Right breakpoint junction: last (k-1) of rc(inv) + first (k-1) of right context.
+    right_junc = rc_inv[-flank:] + right_context
+    return left_junc + right_junc
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -409,9 +451,10 @@ def main() -> None:
                 junc_seq = make_duplication_junction_kmer_seq(
                     args.ref, chrom, pos, length, args.kmer_size
                 )
-            # For inversions, the junction window itself serves as the allowlist entry.
             elif stype == "INV":
-                junc_seq = junction_window
+                junc_seq = make_inversion_junction_kmer_seq(
+                    args.ref, chrom, pos, length, args.kmer_size
+                )
 
             if junc_seq is not None and len(junc_seq) >= args.kmer_size:
                 junc_id = f"{chrom}:{pos}_{stype}_junction"

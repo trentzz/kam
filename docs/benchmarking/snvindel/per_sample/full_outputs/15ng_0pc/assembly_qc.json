@@ -1,0 +1,14 @@
+{
+  "stage": "molecule_assembly",
+  "version": "0.1.0",
+  "n_input_read_pairs": 2000000,
+  "n_molecules": 296575,
+  "n_duplex": 37132,
+  "n_simplex_fwd": 135124,
+  "n_simplex_rev": 124319,
+  "n_singletons": 0,
+  "duplex_fraction": 0.12520273118098288,
+  "mean_family_size": 6.1966989800219165,
+  "n_dropped_reads": 162214,
+  "passed": true
+}
