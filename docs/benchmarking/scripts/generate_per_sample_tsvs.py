@@ -10,7 +10,12 @@ Output: two TSV files per sample in docs/benchmarking/snvindel/per_sample/:
   <sample>_discovery.tsv
   <sample>_monitoring.tsv
 
-The raw TSV includes all calls (PASS and filtered) with all output columns.
+Timing for every run is appended to timing.tsv in the same directory:
+  sample  mode  n_reads  total_ms  assemble_ms  index_ms  pathfind_ms  call_ms
+
+The script skips any sample/mode whose TSV AND timing row both already exist,
+so it is safe to rerun after partial completion.
+
 Requires KAM_FASTQ_DIR to point to the titration FASTQ directory.
 
 Usage:
@@ -18,6 +23,7 @@ Usage:
 """
 
 import argparse
+import csv
 import os
 import re
 import subprocess
@@ -35,6 +41,18 @@ _DEFAULT_FASTQ = Path(os.environ.get("KAM_FASTQ_DIR", "/data/titration-nondedup/
 
 PATTERN = re.compile(r"TWIST_STDV2_(\d+ng)_VAF_(\w+)pc_.*_R1\.fastq\.gz$")
 READS_PER_SAMPLE = 2_000_000
+
+TIMING_COLS = ["sample", "mode", "n_reads", "total_ms",
+               "assemble_ms", "index_ms", "pathfind_ms", "call_ms"]
+
+# Regexes for stage timings in kam stderr.
+_RE = {
+    "assemble_ms":  re.compile(r"\[run/assemble\].*time_ms=(\d+)"),
+    "index_ms":     re.compile(r"\[run/index\].*time_ms=(\d+)"),
+    "pathfind_ms":  re.compile(r"\[run/pathfind\].*time_ms=(\d+)"),
+    "call_ms":      re.compile(r"\[run/call\].*time_ms=(\d+)"),
+    "total_ms":     re.compile(r"\[run\] output.*total_ms=(\d+)"),
+}
 
 
 def vaf_label_to_float(label: str) -> float:
@@ -62,6 +80,32 @@ def find_samples(fastq_dir: Path) -> list[dict]:
     return samples
 
 
+def load_timing_index(timing_path: Path) -> set[tuple[str, str]]:
+    """Return set of (sample, mode) pairs already recorded in timing.tsv."""
+    if not timing_path.exists():
+        return set()
+    with open(timing_path) as f:
+        reader = csv.DictReader(f, delimiter="\t")
+        return {(row["sample"], row["mode"]) for row in reader}
+
+
+def append_timing(timing_path: Path, row: dict) -> None:
+    write_header = not timing_path.exists()
+    with open(timing_path, "a") as f:
+        writer = csv.DictWriter(f, fieldnames=TIMING_COLS, delimiter="\t")
+        if write_header:
+            writer.writeheader()
+        writer.writerow(row)
+
+
+def parse_timing(stderr: str) -> dict:
+    result = {}
+    for key, pat in _RE.items():
+        m = pat.search(stderr)
+        result[key] = int(m.group(1)) if m else ""
+    return result
+
+
 def subset_fastq(gz_path: Path, n_reads: int, out_path: Path) -> None:
     n_lines = n_reads * 4
     with open(out_path, "wb") as f_out:
@@ -76,8 +120,9 @@ def subset_fastq(gz_path: Path, n_reads: int, out_path: Path) -> None:
         zcat.wait()
 
 
-def run_kam(r1: Path, r2: Path, out_dir: Path, target_variants: Path | None) -> Path | None:
-    """Run kam and return path to variants.tsv, or None on failure."""
+def run_kam(r1: Path, r2: Path, out_dir: Path,
+            target_variants: Path | None) -> tuple[Path | None, str]:
+    """Run kam. Returns (path to variants.tsv or None, stderr text)."""
     out_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
         str(KAM), "run",
@@ -94,10 +139,10 @@ def run_kam(r1: Path, r2: Path, out_dir: Path, target_variants: Path | None) -> 
     if result.returncode != 0:
         print(f"  ERROR: kam exited {result.returncode}", file=sys.stderr)
         print(result.stderr[-1000:], file=sys.stderr)
-        return None
+        return None, result.stderr
 
     tsv = out_dir / "variants.tsv"
-    return tsv if tsv.exists() else None
+    return (tsv if tsv.exists() else None), result.stderr
 
 
 def main() -> None:
@@ -119,6 +164,8 @@ def main() -> None:
         sys.exit(1)
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    timing_path = args.output_dir / "timing.tsv"
+    timing_done = load_timing_index(timing_path)
 
     samples = find_samples(args.fastq_dir)
     if not samples:
@@ -134,8 +181,11 @@ def main() -> None:
         discovery_out = args.output_dir / f"{name}_discovery.tsv"
         monitoring_out = args.output_dir / f"{name}_monitoring.tsv"
 
-        if discovery_out.exists() and monitoring_out.exists():
-            print(f"  already exists, skipping")
+        need_disc = not discovery_out.exists() or (name, "discovery") not in timing_done
+        need_mon  = not monitoring_out.exists() or (name, "monitoring") not in timing_done
+
+        if not need_disc and not need_mon:
+            print(f"  already complete, skipping")
             continue
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -148,24 +198,34 @@ def main() -> None:
             subset_fastq(sample["r2"], args.reads, r2_sub)
 
             # Discovery run
-            if not discovery_out.exists():
+            if need_disc:
                 print(f"  running discovery mode...")
                 disc_dir = tmp / "discovery"
-                tsv = run_kam(r1_sub, r2_sub, disc_dir, target_variants=None)
+                tsv, stderr = run_kam(r1_sub, r2_sub, disc_dir, target_variants=None)
                 if tsv:
                     shutil.copy(tsv, discovery_out)
-                    print(f"  -> {discovery_out.name}")
+                    timing = parse_timing(stderr)
+                    append_timing(timing_path, {
+                        "sample": name, "mode": "discovery",
+                        "n_reads": args.reads, **timing,
+                    })
+                    print(f"  -> {discovery_out.name}  ({timing.get('total_ms', '?')} ms)")
                 else:
                     print(f"  FAILED: discovery mode")
 
             # Monitoring run
-            if not monitoring_out.exists():
+            if need_mon:
                 print(f"  running monitoring mode...")
                 mon_dir = tmp / "monitoring"
-                tsv = run_kam(r1_sub, r2_sub, mon_dir, target_variants=TRUTH_VCF)
+                tsv, stderr = run_kam(r1_sub, r2_sub, mon_dir, target_variants=TRUTH_VCF)
                 if tsv:
                     shutil.copy(tsv, monitoring_out)
-                    print(f"  -> {monitoring_out.name}")
+                    timing = parse_timing(stderr)
+                    append_timing(timing_path, {
+                        "sample": name, "mode": "monitoring",
+                        "n_reads": args.reads, **timing,
+                    })
+                    print(f"  -> {monitoring_out.name}  ({timing.get('total_ms', '?')} ms)")
                 else:
                     print(f"  FAILED: monitoring mode")
 
@@ -175,6 +235,9 @@ def main() -> None:
     disc_count = len(list(args.output_dir.glob("*_discovery.tsv")))
     mon_count  = len(list(args.output_dir.glob("*_monitoring.tsv")))
     print(f"  {disc_count} discovery TSVs, {mon_count} monitoring TSVs")
+    if timing_path.exists():
+        timing_rows = load_timing_index(timing_path)
+        print(f"  {len(timing_rows)} timing rows in {timing_path.name}")
 
 
 if __name__ == "__main__":
