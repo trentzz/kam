@@ -1,7 +1,7 @@
 type	mode	sens_0010	sens_0025	sens_0050	sens_0100	sens_0200	sens_0500
-sv	discovery	0.5	0.5	1.0	0.5	0.5	0.5
-sv	tumour_informed	0.5	0.5	1.0	0.5	0.5	0.5
-ins	discovery	0.0	0.0	0.0	0.5	0.5	0.0
-ins	tumour_informed	0.0	0.0	0.0	0.5	0.5	0.0
+sv	discovery	0.75	0.5	1.0	1.0	1.0	1.0
+sv	tumour_informed	0.75	0.5	1.0	1.0	1.0	1.0
+ins	discovery	0.0	0.5	0.0	1.0	1.0	1.0
+ins	tumour_informed	0.0	0.5	0.0	1.0	1.0	1.0
 invdel	discovery	0.0	0.0	0.0	0.0	0.0	0.5
 invdel	tumour_informed	0.0	0.0	0.0	0.0	0.0	0.5

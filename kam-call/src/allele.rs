@@ -16,6 +16,8 @@
 
 use std::fmt;
 
+use crate::targeting::parse_target_id;
+
 // ─── Public types ─────────────────────────────────────────────────────────────
 
 /// A minimal, left-normalised variant allele ready for VCF output.
@@ -86,7 +88,9 @@ pub fn extract_minimal_allele(
     ref_seq: &[u8],
     alt_seq: &[u8],
 ) -> Option<MinimalAllele> {
-    let (chrom, target_start) = parse_target_id(target_id)?;
+    let (chrom, target_start_i64) = parse_target_id(target_id)?;
+    // Cast i64 to u64; genomic positions are always non-negative.
+    let target_start = target_start_i64 as u64;
 
     // Step 1: find the first differing position.
     let diff_pos = ref_seq
@@ -128,19 +132,6 @@ pub fn extract_minimal_allele(
 }
 
 // ─── Private helpers ──────────────────────────────────────────────────────────
-
-/// Parse `chrN:START-END` → `(chrom, start)`.
-///
-/// `start` is the integer before the dash, treated as the 1-based position of
-/// the first base in the target sequence (see module-level coordinate note).
-fn parse_target_id(id: &str) -> Option<(String, u64)> {
-    let colon = id.find(':')?;
-    let rest = &id[colon + 1..];
-    let dash = rest.find('-')?;
-    let chrom = id[..colon].to_string();
-    let start: u64 = rest[..dash].parse().ok()?;
-    Some((chrom, start))
-}
 
 /// Compute the left-normalised indel allele from trimmed region slices.
 fn indel_allele(
@@ -364,18 +355,20 @@ mod tests {
         check("chr5:500-602", &r, &a, 539, "CGCT", "C");
     }
 
-    // Test 8: parse_target_id handles standard coordinates.
+    // Test 8: parse_target_id (from targeting) handles standard coordinates.
     #[test]
     fn parse_target_id_standard() {
+        use crate::targeting::parse_target_id;
         assert_eq!(
             parse_target_id("chr2:29318295-29318395"),
-            Some(("chr2".to_string(), 29318295))
+            Some(("chr2".to_string(), 29_318_295_i64))
         );
     }
 
-    // Test 9: parse_target_id rejects malformed inputs.
+    // Test 9: parse_target_id (from targeting) rejects malformed inputs.
     #[test]
     fn parse_target_id_malformed() {
+        use crate::targeting::parse_target_id;
         assert!(parse_target_id("no_colon").is_none());
         assert!(parse_target_id("chr1:abc-100").is_none());
         assert!(parse_target_id("chr1:100").is_none()); // no dash
