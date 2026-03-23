@@ -188,6 +188,14 @@ pub struct CallArgs {
     /// (exact REF/ALT matching only).
     #[arg(long, default_value_t = 0u32)]
     pub ti_position_tolerance: u32,
+
+    /// Fisher p-value threshold for strand bias filter on SV-type variants.
+    ///
+    /// Defaults to 1.0 (disabled). Inversion junction reads are structurally
+    /// strand-biased and the standard threshold is inappropriate for SV paths.
+    /// Set to 0.0 to apply the same threshold as SNVs/indels.
+    #[arg(long, default_value_t = 1.0f64)]
+    pub sv_strand_bias_threshold: f64,
 }
 
 /// Arguments for the `run` subcommand (full pipeline).
@@ -317,6 +325,14 @@ pub struct RunArgs {
     /// Number of threads.
     #[arg(long)]
     pub threads: Option<usize>,
+
+    /// Fisher p-value threshold for strand bias filter on SV-type variants.
+    ///
+    /// Defaults to 1.0 (disabled). Inversion junction reads are structurally
+    /// strand-biased and the standard threshold is inappropriate for SV paths.
+    /// Set to 0.0 to apply the same threshold as SNVs/indels.
+    #[arg(long, default_value_t = 1.0f64)]
+    pub sv_strand_bias_threshold: f64,
 }
 
 #[cfg(test)]
@@ -487,6 +503,7 @@ mod tests {
         assert_eq!(args.output_format, "tsv");
         assert!(args.min_confidence.is_none());
         assert!(args.strand_bias_threshold.is_none());
+        assert_eq!(args.sv_strand_bias_threshold, 1.0);
     }
 
     /// Verify the `run` subcommand parses required arguments.
@@ -539,6 +556,7 @@ mod tests {
         assert_eq!(args.kmer_size, 31);
         assert_eq!(args.output_format, "tsv");
         assert!(args.qc_output.is_none());
+        assert_eq!(args.sv_strand_bias_threshold, 1.0);
     }
 
     /// Verify missing required arguments produce an error (not a panic).

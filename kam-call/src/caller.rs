@@ -161,6 +161,14 @@ pub struct CallerConfig {
     /// monitoring mode where the target allele is pre-specified. In discovery
     /// mode, the confidence filter still governs whether the call is PASS.
     pub sv_min_alt_molecules: u32,
+    /// Fisher p-value threshold for strand bias filter on SV-type variants.
+    ///
+    /// Defaults to 1.0 (disabled). Inversion junction reads are structurally
+    /// strand-biased due to directional path walking in the de Bruijn graph.
+    /// The standard `strand_bias_threshold` is inappropriate for SV paths.
+    ///
+    /// Set to 0.0 to apply the same threshold as SNVs/indels.
+    pub sv_strand_bias_threshold: f64,
 }
 
 impl Default for CallerConfig {
@@ -180,6 +188,7 @@ impl Default for CallerConfig {
             background_error_rate: 1e-4,
             sv_min_confidence: 0.95,
             sv_min_alt_molecules: 1,
+            sv_strand_bias_threshold: 1.0,
         }
     }
 }
@@ -200,6 +209,7 @@ impl Default for CallerConfig {
 ///     min_molecules: 990, mean_molecules: 990.0,
 ///     min_duplex: 0, mean_duplex: 0.0,
 ///     min_variant_specific_duplex: 0,
+///     mean_variant_specific_molecules: 0.0,
 ///     min_simplex_fwd: 495, min_simplex_rev: 495,
 ///     mean_error_prob: 0.001,
 /// };
@@ -207,6 +217,7 @@ impl Default for CallerConfig {
 ///     min_molecules: 10, mean_molecules: 10.0,
 ///     min_duplex: 5, mean_duplex: 5.0,
 ///     min_variant_specific_duplex: 5,
+///     mean_variant_specific_molecules: 10.0,
 ///     min_simplex_fwd: 5, min_simplex_rev: 5,
 ///     mean_error_prob: 0.001,
 /// };
@@ -221,8 +232,31 @@ pub fn call_variant(
     alt_seq: &[u8],
     config: &CallerConfig,
 ) -> VariantCall {
-    let k = alt_evidence.min_molecules;
-    let total = ref_evidence.min_molecules + alt_evidence.min_molecules;
+    // Classify the variant first so we can choose the appropriate evidence metric.
+    let variant_type = classify_variant(ref_seq, alt_seq);
+
+    // SV types use mean_variant_specific_molecules as the alt molecule count.
+    // min_molecules bottlenecks at 1–3 for long SV paths (70–150 k-mers) even
+    // at moderate VAF because only a handful of variant-specific k-mers are
+    // observed at each molecule.  The mean over variant-specific k-mers gives
+    // a calibrated count that is robust to the length of the SV path.
+    let is_sv = matches!(
+        variant_type,
+        VariantType::LargeDeletion | VariantType::TandemDuplication | VariantType::Inversion
+    );
+    let k = if is_sv {
+        alt_evidence.mean_variant_specific_molecules.round() as u32
+    } else {
+        alt_evidence.min_molecules
+    };
+    let total = if is_sv {
+        // Use mean_molecules for the reference: the reference path spans the
+        // whole target window and does not have the min bottleneck.
+        let ref_k = ref_evidence.mean_molecules.round() as u32;
+        ref_k + k
+    } else {
+        ref_evidence.min_molecules + alt_evidence.min_molecules
+    };
 
     let (vaf, vaf_ci_low, vaf_ci_high) = estimate_vaf(k, total);
 
@@ -234,8 +268,6 @@ pub fn call_variant(
     );
 
     let confidence = compute_confidence(k, total, config.background_error_rate);
-
-    let variant_type = classify_variant(ref_seq, alt_seq);
 
     // Use the minimum duplex count at variant-specific k-mers only.
     // The old mean_duplex across all ~70 path k-mers was dominated by anchor
@@ -601,7 +633,13 @@ fn assign_filter(
     if n_duplex_alt < config.min_alt_duplex {
         return VariantFilter::LowDuplex;
     }
-    if strand_bias_p < config.strand_bias_threshold {
+    let eff_strand_bias_threshold = if is_sv {
+        config.sv_strand_bias_threshold
+    } else {
+        config.strand_bias_threshold
+    };
+    // A threshold of 1.0 disables the strand-bias filter (all p-values are < 1.0).
+    if eff_strand_bias_threshold < 1.0 && strand_bias_p < eff_strand_bias_threshold {
         return VariantFilter::StrandBias;
     }
     if confidence < eff_min_confidence {
@@ -631,6 +669,8 @@ mod tests {
             // For tests, set variant-specific duplex equal to min_duplex so
             // that the filter behaves the same as the old mean_duplex logic.
             min_variant_specific_duplex: min_duplex,
+            // For tests, set variant-specific mean equal to the overall mean.
+            mean_variant_specific_molecules: min_molecules as f32,
             min_simplex_fwd: fwd,
             min_simplex_rev: rev,
             mean_error_prob: 0.001,
@@ -713,6 +753,7 @@ mod tests {
             min_duplex: 5,
             mean_duplex: 5.0,
             min_variant_specific_duplex: 5,
+            mean_variant_specific_molecules: 10.0,
             min_simplex_fwd: 10, // all forward
             min_simplex_rev: 0,
             mean_error_prob: 0.001,
@@ -766,6 +807,7 @@ mod tests {
             min_duplex: 1,
             mean_duplex: 1.0,
             min_variant_specific_duplex: 1,
+            mean_variant_specific_molecules: 1.0,
             min_simplex_fwd: 1,
             min_simplex_rev: 1,
             mean_error_prob: 0.001,
@@ -950,5 +992,208 @@ mod tests {
         assert_eq!(call.variant_type, VariantType::Snv);
         // confidence ≈ 0.981 < min_confidence 0.99 → LowConfidence.
         assert_eq!(call.filter, VariantFilter::LowConfidence);
+    }
+
+    // Test 26: INV with strand-biased alt reads passes when sv_strand_bias_threshold = 1.0.
+    //
+    // Inversion junction reads are structurally strand-biased: the de Bruijn
+    // graph walks one orientation preferentially, so all alt simplex reads may
+    // land on the forward strand. The default sv_strand_bias_threshold = 1.0
+    // disables the filter for SV types, so the call must be PASS.
+    #[test]
+    fn inv_strand_biased_passes_with_default_sv_threshold() {
+        // 60 bp inversion: alt is reverse complement of ref.
+        let ref_seq: Vec<u8> = b"AAACCC".repeat(10).to_vec();
+        let alt_seq: Vec<u8> = ref_seq
+            .iter()
+            .rev()
+            .map(|&b| match b {
+                b'A' => b'T',
+                b'T' => b'A',
+                b'C' => b'G',
+                b'G' => b'C',
+                other => other,
+            })
+            .collect();
+
+        let ref_ev = make_path_evidence(990, 0, 495, 495);
+        // Alt reads are all on the forward strand (structurally biased).
+        let alt_ev = PathEvidence {
+            min_molecules: 20,
+            mean_molecules: 20.0,
+            min_duplex: 5,
+            mean_duplex: 5.0,
+            min_variant_specific_duplex: 5,
+            mean_variant_specific_molecules: 20.0,
+            min_simplex_fwd: 20,
+            min_simplex_rev: 0,
+            mean_error_prob: 0.001,
+        };
+
+        // Default config: sv_strand_bias_threshold = 1.0 (disabled for SVs).
+        let cfg = CallerConfig::default();
+        let call = call_variant("BRCA1", &ref_ev, &alt_ev, &ref_seq, &alt_seq, &cfg);
+        assert_eq!(call.variant_type, VariantType::Inversion);
+        assert_eq!(
+            call.filter,
+            VariantFilter::Pass,
+            "biased INV should pass when sv_strand_bias_threshold=1.0"
+        );
+    }
+
+    // Test 27: same INV call is StrandBias-filtered when sv_strand_bias_threshold = 0.01.
+    //
+    // Setting sv_strand_bias_threshold to the SNV default re-enables the filter
+    // for SV types, so an all-forward-strand alt must then be caught.
+    #[test]
+    fn inv_strand_biased_filtered_when_sv_threshold_set() {
+        let ref_seq: Vec<u8> = b"AAACCC".repeat(10).to_vec();
+        let alt_seq: Vec<u8> = ref_seq
+            .iter()
+            .rev()
+            .map(|&b| match b {
+                b'A' => b'T',
+                b'T' => b'A',
+                b'C' => b'G',
+                b'G' => b'C',
+                other => other,
+            })
+            .collect();
+
+        let ref_ev = make_path_evidence(990, 0, 495, 495);
+        let alt_ev = PathEvidence {
+            min_molecules: 20,
+            mean_molecules: 20.0,
+            min_duplex: 5,
+            mean_duplex: 5.0,
+            min_variant_specific_duplex: 5,
+            mean_variant_specific_molecules: 20.0,
+            min_simplex_fwd: 20,
+            min_simplex_rev: 0,
+            mean_error_prob: 0.001,
+        };
+
+        // Lower sv_strand_bias_threshold to 0.01 to enable the filter for SVs.
+        let cfg = CallerConfig {
+            sv_strand_bias_threshold: 0.01,
+            ..CallerConfig::default()
+        };
+        let call = call_variant("BRCA1", &ref_ev, &alt_ev, &ref_seq, &alt_seq, &cfg);
+        assert_eq!(call.variant_type, VariantType::Inversion);
+        assert_eq!(
+            call.filter,
+            VariantFilter::StrandBias,
+            "biased INV should be filtered when sv_strand_bias_threshold=0.01"
+        );
+    }
+
+    // Test 28: SNV with biased strands is still StrandBias-filtered.
+    //
+    // sv_strand_bias_threshold applies only to SV types. An SNV with all
+    // alt reads on the forward strand must still be caught by strand_bias_threshold.
+    #[test]
+    fn snv_strand_biased_still_filtered() {
+        let ref_ev = make_path_evidence(990, 0, 495, 495);
+        let alt_ev = PathEvidence {
+            min_molecules: 20,
+            mean_molecules: 20.0,
+            min_duplex: 5,
+            mean_duplex: 5.0,
+            min_variant_specific_duplex: 5,
+            mean_variant_specific_molecules: 20.0,
+            min_simplex_fwd: 20,
+            min_simplex_rev: 0,
+            mean_error_prob: 0.001,
+        };
+
+        // Default config: strand_bias_threshold = 0.01 for SNVs,
+        // sv_strand_bias_threshold = 1.0 (disabled for SVs).
+        let cfg = CallerConfig::default();
+        let call = call_variant("TP53", &ref_ev, &alt_ev, b"A", b"T", &cfg);
+        assert_eq!(call.variant_type, VariantType::Snv);
+        assert_eq!(
+            call.filter,
+            VariantFilter::StrandBias,
+            "biased SNV should still be filtered regardless of sv_strand_bias_threshold"
+        );
+    }
+
+    // Test 29: SV path with high mean_variant_specific_molecules and low min_molecules
+    //          uses the mean for NALT, not the minimum.
+    //
+    // A 100 bp deletion path might have min_molecules = 2 (one variant-specific
+    // k-mer covered by only 2 molecules) but mean_variant_specific_molecules = 12.0
+    // (the typical k-mer is covered by ~12 molecules at 1% VAF).  The call must
+    // report n_molecules_alt = 12 (from the mean), not 2 (from the min).
+    #[test]
+    fn sv_call_uses_mean_variant_specific_not_min() {
+        let long_ref: Vec<u8> = b"ACGT".repeat(25).to_vec(); // 100 bp
+        let short_alt: Vec<u8> = b"ACGT".repeat(10).to_vec(); // 40 bp → 60 bp deletion
+        assert_eq!(
+            classify_variant(&long_ref, &short_alt),
+            VariantType::LargeDeletion
+        );
+
+        let ref_ev = make_path_evidence(1000, 0, 500, 500);
+
+        // min_molecules is low (bottleneck k-mer), but the mean is much higher.
+        let alt_ev = PathEvidence {
+            min_molecules: 2,
+            mean_molecules: 12.0,
+            min_duplex: 1,
+            mean_duplex: 6.0,
+            min_variant_specific_duplex: 1,
+            mean_variant_specific_molecules: 12.0,
+            min_simplex_fwd: 6,
+            min_simplex_rev: 6,
+            mean_error_prob: 0.001,
+        };
+
+        let cfg = CallerConfig::default();
+        let call = call_variant("TP53", &ref_ev, &alt_ev, &long_ref, &short_alt, &cfg);
+        assert_eq!(call.variant_type, VariantType::LargeDeletion);
+
+        // n_molecules_alt should be 12 (mean), not 2 (min).
+        assert_eq!(
+            call.n_molecules_alt, 12,
+            "SV call must use mean_variant_specific_molecules, got {}",
+            call.n_molecules_alt
+        );
+        assert_eq!(call.filter, VariantFilter::Pass);
+    }
+
+    // Test 30: SNV call still uses min_molecules, not mean_variant_specific_molecules.
+    //
+    // For SNVs, mean_variant_specific_molecules is ignored. The call must use
+    // min_molecules as before.
+    #[test]
+    fn snv_call_uses_min_molecules_unchanged() {
+        let ref_ev = make_path_evidence(1000, 0, 500, 500);
+
+        // min_molecules = 10, mean_variant_specific_molecules = 50.
+        // For an SNV, k must be 10 (from min), not 50 (from mean).
+        let alt_ev = PathEvidence {
+            min_molecules: 10,
+            mean_molecules: 50.0,
+            min_duplex: 5,
+            mean_duplex: 25.0,
+            min_variant_specific_duplex: 5,
+            mean_variant_specific_molecules: 50.0,
+            min_simplex_fwd: 5,
+            min_simplex_rev: 5,
+            mean_error_prob: 0.001,
+        };
+
+        let cfg = CallerConfig::default();
+        let call = call_variant("KRAS", &ref_ev, &alt_ev, b"A", b"T", &cfg);
+        assert_eq!(call.variant_type, VariantType::Snv);
+
+        // n_molecules_alt must equal min_molecules (10), not mean (50).
+        assert_eq!(
+            call.n_molecules_alt, 10,
+            "SNV call must use min_molecules, got {}",
+            call.n_molecules_alt
+        );
+        assert_eq!(call.filter, VariantFilter::Pass);
     }
 }

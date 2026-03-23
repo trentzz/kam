@@ -77,6 +77,15 @@ pub struct PathEvidence {
     /// [`score_and_rank_paths`] after the reference path is identified; not
     /// available from [`score_path`] alone.
     pub min_variant_specific_duplex: u32,
+    /// Mean `n_molecules` across variant-specific k-mers only.
+    ///
+    /// Variant-specific k-mers are those not shared with the reference path.
+    /// For large SV paths, this is a better evidence estimate than
+    /// `min_molecules` because the minimum over 70–150 k-mer positions
+    /// bottlenecks at 1–3 even at moderate VAF.
+    ///
+    /// Set to 0.0 for the reference path. Computed by [`score_and_rank_paths`].
+    pub mean_variant_specific_molecules: f32,
     /// Minimum `n_simplex_fwd` across all k-mers in the path.
     ///
     /// Using the minimum rather than the sum gives a per-molecule count rather
@@ -150,6 +159,7 @@ pub fn score_path(path: &GraphPath, index: &dyn KmerIndex, k: usize) -> ScoredPa
                 min_duplex: 0,
                 mean_duplex: 0.0,
                 min_variant_specific_duplex: 0,
+                mean_variant_specific_molecules: 0.0,
                 min_simplex_fwd: 0,
                 min_simplex_rev: 0,
                 mean_error_prob: 0.0,
@@ -203,6 +213,7 @@ pub fn score_path(path: &GraphPath, index: &dyn KmerIndex, k: usize) -> ScoredPa
             min_duplex,
             mean_duplex,
             min_variant_specific_duplex: 0, // set by score_and_rank_paths
+            mean_variant_specific_molecules: 0.0, // set by score_and_rank_paths
             min_simplex_fwd,
             min_simplex_rev,
             mean_error_prob,
@@ -303,14 +314,15 @@ pub fn score_and_rank_paths(
         })
         .unwrap_or_default();
 
-    // For each alt path, compute the minimum duplex count across variant-specific
-    // k-mers (those not shared with the reference path).  This gives a calibrated
-    // duplex count at the actual variant site.
+    // For each alt path, compute the minimum duplex count and mean molecule count
+    // across variant-specific k-mers (those not shared with the reference path).
+    // This gives calibrated evidence at the actual variant site.
     for sp in &mut scored {
         if sp.is_reference {
             continue;
         }
-        let min_vs_duplex = sp
+
+        let vs_evidences: Vec<MoleculeEvidence> = sp
             .path
             .kmers
             .iter()
@@ -319,12 +331,25 @@ pub fn score_and_rank_paths(
                 if ref_kmer_set.contains(&canon) {
                     return None; // anchor k-mer: skip
                 }
-                let ev = index.get(canon).cloned().unwrap_or_default();
-                Some(ev.n_duplex)
+                Some(index.get(canon).cloned().unwrap_or_default())
             })
-            .min()
-            .unwrap_or(0);
-        sp.aggregate_evidence.min_variant_specific_duplex = min_vs_duplex;
+            .collect();
+
+        sp.aggregate_evidence.min_variant_specific_duplex =
+            vs_evidences.iter().map(|e| e.n_duplex).min().unwrap_or(0);
+
+        // Mean molecule count across variant-specific k-mers only.
+        // Falls back to the overall path mean when no variant-specific k-mers
+        // exist (e.g. when all path k-mers are shared with the reference).
+        sp.aggregate_evidence.mean_variant_specific_molecules = if vs_evidences.is_empty() {
+            sp.aggregate_evidence.mean_molecules
+        } else {
+            vs_evidences
+                .iter()
+                .map(|e| e.n_molecules as f32)
+                .sum::<f32>()
+                / vs_evidences.len() as f32
+        };
     }
 
     // Sort by min_molecules descending, then mean_molecules descending for ties.
@@ -532,5 +557,78 @@ mod tests {
         assert_eq!(scored.aggregate_evidence.min_molecules, 0);
         assert_eq!(scored.aggregate_evidence.mean_molecules, 0.0);
         assert_eq!(scored.weakest_kmer.kmer, 0);
+    }
+
+    // Test 8: mean_variant_specific_molecules uses only non-reference k-mers.
+    //
+    // Reference path has k-mers [ref1, ref2].
+    // Alt path has k-mers [ref1, alt1, alt2] where ref1 is shared with reference.
+    // Variant-specific k-mers are alt1 (20 molecules) and alt2 (10 molecules).
+    // Expected mean_variant_specific_molecules = (20 + 10) / 2 = 15.0.
+    // min_molecules for the alt path is min(ref1=50, alt1=20, alt2=10) = 10.
+    // The mean (15.0) is a better estimate than the minimum (10) at moderate VAF.
+    #[test]
+    fn mean_variant_specific_molecules_excludes_anchor_kmers() {
+        let k = 4;
+        let raw_ref1 = enc(b"AAAC");
+        let raw_ref2 = enc(b"CCCC");
+        let raw_alt1 = enc(b"TTTT");
+        // raw_alt2 is redefined below to avoid GGGG (canonical = CCCC = raw_ref2).
+
+        let mut index = HashKmerIndex::new();
+        // ref1 has high molecule count — it is an anchor k-mer shared with the
+        // alt path.  Its count must not inflate mean_variant_specific_molecules.
+        index.insert(canonical(raw_ref1, k), ev(50, 25));
+        index.insert(canonical(raw_ref2, k), ev(48, 24));
+        // alt-specific k-mers have lower but consistent support.
+        // Note: raw_alt2 must not share a canonical form with any reference k-mer.
+        // TTTT: canonical = min(TTTT, AAAA) = AAAA ≠ ref1(AAAC) or ref2(CCCC) — OK.
+        // ACGT: canonical = min(ACGT, ACGT) = ACGT ≠ AAAC or CCCC — OK.
+        let raw_alt2 = enc(b"ACGT"); // replacing GGGG (canonical = CCCC = raw_ref2)
+        index.insert(canonical(raw_alt1, k), ev(20, 10));
+        index.insert(canonical(raw_alt2, k), ev(10, 5));
+
+        // Reference path: ref1 + ref2.
+        let ref_seq = b"AAACCCCC";
+        let ref_path = simple_path(vec![raw_ref1, raw_ref2], ref_seq.to_vec());
+
+        // Alt path: ref1 (anchor) + alt1 + alt2 (variant-specific).
+        let alt_path = simple_path(vec![raw_ref1, raw_alt1, raw_alt2], b"AAACTTTTACGT".to_vec());
+
+        let ranked = score_and_rank_paths(vec![alt_path, ref_path], &index, ref_seq, k);
+
+        let alt = ranked
+            .iter()
+            .find(|p| !p.is_reference)
+            .expect("alt path present");
+
+        // mean of alt1 (20) and alt2 (10) = 15.0.
+        assert!(
+            (alt.aggregate_evidence.mean_variant_specific_molecules - 15.0).abs() < 1e-5,
+            "expected 15.0, got {}",
+            alt.aggregate_evidence.mean_variant_specific_molecules
+        );
+
+        // min_molecules is over all three k-mers including the anchor, so it
+        // equals min(50, 20, 10) = 10. The variant-specific mean (15.0) is
+        // higher and more representative of actual alt support.
+        assert_eq!(alt.aggregate_evidence.min_molecules, 10);
+    }
+
+    // Test 9: reference path has mean_variant_specific_molecules == 0.0.
+    #[test]
+    fn reference_path_mean_vs_molecules_is_zero() {
+        let k = 4;
+        let raw_ref = enc(b"AAAC");
+
+        let mut index = HashKmerIndex::new();
+        index.insert(canonical(raw_ref, k), ev(50, 25));
+
+        let ref_seq = b"AAAC";
+        let ref_path = simple_path(vec![raw_ref], ref_seq.to_vec());
+        let ranked = score_and_rank_paths(vec![ref_path], &index, ref_seq, k);
+
+        let refp = ranked.iter().find(|p| p.is_reference).unwrap();
+        assert_eq!(refp.aggregate_evidence.mean_variant_specific_molecules, 0.0);
     }
 }

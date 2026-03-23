@@ -51,6 +51,7 @@ pub fn run_call(args: CallArgs) -> Result<(), Box<dyn std::error::Error>> {
             .min_alt_duplex
             .unwrap_or(CallerConfig::default().min_alt_duplex),
         max_vaf: args.max_vaf.or(CallerConfig::default().max_vaf),
+        sv_strand_bias_threshold: args.sv_strand_bias_threshold,
         ..CallerConfig::default()
     };
 
@@ -171,6 +172,7 @@ fn record_to_path_evidence(rec: &ScoredPathRecord) -> kam_pathfind::score::PathE
         min_duplex: rec.min_duplex,
         mean_duplex: rec.mean_duplex,
         min_variant_specific_duplex: rec.min_variant_specific_duplex,
+        mean_variant_specific_molecules: rec.mean_variant_specific_molecules,
         min_simplex_fwd: rec.min_simplex_fwd,
         min_simplex_rev: rec.min_simplex_rev,
         mean_error_prob: rec.mean_error_prob,
@@ -231,6 +233,7 @@ mod tests {
             min_duplex: 0,
             mean_duplex: 0.0,
             min_variant_specific_duplex: 0,
+            mean_variant_specific_molecules: n_molecules as f32,
             min_simplex_fwd: n_molecules / 2,
             min_simplex_rev: n_molecules / 2,
             mean_error_prob: 0.001,
@@ -262,6 +265,7 @@ mod tests {
             max_vaf: None,
             target_variants: None,
             ti_position_tolerance: 0,
+            sv_strand_bias_threshold: 1.0,
         };
 
         run_call(args).expect("run_call should succeed");
@@ -297,6 +301,7 @@ mod tests {
             max_vaf: None,
             target_variants: None,
             ti_position_tolerance: 0,
+            sv_strand_bias_threshold: 1.0,
         };
 
         run_call(args).expect("run_call with empty input should succeed");

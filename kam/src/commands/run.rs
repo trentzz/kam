@@ -513,6 +513,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
         sv_min_alt_molecules: args
             .sv_min_alt_molecules
             .unwrap_or(CallerConfig::default().sv_min_alt_molecules),
+        sv_strand_bias_threshold: args.sv_strand_bias_threshold,
         ..CallerConfig::default()
     };
 
@@ -829,6 +830,7 @@ mod tests {
             min_alt_duplex: None,
             sv_min_confidence: None,
             sv_min_alt_molecules: None,
+            sv_strand_bias_threshold: 1.0,
             max_vaf: None,
             sv_junctions: None,
             target_variants: None,
@@ -899,6 +901,7 @@ mod tests {
             min_alt_duplex: None,
             sv_min_confidence: None,
             sv_min_alt_molecules: None,
+            sv_strand_bias_threshold: 1.0,
             max_vaf: None,
             sv_junctions: None,
             target_variants: None,
