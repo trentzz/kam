@@ -135,6 +135,9 @@ pub enum FamilyType {
 impl FamilyType {
     /// Classify a family given its `(fwd_reads, rev_reads)` family size.
     ///
+    /// A `(0, 0)` family (no reads on either strand) returns `Singleton` as the
+    /// most conservative fallback.
+    ///
     /// # Example
     /// ```
     /// use kam_core::molecule::FamilyType;
@@ -143,10 +146,12 @@ impl FamilyType {
     /// assert_eq!(FamilyType::from_family_size((1, 0)), FamilyType::Singleton);
     /// assert_eq!(FamilyType::from_family_size((3, 0)), FamilyType::SimplexFwd);
     /// assert_eq!(FamilyType::from_family_size((0, 2)), FamilyType::SimplexRev);
+    /// assert_eq!(FamilyType::from_family_size((0, 0)), FamilyType::Singleton);
     /// ```
     pub fn from_family_size(family_size: (u8, u8)) -> Self {
         let (fwd, rev) = family_size;
         match (fwd, rev) {
+            (0, 0) => FamilyType::Singleton,
             (1, 0) | (0, 1) => FamilyType::Singleton,
             (f, 0) if f > 0 => FamilyType::SimplexFwd,
             (0, r) if r > 0 => FamilyType::SimplexRev,
@@ -157,9 +162,8 @@ impl FamilyType {
 
 /// A fully-assembled molecule carrying consensus evidence from both strands.
 ///
-/// This is not yet part of the task-002 / task-004 interface but is included
-/// here to match the `core_data_model` spec. Fields are populated by
-/// `kam-umi` during assembly.
+/// Fields are populated by `kam-assemble` during UMI grouping and consensus
+/// calling. Matches the `core_data_model` spec.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Molecule {
     /// Stable molecule identifier derived from hashing the canonical UMI pair.
@@ -272,5 +276,12 @@ mod tests {
     #[test]
     fn family_type_simplex_rev() {
         assert_eq!(FamilyType::from_family_size((0, 2)), FamilyType::SimplexRev);
+    }
+
+    #[test]
+    fn family_type_zero_zero_is_singleton() {
+        // A family with no reads on either strand must not be classified as
+        // Duplex. The catch-all arm previously matched this case incorrectly.
+        assert_eq!(FamilyType::from_family_size((0, 0)), FamilyType::Singleton);
     }
 }
