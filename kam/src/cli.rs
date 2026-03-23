@@ -128,6 +128,14 @@ pub struct PathfindArgs {
     /// Output scored paths file.
     #[arg(long)]
     pub output: PathBuf,
+
+    /// K-mer size. Overrides the value inferred from the index when provided.
+    ///
+    /// By default, k is inferred from the stored k-mer values in the index.
+    /// Use this flag when inference fails (e.g., all k-mers begin with A) or
+    /// to explicitly confirm the expected k.
+    #[arg(short = 'k', long)]
+    pub kmer_size: Option<usize>,
 }
 
 /// Arguments for the `call` subcommand.
