@@ -3,7 +3,7 @@
 **Epic**: none (standalone bug fix)
 **Priority**: high
 **Depends on**: none
-**Status**: todo
+**Status**: done
 
 ## Goal
 
