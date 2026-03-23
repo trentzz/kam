@@ -1,0 +1,10 @@
+##fileformat=VCFv4.2
+##contig=<ID=chr1,length=2000>
+##INFO=<ID=TYPE,Number=1,Type=String,Description="Variant type: SNP or INDEL">
+##INFO=<ID=VAF,Number=1,Type=Float,Description="Variant allele frequency">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	150	.	C	A	.	PASS	TYPE=SNP;VAF=0.0125
+chr1	350	.	G	A	.	PASS	TYPE=SNP;VAF=0.0125
+chr1	600	.	A	C	.	PASS	TYPE=SNP;VAF=0.0125
+chr1	850	.	G	A	.	PASS	TYPE=SNP;VAF=0.0125
+chr1	1100	.	G	A	.	PASS	TYPE=SNP;VAF=0.0125

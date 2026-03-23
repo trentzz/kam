@@ -24,6 +24,13 @@ use crate::caller::{VariantCall, VariantFilter};
 /// consistent.
 pub type TargetVariantSet = HashSet<(String, i64, String, String)>;
 
+/// A set of (chrom, pos) pairs derived from a target VCF.
+///
+/// Used for position-based tumour-informed matching when `--ti-position-tolerance`
+/// is non-zero.  A call passes if its (chrom, pos) is within the tolerance of any
+/// entry in this set, regardless of REF/ALT.
+pub type TargetPositionSet = HashSet<(String, i64)>;
+
 /// Load expected variants from a VCF file.
 ///
 /// Parses CHROM, POS, REF, and ALT from each non-header line.
@@ -207,6 +214,92 @@ pub fn apply_target_filter(calls: &mut [VariantCall], targets: &TargetVariantSet
         if !is_targeted {
             call.filter = VariantFilter::NotTargeted;
         }
+    }
+}
+
+/// Apply tumour-informed filter with optional position-based fallback.
+///
+/// When `tolerance > 0`, a PASS call is retained if:
+/// 1. Its (CHROM, POS, REF, ALT) matches an entry in `targets` exactly, OR
+/// 2. Its (CHROM, POS) is within `tolerance` bp of any target position.
+///
+/// When `tolerance == 0`, this is equivalent to `apply_target_filter`.
+///
+/// The position fallback is needed for large SVs where kam reports partial
+/// alleles (e.g., a 1bp junction insertion) that cannot match a full SV truth
+/// allele by exact REF/ALT comparison.
+///
+/// # Example
+///
+/// ```
+/// use std::collections::HashSet;
+/// use kam_call::caller::{VariantCall, VariantFilter, VariantType};
+/// use kam_call::targeting::{apply_target_filter_with_tolerance, TargetVariantSet};
+///
+/// let call = VariantCall {
+///     target_id: "chr1:490-600".to_string(),
+///     variant_type: VariantType::Snv,
+///     ref_sequence: b"ACGTACGT".to_vec(),
+///     alt_sequence: b"ACTCACGT".to_vec(),
+///     vaf: 0.01,
+///     vaf_ci_low: 0.005,
+///     vaf_ci_high: 0.02,
+///     n_molecules_ref: 99,
+///     n_molecules_alt: 1,
+///     n_duplex_alt: 0,
+///     n_simplex_alt: 1,
+///     confidence: 0.99,
+///     strand_bias_p: 0.5,
+///     filter: VariantFilter::Pass,
+/// };
+///
+/// // Truth VCF has a DUP at pos 500; call is at pos 493 (partial allele).
+/// // With tolerance=10, the call is within 10bp of pos 500 → PASS.
+/// let mut targets = TargetVariantSet::new();
+/// targets.insert(("chr1".to_string(), 500, "C".to_string(), "CDUP100".to_string()));
+/// let mut calls = vec![call];
+/// apply_target_filter_with_tolerance(&mut calls, &targets, 10);
+/// assert_eq!(calls[0].filter, VariantFilter::Pass);
+/// ```
+pub fn apply_target_filter_with_tolerance(
+    calls: &mut [VariantCall],
+    targets: &TargetVariantSet,
+    tolerance: i64,
+) {
+    // Build a (chrom, pos) position set from the target VCF for fast proximity checks.
+    let positions: TargetPositionSet = targets
+        .iter()
+        .map(|(chrom, pos, _, _)| (chrom.clone(), *pos))
+        .collect();
+
+    for call in calls.iter_mut() {
+        if call.filter != VariantFilter::Pass {
+            continue;
+        }
+
+        let key = extract_variant_key(&call.target_id, &call.ref_sequence, &call.alt_sequence);
+        if key.is_none() {
+            call.filter = VariantFilter::NotTargeted;
+            continue;
+        }
+        let (call_chrom, call_pos, ref_allele, alt_allele) = key.unwrap();
+
+        // 1. Exact match.
+        if targets.contains(&(call_chrom.clone(), call_pos, ref_allele, alt_allele)) {
+            continue; // already PASS
+        }
+
+        // 2. Position-based fallback (only when tolerance > 0).
+        if tolerance > 0 {
+            let near_target = positions.iter().any(|(t_chrom, t_pos)| {
+                t_chrom == &call_chrom && (call_pos - t_pos).abs() <= tolerance
+            });
+            if near_target {
+                continue; // PASS via position proximity
+            }
+        }
+
+        call.filter = VariantFilter::NotTargeted;
     }
 }
 
@@ -480,6 +573,78 @@ mod tests {
         let mut calls = vec![call];
         apply_target_filter(&mut calls, &empty);
         assert_eq!(calls[0].filter, VariantFilter::LowConfidence);
+    }
+
+    // Test 8: position tolerance passes nearby calls regardless of REF/ALT.
+    #[test]
+    fn apply_target_filter_with_tolerance_passes_nearby_call() {
+        use crate::caller::{VariantCall, VariantFilter, VariantType};
+
+        // Call is at pos 493 (partial 1bp insertion); truth is at pos 500 (full DUP).
+        // Target: (chr1, 500, "C", "CDUP").
+        // Called key for chr1:490-600, ref=b"ACGT", alt=b"ACCT":
+        //   diff at offset 2 → SNV pos = 490 + 2 + 1 = 493.
+        let mut call = VariantCall {
+            target_id: "chr1:490-600".to_string(),
+            variant_type: VariantType::Snv,
+            ref_sequence: b"ACGT".to_vec(),
+            alt_sequence: b"ACCT".to_vec(),
+            vaf: 0.01,
+            vaf_ci_low: 0.005,
+            vaf_ci_high: 0.02,
+            n_molecules_ref: 99,
+            n_molecules_alt: 1,
+            n_duplex_alt: 0,
+            n_simplex_alt: 1,
+            confidence: 0.99,
+            strand_bias_p: 0.5,
+            filter: VariantFilter::Pass,
+        };
+
+        let mut targets = TargetVariantSet::new();
+        // Truth is at pos 500 with a different REF/ALT — exact match will fail.
+        targets.insert(("chr1".to_string(), 500, "C".to_string(), "CDUP".to_string()));
+
+        // With tolerance=10: call at pos 493, target at pos 500 → |493-500|=7 ≤ 10 → Pass.
+        let mut calls = vec![call.clone()];
+        apply_target_filter_with_tolerance(&mut calls, &targets, 10);
+        assert_eq!(calls[0].filter, VariantFilter::Pass);
+
+        // With tolerance=5: |493-500|=7 > 5 → NotTargeted.
+        let mut calls2 = vec![call];
+        apply_target_filter_with_tolerance(&mut calls2, &targets, 5);
+        assert_eq!(calls2[0].filter, VariantFilter::NotTargeted);
+    }
+
+    // Test 9: exact match still works when tolerance > 0.
+    #[test]
+    fn apply_target_filter_with_tolerance_exact_match_still_works() {
+        use crate::caller::{VariantCall, VariantFilter, VariantType};
+
+        let call = VariantCall {
+            target_id: "chr1:100-108".to_string(),
+            variant_type: VariantType::Snv,
+            ref_sequence: b"ACGTACGT".to_vec(),
+            alt_sequence: b"ACTTACGT".to_vec(),
+            vaf: 0.01,
+            vaf_ci_low: 0.005,
+            vaf_ci_high: 0.02,
+            n_molecules_ref: 99,
+            n_molecules_alt: 1,
+            n_duplex_alt: 0,
+            n_simplex_alt: 1,
+            confidence: 0.99,
+            strand_bias_p: 0.5,
+            filter: VariantFilter::Pass,
+        };
+
+        let mut targets = TargetVariantSet::new();
+        // Exact match: chr1, pos 103, G→T.
+        targets.insert(("chr1".to_string(), 103, "G".to_string(), "T".to_string()));
+
+        let mut calls = vec![call];
+        apply_target_filter_with_tolerance(&mut calls, &targets, 0);
+        assert_eq!(calls[0].filter, VariantFilter::Pass);
     }
 
     // Test 7: load_target_variants parses a minimal VCF string.

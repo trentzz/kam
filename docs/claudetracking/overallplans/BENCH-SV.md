@@ -1,6 +1,6 @@
 # BENCH-SV: SV Benchmarking Expansion
 
-**Status**: active
+**Status**: done
 **Priority**: medium
 
 ## Goal
