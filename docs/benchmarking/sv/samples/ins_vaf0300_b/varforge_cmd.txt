@@ -1,0 +1,2 @@
+# Run from the repository root.
+varforge run docs/benchmarking/sv/configs/ins_vaf0300_b.yaml

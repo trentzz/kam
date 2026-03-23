@@ -1,6 +1,6 @@
 # BENCH-SNV: SNV and Indel Benchmarking
 
-**Status**: active
+**Status**: done
 **Priority**: high
 
 ## Goal

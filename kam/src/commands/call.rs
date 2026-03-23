@@ -9,7 +9,9 @@ use std::io::BufWriter;
 
 use kam_call::caller::{call_variant, CallerConfig, VariantFilter};
 use kam_call::output::{write_variants, OutputFormat};
-use kam_call::targeting::{apply_target_filter, load_target_variants};
+use kam_call::targeting::{
+    apply_target_filter, apply_target_filter_with_tolerance, load_target_variants,
+};
 use kam_core::qc::{write_qc, CallQc};
 use kam_core::serialize::read_bincode;
 
@@ -94,10 +96,16 @@ pub fn run_call(args: CallArgs) -> Result<(), Box<dyn std::error::Error>> {
     // ── 5b. Apply tumour-informed filter if --target-variants provided ─────────
     if let Some(ref vcf_path) = args.target_variants {
         let targets = load_target_variants(vcf_path)?;
-        apply_target_filter(&mut all_calls, &targets);
+        let tol = args.ti_position_tolerance as i64;
+        if tol > 0 {
+            apply_target_filter_with_tolerance(&mut all_calls, &targets, tol);
+        } else {
+            apply_target_filter(&mut all_calls, &targets);
+        }
         eprintln!(
-            "[call] tumour-informed filter applied: {} target variants loaded",
-            targets.len()
+            "[call] tumour-informed filter applied: {} target variants loaded (position tolerance: {}bp)",
+            targets.len(),
+            tol,
         );
     }
 
@@ -253,6 +261,7 @@ mod tests {
             min_alt_duplex: None,
             max_vaf: None,
             target_variants: None,
+            ti_position_tolerance: 0,
         };
 
         run_call(args).expect("run_call should succeed");
@@ -287,6 +296,7 @@ mod tests {
             min_alt_duplex: None,
             max_vaf: None,
             target_variants: None,
+            ti_position_tolerance: 0,
         };
 
         run_call(args).expect("run_call with empty input should succeed");

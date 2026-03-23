@@ -14,7 +14,9 @@ use kam_assemble::io::read_fastq_pairs;
 use kam_assemble::parser::ParserConfig;
 use kam_call::caller::{call_variant, CallerConfig, VariantFilter};
 use kam_call::output::{write_variants, OutputFormat};
-use kam_call::targeting::{apply_target_filter, load_target_variants};
+use kam_call::targeting::{
+    apply_target_filter, apply_target_filter_with_tolerance, load_target_variants,
+};
 use kam_core::kmer::KmerIndex;
 use kam_core::qc::{write_qc, AssemblyQc, CallQc, IndexQc, PathfindQc};
 use kam_index::allowlist::build_allowlist;
@@ -546,10 +548,16 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     // Apply tumour-informed filter if --target-variants provided.
     if let Some(ref vcf_path) = args.target_variants {
         let target_set = load_target_variants(vcf_path)?;
-        apply_target_filter(&mut all_calls, &target_set);
+        let tol = args.ti_position_tolerance as i64;
+        if tol > 0 {
+            apply_target_filter_with_tolerance(&mut all_calls, &target_set, tol);
+        } else {
+            apply_target_filter(&mut all_calls, &target_set);
+        }
         eprintln!(
-            "[run/call] tumour-informed filter applied: {} target variants loaded",
-            target_set.len()
+            "[run/call] tumour-informed filter applied: {} target variants loaded (position tolerance: {}bp)",
+            target_set.len(),
+            tol,
         );
     }
 
@@ -824,6 +832,7 @@ mod tests {
             max_vaf: None,
             sv_junctions: None,
             target_variants: None,
+            ti_position_tolerance: 0,
             output_format: "tsv".to_string(),
             qc_output: None,
             log_dir: None,
@@ -893,6 +902,7 @@ mod tests {
             max_vaf: None,
             sv_junctions: None,
             target_variants: None,
+            ti_position_tolerance: 0,
             output_format: "tsv".to_string(),
             qc_output: None,
             log_dir: None,

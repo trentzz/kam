@@ -178,6 +178,16 @@ pub struct CallArgs {
     /// suppress background biological false positives.
     #[arg(long)]
     pub target_variants: Option<PathBuf>,
+
+    /// Position tolerance (bp) for tumour-informed matching.
+    ///
+    /// When > 0, a call also passes the tumour-informed filter if its position
+    /// is within this many bp of any target variant position, regardless of
+    /// REF/ALT. Useful for large SVs where kam reports partial alleles that
+    /// cannot match full SV truth alleles by exact REF/ALT. Default: 0
+    /// (exact REF/ALT matching only).
+    #[arg(long, default_value_t = 0u32)]
+    pub ti_position_tolerance: u32,
 }
 
 /// Arguments for the `run` subcommand (full pipeline).
@@ -268,6 +278,16 @@ pub struct RunArgs {
     /// suppress background biological false positives.
     #[arg(long)]
     pub target_variants: Option<PathBuf>,
+
+    /// Position tolerance (bp) for tumour-informed matching.
+    ///
+    /// When > 0, a call also passes the tumour-informed filter if its position
+    /// is within this many bp of any target variant position, regardless of
+    /// REF/ALT. Useful for large SVs where kam reports partial alleles that
+    /// cannot match full SV truth alleles by exact REF/ALT. Default: 0
+    /// (exact REF/ALT matching only).
+    #[arg(long, default_value_t = 0u32)]
+    pub ti_position_tolerance: u32,
 
     /// Optional FASTA of SV junction sequences to augment the k-mer allowlist.
     ///

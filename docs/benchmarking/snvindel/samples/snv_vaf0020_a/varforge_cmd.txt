@@ -1,0 +1,2 @@
+# Run from the repository root.
+varforge run docs/benchmarking/snvindel/configs/snv_vaf0020_a.yaml
