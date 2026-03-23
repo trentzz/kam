@@ -220,12 +220,13 @@ mod tests {
         let r2_seq = b"TGCATAGACGTACGTACGTACGTACGTACGT";
         let qual = vec![b'I'; r1_seq.len()];
         let config = ParserConfig::default();
-        let pair = match parse_read_pair(r1_seq, &qual, r2_seq, &qual, &config) {
-            ParseResult::Ok(p) => p,
-            ParseResult::Dropped { reason, detail } => {
-                panic!("unexpected drop: {reason:?}: {detail}");
-            }
-        };
+        let pair =
+            match parse_read_pair(r1_seq, &qual, r2_seq, &qual, &config).expect("parse error") {
+                ParseResult::Ok(p) => p,
+                ParseResult::Dropped { reason, detail } => {
+                    panic!("unexpected drop: {reason:?}: {detail}");
+                }
+            };
         let (molecules, _) = assemble_molecules(vec![pair], &AssemblerConfig::default());
         molecules.into_iter().next().expect("at least one molecule")
     }

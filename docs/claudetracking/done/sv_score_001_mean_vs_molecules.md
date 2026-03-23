@@ -3,7 +3,7 @@
 **Epic**: SV-SCORE (docs/claudetracking/overallplans/SV-SCORE.md)
 **Priority**: high
 **Depends on**: none
-**Status**: todo
+**Status**: done
 
 ## Goal
 

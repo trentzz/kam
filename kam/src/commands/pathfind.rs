@@ -35,6 +35,8 @@ pub struct ScoredPathRecord {
     pub mean_duplex: f32,
     /// Minimum duplex support at variant-specific k-mers only.
     pub min_variant_specific_duplex: u32,
+    /// Mean molecule support across variant-specific k-mers only.
+    pub mean_variant_specific_molecules: f32,
     /// Minimum forward-strand simplex molecule count across k-mers.
     pub min_simplex_fwd: u32,
     /// Minimum reverse-strand simplex molecule count across k-mers.
@@ -144,6 +146,9 @@ pub fn run_pathfind(args: PathfindArgs) -> Result<(), Box<dyn std::error::Error>
                 min_duplex: sp.aggregate_evidence.min_duplex,
                 mean_duplex: sp.aggregate_evidence.mean_duplex,
                 min_variant_specific_duplex: sp.aggregate_evidence.min_variant_specific_duplex,
+                mean_variant_specific_molecules: sp
+                    .aggregate_evidence
+                    .mean_variant_specific_molecules,
                 min_simplex_fwd: sp.aggregate_evidence.min_simplex_fwd,
                 min_simplex_rev: sp.aggregate_evidence.min_simplex_rev,
                 mean_error_prob: sp.aggregate_evidence.mean_error_prob,
@@ -271,10 +276,11 @@ mod tests {
         let qual = vec![b'I'; r1_seq.len()];
 
         let config = ParserConfig::default();
-        let pair = match parse_read_pair(&r1_seq, &qual, &r2_seq, &qual, &config) {
-            ParseResult::Ok(p) => p,
-            ParseResult::Dropped { reason, .. } => panic!("drop: {reason:?}"),
-        };
+        let pair =
+            match parse_read_pair(&r1_seq, &qual, &r2_seq, &qual, &config).expect("parse error") {
+                ParseResult::Ok(p) => p,
+                ParseResult::Dropped { reason, .. } => panic!("drop: {reason:?}"),
+            };
         let (molecules, _) = assemble_molecules(vec![pair], &AssemblerConfig::default());
 
         let molecules_path = dir.join("molecules.bin");

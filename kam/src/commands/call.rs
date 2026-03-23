@@ -7,16 +7,18 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufWriter;
 
-use kam_call::caller::{call_variant, CallerConfig, VariantFilter};
-use kam_call::output::{write_variants, OutputFormat};
+use kam_call::caller::{call_variant, VariantFilter};
+use kam_call::output::write_variants;
 use kam_call::targeting::{
     apply_target_filter, apply_target_filter_with_tolerance, load_target_variants,
 };
 use kam_core::qc::{write_qc, CallQc};
 use kam_core::serialize::read_bincode;
 
+use crate::caller_config::caller_config_from_args;
 use crate::cli::CallArgs;
 use crate::commands::pathfind::ScoredPathRecord;
+use crate::output::{format_extension, parse_output_formats};
 
 /// Run the `call` subcommand end-to-end.
 ///
@@ -37,22 +39,7 @@ pub fn run_call(args: CallArgs) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // ── 3. Build caller config from args ──────────────────────────────────────
-    let caller_config = CallerConfig {
-        min_confidence: args
-            .min_confidence
-            .unwrap_or(CallerConfig::default().min_confidence),
-        strand_bias_threshold: args
-            .strand_bias_threshold
-            .unwrap_or(CallerConfig::default().strand_bias_threshold),
-        min_alt_molecules: args
-            .min_alt_molecules
-            .unwrap_or(CallerConfig::default().min_alt_molecules),
-        min_alt_duplex: args
-            .min_alt_duplex
-            .unwrap_or(CallerConfig::default().min_alt_duplex),
-        max_vaf: args.max_vaf.or(CallerConfig::default().max_vaf),
-        ..CallerConfig::default()
-    };
+    let caller_config = caller_config_from_args(&args);
 
     // ── 4. Parse output formats ───────────────────────────────────────────────
     let formats = parse_output_formats(&args.output_format)?;
@@ -171,40 +158,10 @@ fn record_to_path_evidence(rec: &ScoredPathRecord) -> kam_pathfind::score::PathE
         min_duplex: rec.min_duplex,
         mean_duplex: rec.mean_duplex,
         min_variant_specific_duplex: rec.min_variant_specific_duplex,
+        mean_variant_specific_molecules: rec.mean_variant_specific_molecules,
         min_simplex_fwd: rec.min_simplex_fwd,
         min_simplex_rev: rec.min_simplex_rev,
         mean_error_prob: rec.mean_error_prob,
-    }
-}
-
-/// Parse a comma-separated list of format names into [`OutputFormat`] values.
-fn parse_output_formats(s: &str) -> Result<Vec<OutputFormat>, Box<dyn std::error::Error>> {
-    let mut formats = Vec::new();
-    for token in s.split(',') {
-        let fmt = match token.trim().to_ascii_lowercase().as_str() {
-            "tsv" => OutputFormat::Tsv,
-            "csv" => OutputFormat::Csv,
-            "json" => OutputFormat::Json,
-            "vcf" => OutputFormat::Vcf,
-            other => {
-                return Err(format!("unknown output format: '{other}'").into());
-            }
-        };
-        formats.push(fmt);
-    }
-    if formats.is_empty() {
-        formats.push(OutputFormat::Tsv);
-    }
-    Ok(formats)
-}
-
-/// Return the file extension for a given output format.
-fn format_extension(fmt: OutputFormat) -> &'static str {
-    match fmt {
-        OutputFormat::Tsv => "tsv",
-        OutputFormat::Csv => "csv",
-        OutputFormat::Json => "json",
-        OutputFormat::Vcf => "vcf",
     }
 }
 
@@ -231,9 +188,31 @@ mod tests {
             min_duplex: 0,
             mean_duplex: 0.0,
             min_variant_specific_duplex: 0,
+            mean_variant_specific_molecules: n_molecules as f32,
             min_simplex_fwd: n_molecules / 2,
             min_simplex_rev: n_molecules / 2,
             mean_error_prob: 0.001,
+        }
+    }
+
+    fn default_call_args(
+        paths_path: std::path::PathBuf,
+        output_path: std::path::PathBuf,
+    ) -> CallArgs {
+        CallArgs {
+            paths: paths_path,
+            output: output_path,
+            output_format: "tsv".to_string(),
+            min_confidence: None,
+            strand_bias_threshold: None,
+            min_alt_molecules: None,
+            min_alt_duplex: None,
+            sv_min_confidence: None,
+            sv_min_alt_molecules: None,
+            max_vaf: None,
+            target_variants: None,
+            ti_position_tolerance: 0,
+            sv_strand_bias_threshold: 1.0,
         }
     }
 
@@ -250,19 +229,7 @@ mod tests {
             .expect("write paths");
 
         let output_path = dir.path().join("variants.tsv");
-
-        let args = CallArgs {
-            paths: paths_path,
-            output: output_path.clone(),
-            output_format: "tsv".to_string(),
-            min_confidence: None,
-            strand_bias_threshold: None,
-            min_alt_molecules: None,
-            min_alt_duplex: None,
-            max_vaf: None,
-            target_variants: None,
-            ti_position_tolerance: 0,
-        };
+        let args = default_call_args(paths_path, output_path.clone());
 
         run_call(args).expect("run_call should succeed");
 
@@ -285,21 +252,114 @@ mod tests {
         write_bincode(&paths_path, FileType::ScoredPaths, &empty).expect("write empty paths");
 
         let output_path = dir.path().join("variants.tsv");
-
-        let args = CallArgs {
-            paths: paths_path,
-            output: output_path.clone(),
-            output_format: "tsv".to_string(),
-            min_confidence: None,
-            strand_bias_threshold: None,
-            min_alt_molecules: None,
-            min_alt_duplex: None,
-            max_vaf: None,
-            target_variants: None,
-            ti_position_tolerance: 0,
-        };
+        let args = default_call_args(paths_path, output_path.clone());
 
         run_call(args).expect("run_call with empty input should succeed");
         assert!(output_path.exists());
+    }
+
+    /// Multi-format output: requesting tsv,vcf produces both output files.
+    #[test]
+    fn run_call_multi_format_output() {
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        let ref_rec = make_scored_path_record("TP53", b"ACGTACGT".to_vec(), true, 990);
+        let alt_rec = make_scored_path_record("TP53", b"ACTTACGT".to_vec(), false, 10);
+
+        let paths_path = dir.path().join("paths.bin");
+        write_bincode(&paths_path, FileType::ScoredPaths, &[ref_rec, alt_rec])
+            .expect("write paths");
+
+        let output_path = dir.path().join("variants.tsv");
+
+        let args = CallArgs {
+            output_format: "tsv,vcf".to_string(),
+            ..default_call_args(paths_path, output_path)
+        };
+
+        run_call(args).expect("run_call multi-format should succeed");
+
+        assert!(
+            dir.path().join("variants.tsv").exists(),
+            "variants.tsv should exist"
+        );
+        assert!(
+            dir.path().join("variants.vcf").exists(),
+            "variants.vcf should exist"
+        );
+    }
+
+    /// Tumour-informed filter: targeted calls pass, non-targeted calls are marked NotTargeted.
+    ///
+    /// Target IDs must use chrom:start-end format so the VCF matcher can extract
+    /// coordinates. We use a generous position tolerance (1000 bp) to match without
+    /// requiring exact sequence position alignment.
+    #[test]
+    fn run_call_target_filter_pass_and_not_targeted() {
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        // Two targets: TP53 (will be in the tumour VCF) and BRCA1 (not in VCF).
+        // Target IDs use chrom:start-end format required by parse_target_id.
+        let ref_tp53 = make_scored_path_record("TP53:0-100", b"ACGTACGTACGT".to_vec(), true, 990);
+        let alt_tp53 = make_scored_path_record("TP53:0-100", b"ACTTACGTACGT".to_vec(), false, 10);
+        let ref_brca1 = make_scored_path_record("BRCA1:0-100", b"TTTTGGGGCCCC".to_vec(), true, 990);
+        let alt_brca1 = make_scored_path_record("BRCA1:0-100", b"TTTTGGGGATCC".to_vec(), false, 10);
+
+        let paths_path = dir.path().join("paths.bin");
+        write_bincode(
+            &paths_path,
+            FileType::ScoredPaths,
+            &[ref_tp53, alt_tp53, ref_brca1, alt_brca1],
+        )
+        .expect("write paths");
+
+        // Write a minimal VCF with only the TP53 variant.
+        let vcf_path = dir.path().join("targets.vcf");
+        std::fs::write(
+            &vcf_path,
+            "##fileformat=VCFv4.2\n\
+             #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n\
+             TP53\t3\t.\tG\tT\t.\tPASS\t.\n",
+        )
+        .expect("write vcf");
+
+        let output_path = dir.path().join("variants.vcf");
+
+        let args = CallArgs {
+            output_format: "vcf".to_string(),
+            target_variants: Some(vcf_path),
+            ti_position_tolerance: 1000,
+            ..default_call_args(paths_path, output_path.clone())
+        };
+
+        run_call(args).expect("run_call with target filter should succeed");
+
+        // Read the VCF output and verify filter assignments.
+        let vcf_text = std::fs::read_to_string(&output_path).expect("read vcf");
+        let data_lines: Vec<&str> = vcf_text.lines().filter(|l| !l.starts_with('#')).collect();
+
+        // We must have two calls (one per target).
+        assert_eq!(
+            data_lines.len(),
+            2,
+            "expected 2 variant calls; output:\n{vcf_text}"
+        );
+
+        for line in &data_lines {
+            let cols: Vec<&str> = line.split('\t').collect();
+            let chrom = cols[0];
+            let filter = cols[6];
+            if chrom == "BRCA1" {
+                assert_eq!(
+                    filter, "NotTargeted",
+                    "BRCA1 calls should be NotTargeted; output:\n{vcf_text}"
+                );
+            } else if chrom == "TP53" {
+                assert_ne!(
+                    filter, "NotTargeted",
+                    "TP53 calls should not be NotTargeted; output:\n{vcf_text}"
+                );
+            }
+        }
     }
 }

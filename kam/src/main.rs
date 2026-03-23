@@ -7,8 +7,10 @@ use clap::Parser;
 
 use crate::cli::{Cli, Commands};
 
+mod caller_config;
 mod cli;
 mod commands;
+mod output;
 
 fn main() {
     let cli = Cli::parse();

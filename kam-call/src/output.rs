@@ -19,7 +19,7 @@ use crate::caller::{VariantCall, VariantFilter, VariantType};
 /// use kam_call::output::OutputFormat;
 /// let fmt = OutputFormat::Tsv;
 /// ```
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputFormat {
     /// Tab-separated values (km-compatible).
     Tsv,
