@@ -306,7 +306,7 @@ pub fn apply_target_filter_with_tolerance(
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 /// Parse "chrN:start-end" into (chrom, start).
-fn parse_target_id(target_id: &str) -> Option<(String, i64)> {
+pub(crate) fn parse_target_id(target_id: &str) -> Option<(String, i64)> {
     let (chrom, rest) = target_id.split_once(':')?;
     let (start_str, _end_str) = rest.split_once('-')?;
     let start: i64 = start_str.parse().ok()?;
