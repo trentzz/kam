@@ -13,6 +13,8 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
+use crate::caller_config::CallerConfigArgs;
+
 /// Alignment-free variant detection for duplex UMI sequencing.
 #[derive(Parser, Debug)]
 #[command(
@@ -164,6 +166,20 @@ pub struct CallArgs {
     #[arg(long)]
     pub min_alt_duplex: Option<u32>,
 
+    /// Minimum posterior probability for a structural variant PASS call.
+    ///
+    /// Applies to LargeDeletion, TandemDuplication, and Inversion types.
+    /// Default: 0.95.
+    #[arg(long)]
+    pub sv_min_confidence: Option<f64>,
+
+    /// Minimum alt-supporting molecules for a structural variant PASS call.
+    ///
+    /// Applies to LargeDeletion, TandemDuplication, and Inversion types.
+    /// Default: 1.
+    #[arg(long)]
+    pub sv_min_alt_molecules: Option<u32>,
+
     /// Maximum VAF for a PASS call. Calls above this are labelled HighVaf.
     /// Useful for ctDNA somatic calling where germline heterozygous variants
     /// (VAF ≈ 0.5) should be excluded. Example: --max-vaf 0.35.
@@ -188,6 +204,68 @@ pub struct CallArgs {
     /// (exact REF/ALT matching only).
     #[arg(long, default_value_t = 0u32)]
     pub ti_position_tolerance: u32,
+
+    /// Fisher p-value threshold for strand bias filter on SV-type variants.
+    ///
+    /// Defaults to 1.0 (disabled). Inversion junction reads are structurally
+    /// strand-biased and the standard threshold is inappropriate for SV paths.
+    /// Set to 0.0 to apply the same threshold as SNVs/indels.
+    #[arg(long, default_value_t = 1.0f64)]
+    pub sv_strand_bias_threshold: f64,
+}
+
+impl CallerConfigArgs for CallArgs {
+    fn min_confidence(&self) -> Option<f64> {
+        self.min_confidence
+    }
+    fn strand_bias_threshold(&self) -> Option<f64> {
+        self.strand_bias_threshold
+    }
+    fn min_alt_molecules(&self) -> Option<u32> {
+        self.min_alt_molecules
+    }
+    fn min_alt_duplex(&self) -> Option<u32> {
+        self.min_alt_duplex
+    }
+    fn sv_min_confidence(&self) -> Option<f64> {
+        self.sv_min_confidence
+    }
+    fn sv_min_alt_molecules(&self) -> Option<u32> {
+        self.sv_min_alt_molecules
+    }
+    fn sv_strand_bias_threshold(&self) -> f64 {
+        self.sv_strand_bias_threshold
+    }
+    fn max_vaf(&self) -> Option<f64> {
+        self.max_vaf
+    }
+}
+
+impl CallerConfigArgs for RunArgs {
+    fn min_confidence(&self) -> Option<f64> {
+        self.min_confidence
+    }
+    fn strand_bias_threshold(&self) -> Option<f64> {
+        self.strand_bias_threshold
+    }
+    fn min_alt_molecules(&self) -> Option<u32> {
+        self.min_alt_molecules
+    }
+    fn min_alt_duplex(&self) -> Option<u32> {
+        self.min_alt_duplex
+    }
+    fn sv_min_confidence(&self) -> Option<f64> {
+        self.sv_min_confidence
+    }
+    fn sv_min_alt_molecules(&self) -> Option<u32> {
+        self.sv_min_alt_molecules
+    }
+    fn sv_strand_bias_threshold(&self) -> f64 {
+        self.sv_strand_bias_threshold
+    }
+    fn max_vaf(&self) -> Option<f64> {
+        self.max_vaf
+    }
 }
 
 /// Arguments for the `run` subcommand (full pipeline).
@@ -317,6 +395,14 @@ pub struct RunArgs {
     /// Number of threads.
     #[arg(long)]
     pub threads: Option<usize>,
+
+    /// Fisher p-value threshold for strand bias filter on SV-type variants.
+    ///
+    /// Defaults to 1.0 (disabled). Inversion junction reads are structurally
+    /// strand-biased and the standard threshold is inappropriate for SV paths.
+    /// Set to 0.0 to apply the same threshold as SNVs/indels.
+    #[arg(long, default_value_t = 1.0f64)]
+    pub sv_strand_bias_threshold: f64,
 }
 
 #[cfg(test)]
@@ -487,6 +573,7 @@ mod tests {
         assert_eq!(args.output_format, "tsv");
         assert!(args.min_confidence.is_none());
         assert!(args.strand_bias_threshold.is_none());
+        assert_eq!(args.sv_strand_bias_threshold, 1.0);
     }
 
     /// Verify the `run` subcommand parses required arguments.
@@ -539,6 +626,7 @@ mod tests {
         assert_eq!(args.kmer_size, 31);
         assert_eq!(args.output_format, "tsv");
         assert!(args.qc_output.is_none());
+        assert_eq!(args.sv_strand_bias_threshold, 1.0);
     }
 
     /// Verify missing required arguments produce an error (not a panic).
