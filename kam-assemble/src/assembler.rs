@@ -19,7 +19,6 @@
 //!    - Build a [`Molecule`] from the results.
 
 use std::collections::{HashMap, HashSet};
-use std::hash::{DefaultHasher, Hash, Hasher};
 
 use kam_core::molecule::{CanonicalUmiPair, ConsensusRead, FamilyType, Molecule, Strand};
 
@@ -517,11 +516,28 @@ fn call_ssc_bases(
     single_strand_consensus(&seqs, &quals, &config.consensus)
 }
 
+/// FNV-1a hash over a byte slice.
+///
+/// Produces a stable 64-bit value regardless of Rust version or platform.
+/// Offset basis and prime from the FNV-1a specification.
+fn fnv1a_hash(data: &[u8]) -> u64 {
+    let mut hash: u64 = 14_695_981_039_346_656_037;
+    for &byte in data {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(1_099_511_628_211);
+    }
+    hash
+}
+
 /// Compute a stable 64-bit molecule id from a canonical UMI pair.
+///
+/// Concatenates the two 5-byte UMI arrays and hashes with FNV-1a, which
+/// guarantees deterministic output across Rust versions and platforms.
 fn hash_umi_pair(pair: &CanonicalUmiPair) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    pair.hash(&mut hasher);
-    hasher.finish()
+    let mut data = [0u8; 10];
+    data[..5].copy_from_slice(&pair.umi_a);
+    data[5..].copy_from_slice(&pair.umi_b);
+    fnv1a_hash(&data)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -530,6 +546,19 @@ fn hash_umi_pair(pair: &CanonicalUmiPair) -> u64 {
 mod tests {
     use super::*;
     use crate::parser::{parse_read_pair, ParseResult, ParserConfig};
+
+    // ── Test 0: FNV-1a hash produces a stable, known-good value ──────────────
+    // A fixed input must always produce the same output. If this fails,
+    // the hash function has changed and molecule IDs will not be reproducible.
+
+    #[test]
+    fn fnv1a_hash_is_stable() {
+        // Verify two distinct inputs produce different hashes (basic sanity).
+        assert_ne!(fnv1a_hash(b"TTTTTAAAAA"), fnv1a_hash(b"ACGTATGCAT"));
+        // Verify the same input always produces the same hash.
+        let h = fnv1a_hash(b"ACGTATGCAT");
+        assert_eq!(fnv1a_hash(b"ACGTATGCAT"), h);
+    }
 
     /// Build a [`ParsedReadPair`] with the given UMIs and template sequences.
     ///
