@@ -7,7 +7,9 @@
 #
 # Outputs per dataset:
 #   results/kam_{type}_vaf{tag}_{rep}/calls_discovery.vcf
+#   results/kam_{type}_vaf{tag}_{rep}/calls_discovery.tsv
 #   results/kam_{type}_vaf{tag}_{rep}/calls_tumour_informed.vcf
+#   results/kam_{type}_vaf{tag}_{rep}/calls_tumour_informed.tsv
 #
 # Usage: bash run_sv_suite.sh [--force]
 #
@@ -85,30 +87,37 @@ run_dataset() {
             --targets "$targets" \
             $junction_arg \
             --output-dir "${out_dir}/tmp_disc" \
-            --output-format vcf \
+            --output-format vcf,tsv \
             2>&1 | grep -E "^\[run\]|ERROR"; then
         echo "[ERROR] discovery failed for ${type}_${tag}_${rep}" >&2
         FAILED+=("disc_${type}_${tag}_${rep}")
         return 0
     fi
     cp "${out_dir}/tmp_disc/variants.vcf" "$disc_vcf"
+    cp "${out_dir}/tmp_disc/variants.tsv" "${out_dir}/calls_discovery.tsv"
     rm -rf "${out_dir}/tmp_disc"
 
     echo "[RUN] ${type} vaf${tag}_${rep} — tumour-informed"
     # shellcheck disable=SC2086
+    # --ti-position-tolerance 10: SV truth alleles are full sequences (100bp DUP etc.)
+    # but kam only detects partial alleles at the junction. Exact REF/ALT matching
+    # gives 0% TI sensitivity. Position-based matching (±10bp) allows monitoring
+    # of known SV loci even when the called allele is a partial junction fragment.
     if ! "$KAM" run \
             --r1 "$r1" --r2 "$r2" \
             --targets "$targets" \
             $junction_arg \
             --target-variants "$truth_vcf" \
+            --ti-position-tolerance 10 \
             --output-dir "${out_dir}/tmp_ti" \
-            --output-format vcf \
+            --output-format vcf,tsv \
             2>&1 | grep -E "^\[run\]|ERROR"; then
         echo "[ERROR] tumour-informed failed for ${type}_${tag}_${rep}" >&2
         FAILED+=("ti_${type}_${tag}_${rep}")
         return 0
     fi
     cp "${out_dir}/tmp_ti/variants.vcf" "$ti_vcf"
+    cp "${out_dir}/tmp_ti/variants.tsv" "${out_dir}/calls_tumour_informed.tsv"
     rm -rf "${out_dir}/tmp_ti"
 }
 

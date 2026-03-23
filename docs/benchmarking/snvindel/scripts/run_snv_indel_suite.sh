@@ -7,9 +7,10 @@
 #
 # Outputs per dataset:
 #   results/kam_snv_vaf{tag}_{rep}/calls_discovery.vcf
+#   results/kam_snv_vaf{tag}_{rep}/calls_discovery.tsv
 #   results/kam_snv_vaf{tag}_{rep}/calls_tumour_informed.vcf
-#   results/kam_indel_vaf{tag}_{rep}/calls_discovery.vcf
-#   results/kam_indel_vaf{tag}_{rep}/calls_tumour_informed.vcf
+#   results/kam_snv_vaf{tag}_{rep}/calls_tumour_informed.tsv
+#   (same pattern for indel)
 #
 # Usage: bash run_snv_indel_suite.sh [--force]
 #
@@ -84,13 +85,14 @@ run_dataset() {
             --r1 "$r1" --r2 "$r2" \
             --targets "$TARGETS" \
             --output-dir "${out_dir}/tmp_disc" \
-            --output-format vcf \
+            --output-format vcf,tsv \
             2>&1 | grep -E "^\[run\]|ERROR"; then
         echo "[ERROR] discovery failed for ${type}_${tag}_${rep}" >&2
         FAILED+=("disc_${type}_${tag}_${rep}")
         return 0
     fi
     cp "${out_dir}/tmp_disc/variants.vcf" "$disc_vcf"
+    cp "${out_dir}/tmp_disc/variants.tsv" "${out_dir}/calls_discovery.tsv"
     rm -rf "${out_dir}/tmp_disc"
 
     echo "[RUN] ${type} vaf${tag}_${rep} — tumour-informed"
@@ -99,13 +101,14 @@ run_dataset() {
             --targets "$TARGETS" \
             --target-variants "$truth_vcf" \
             --output-dir "${out_dir}/tmp_ti" \
-            --output-format vcf \
+            --output-format vcf,tsv \
             2>&1 | grep -E "^\[run\]|ERROR"; then
         echo "[ERROR] tumour-informed failed for ${type}_${tag}_${rep}" >&2
         FAILED+=("ti_${type}_${tag}_${rep}")
         return 0
     fi
     cp "${out_dir}/tmp_ti/variants.vcf" "$ti_vcf"
+    cp "${out_dir}/tmp_ti/variants.tsv" "${out_dir}/calls_tumour_informed.tsv"
     rm -rf "${out_dir}/tmp_ti"
 }
 
