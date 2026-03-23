@@ -232,6 +232,27 @@ pub fn call_variant(
     alt_seq: &[u8],
     config: &CallerConfig,
 ) -> VariantCall {
+    // Identical ref and alt: no variant to call. Return a filtered no-op call
+    // immediately so downstream code never sees a spurious Snv at 100% VAF.
+    if ref_seq == alt_seq {
+        return VariantCall {
+            target_id: target_id.to_owned(),
+            variant_type: VariantType::Snv,
+            ref_sequence: ref_seq.to_vec(),
+            alt_sequence: alt_seq.to_vec(),
+            vaf: 0.0,
+            vaf_ci_low: 0.0,
+            vaf_ci_high: 0.0,
+            n_molecules_ref: ref_evidence.min_molecules,
+            n_molecules_alt: 0,
+            n_duplex_alt: 0,
+            n_simplex_alt: 0,
+            confidence: 0.0,
+            strand_bias_p: 1.0,
+            filter: VariantFilter::LowConfidence,
+        };
+    }
+
     // Classify the variant first so we can choose the appropriate evidence metric.
     let variant_type = classify_variant(ref_seq, alt_seq);
 
@@ -322,6 +343,11 @@ pub fn estimate_vaf(k: u32, m: u32) -> (f64, f64, f64) {
     if m == 0 {
         return (0.0, 0.0, 0.0);
     }
+    // Clamp k to m before subtraction. For SV types, k comes from
+    // mean_variant_specific_molecules.round() while m = ref_k + k where
+    // ref_k uses a different rounding path. Independent rounding can push k
+    // above m, which would wrap on u32 subtraction.
+    let k = k.min(m);
     let point = k as f64 / m as f64;
     let alpha = k as f64 + 1.0;
     let beta_param = (m - k) as f64 + 1.0;
@@ -1195,5 +1221,37 @@ mod tests {
             call.n_molecules_alt
         );
         assert_eq!(call.filter, VariantFilter::Pass);
+    }
+
+    // Test 31 (BUG-004): estimate_vaf must not panic or wrap when k > m.
+    //
+    // This can occur for SV types where k = mean_variant_specific_molecules.round()
+    // and m = ref_k + k, but ref_k and k are rounded independently so k can
+    // momentarily exceed m. The guard clamps k to m before subtraction.
+    #[test]
+    fn estimate_vaf_k_greater_than_m_clamps_not_panics() {
+        // k=5 > m=3: without the guard this wraps on u32 subtraction.
+        let (vaf, lo, hi) = estimate_vaf(5, 3);
+        // Clamped: k becomes 3, vaf = 3/3 = 1.0.
+        assert!((vaf - 1.0).abs() < 1e-9, "expected VAF=1.0, got {vaf}");
+        // CI must still be valid floats in [0,1].
+        assert!(lo >= 0.0 && lo <= 1.0, "CI lower out of range: {lo}");
+        assert!(hi >= 0.0 && hi <= 1.0, "CI upper out of range: {hi}");
+    }
+
+    // Test 32 (FIX-004): call_variant with identical ref and alt must return a
+    // filtered call, not a spurious Snv at 100% VAF.
+    #[test]
+    fn call_variant_identical_ref_alt_is_filtered() {
+        let ref_ev = make_path_evidence(990, 0, 495, 495);
+        let alt_ev = make_path_evidence(10, 5, 5, 5);
+        let cfg = CallerConfig::default();
+        let call = call_variant("KRAS", &ref_ev, &alt_ev, b"ACGT", b"ACGT", &cfg);
+        assert_ne!(
+            call.filter,
+            VariantFilter::Pass,
+            "identical ref/alt must not produce a PASS call"
+        );
+        assert_eq!(call.vaf, 0.0, "identical ref/alt should report VAF=0");
     }
 }

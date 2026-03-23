@@ -55,8 +55,12 @@ pub fn run_pathfind(args: PathfindArgs) -> Result<(), Box<dyn std::error::Error>
     let (_header, entries): (_, Vec<KmerEntry>) = read_bincode(&args.index)?;
     let index = entries_to_hash_index(&entries);
 
-    // Infer k from the entries.  If empty, default to 31 (not used downstream).
-    let k = infer_k_from_entries(&entries).unwrap_or(31);
+    // Determine k: use the explicit override if provided, otherwise infer from
+    // the stored k-mer values. Default to 31 if the index is empty.
+    let k = args
+        .kmer_size
+        .or_else(|| infer_k_from_entries(&entries))
+        .unwrap_or(31);
 
     // ── 2. Read target sequences from FASTA ───────────────────────────────────
     let targets = read_fasta(&args.targets)?;
@@ -203,25 +207,80 @@ pub fn parse_maxpath_from_id(id: &str) -> Option<usize> {
     digits.parse().ok()
 }
 
-/// Attempt to infer `k` from a set of encoded k-mers.
+/// Infer the k-mer size from a set of encoded k-mer entries.
 ///
-/// The k-mer with the fewest leading zero bits gives a lower bound on k.
-/// We try values 4–31 and return the first that is consistent.
+/// K-mers are 2-bit encoded: each base uses 2 bits, packed into the low `2*k`
+/// bits of a `u64`. The entry with the most significant bits set therefore
+/// requires at least `ceil(used_bits / 2)` bases. This gives the minimum `k`
+/// consistent with all stored values.
 ///
-/// Returns `None` if `entries` is empty.
+/// Returns `None` if `entries` is empty. When all k-mers happen to start with
+/// A (0b00), the inferred k may be less than the true k; use `--kmer-size` to
+/// override in that case.
 fn infer_k_from_entries(entries: &[KmerEntry]) -> Option<usize> {
     if entries.is_empty() {
         return None;
     }
-    // Walk common k values and pick the one where all k-mers fit in 2*k bits.
-    // Since we cannot know k from the encoded value alone, default to 31.
-    Some(31)
+    // Find the maximum number of significant bits across all k-mer values.
+    let max_bits = entries
+        .iter()
+        .map(|e| 64usize.saturating_sub(e.kmer.leading_zeros() as usize))
+        .max()
+        .unwrap_or(0);
+    // Each base occupies 2 bits; round up to the next complete base.
+    let k = max_bits.div_ceil(2).max(1);
+    Some(k)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    // ── infer_k_from_entries tests ────────────────────────────────────────────
+
+    #[test]
+    fn infer_k_returns_none_for_empty_entries() {
+        assert_eq!(infer_k_from_entries(&[]), None);
+    }
+
+    #[test]
+    fn infer_k_from_8mer_entries() {
+        use crate::commands::index::KmerEntry;
+        // A k=8 entry: 8 bases × 2 bits = 16 bits.
+        // Minimal value with bit 15 set: 0b1000_0000_0000_0000 = 0x8000.
+        let entry = KmerEntry {
+            kmer: 0x8000,
+            n_molecules: 1,
+            n_duplex: 0,
+            n_simplex_fwd: 1,
+            n_simplex_rev: 0,
+            min_base_error_prob: 0.001,
+            mean_base_error_prob: 0.001,
+        };
+        // 0x8000 has 49 leading zeros → used_bits = 15 → k = (15+1)/2 = 8.
+        assert_eq!(infer_k_from_entries(&[entry]), Some(8));
+    }
+
+    #[test]
+    fn infer_k_from_31mer_entries() {
+        use crate::commands::index::KmerEntry;
+        // A k=31 entry with all high bits set (starts with T=0b11 at highest position).
+        // Bit 61 set: 0x2000_0000_0000_0000.
+        let entry = KmerEntry {
+            kmer: 0x2000_0000_0000_0000,
+            n_molecules: 1,
+            n_duplex: 0,
+            n_simplex_fwd: 1,
+            n_simplex_rev: 0,
+            min_base_error_prob: 0.001,
+            mean_base_error_prob: 0.001,
+        };
+        // bit 61 set → leading_zeros = 2 → used_bits = 62 → k = (62+1)/2 = 31.
+        assert_eq!(infer_k_from_entries(&[entry]), Some(31));
+    }
+
     use super::parse_maxpath_from_id;
 
     #[test]
@@ -319,6 +378,7 @@ mod tests {
             index: index_path,
             targets: targets_path,
             output: output_path.clone(),
+            kmer_size: None,
         };
 
         run_pathfind(args).expect("run_pathfind should succeed");

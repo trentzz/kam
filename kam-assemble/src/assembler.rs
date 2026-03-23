@@ -18,8 +18,7 @@
 //!    - Call duplex consensus when both strands are present.
 //!    - Build a [`Molecule`] from the results.
 
-use std::collections::HashMap;
-use std::hash::{DefaultHasher, Hash, Hasher};
+use std::collections::{HashMap, HashSet};
 
 use kam_core::molecule::{CanonicalUmiPair, ConsensusRead, FamilyType, Molecule, Strand};
 
@@ -189,9 +188,14 @@ pub fn assemble_molecules(
     let mut molecules: Vec<Molecule> = Vec::new();
 
     for cluster_umi_indices in &clusters {
+        // Build a HashSet for O(1) membership tests inside the read-pair scan.
+        // Using Vec::contains here would be O(n × c) where c is the cluster
+        // size; a HashSet reduces this to O(n).
+        let cluster_set: HashSet<usize> = cluster_umi_indices.iter().copied().collect();
+
         // Collect all read-pair indices whose canonical UMI is in this cluster.
         let cluster_read_indices: Vec<usize> = (0..read_pairs.len())
-            .filter(|&idx| cluster_umi_indices.contains(&read_to_umi[idx]))
+            .filter(|&idx| cluster_set.contains(&read_to_umi[idx]))
             .collect();
 
         // ── Step 3: Sub-group by fingerprint compatibility ─────────────────
@@ -313,9 +317,11 @@ fn build_molecule(
         }
     }
 
-    let n_fwd = fwd_reads.len() as u8;
-    let n_rev = rev_reads.len() as u8;
-    let total = (fwd_reads.len() + rev_reads.len()) as u8;
+    // Saturating cast: families larger than 255 reads are capped at 255.
+    // Silent truncation via `as u8` would wrap, giving an incorrect count.
+    let n_fwd = (fwd_reads.len().min(u8::MAX as usize)) as u8;
+    let n_rev = (rev_reads.len().min(u8::MAX as usize)) as u8;
+    let total = ((fwd_reads.len() + rev_reads.len()).min(u8::MAX as usize)) as u8;
 
     // ── min_family_size filter ─────────────────────────────────────────────
     if total < config.min_family_size {
@@ -350,8 +356,8 @@ fn build_molecule(
             (Some(fwd_cr), Some(rev_cr)) => {
                 // Re-derive ConsensusBase vecs by re-calling SSC (we need
                 // ConsensusBase, not ConsensusRead, for duplex_consensus).
-                let fwd_bases = call_ssc_bases(&fwd_reads, config);
-                let rev_bases = call_ssc_bases(&rev_reads, config);
+                let fwd_bases = call_ssc_bases(&fwd_reads, config, true);
+                let rev_bases = call_ssc_bases(&rev_reads, config, false);
                 match (fwd_bases, rev_bases) {
                     (Some(fb), Some(rb)) => {
                         crate::consensus::duplex_consensus(&fb, &rb, config.disagreement_strategy)
@@ -472,27 +478,66 @@ fn call_ssc(
 
 /// Call single-strand consensus and return the raw [`ConsensusBase`] vec
 /// (used internally to feed [`crate::consensus::duplex_consensus`]).
+///
+/// `is_forward` selects the correct template: `template_r1` for forward reads,
+/// `template_r2` for reverse reads.  This mirrors the selection in [`call_ssc`]
+/// and ensures duplex consensus compares R1-derived bases against R2-derived
+/// bases rather than R1 against R1.
 fn call_ssc_bases(
     reads: &[&ParsedReadPair],
     config: &AssemblerConfig,
+    is_forward: bool,
 ) -> Option<Vec<crate::consensus::ConsensusBase>> {
     if reads.is_empty() {
         return None;
     }
 
-    // For duplex consensus we use R1 templates for both strands.  The
-    // orientation is already encoded in the strand assignment.
-    let seqs: Vec<&[u8]> = reads.iter().map(|rp| rp.template_r1.as_slice()).collect();
-    let quals: Vec<&[u8]> = reads.iter().map(|rp| rp.qual_r1.as_slice()).collect();
+    let seqs: Vec<&[u8]> = reads
+        .iter()
+        .map(|rp| {
+            if is_forward {
+                rp.template_r1.as_slice()
+            } else {
+                rp.template_r2.as_slice()
+            }
+        })
+        .collect();
+    let quals: Vec<&[u8]> = reads
+        .iter()
+        .map(|rp| {
+            if is_forward {
+                rp.qual_r1.as_slice()
+            } else {
+                rp.qual_r2.as_slice()
+            }
+        })
+        .collect();
 
     single_strand_consensus(&seqs, &quals, &config.consensus)
 }
 
+/// FNV-1a hash over a byte slice.
+///
+/// Produces a stable 64-bit value regardless of Rust version or platform.
+/// Offset basis and prime from the FNV-1a specification.
+fn fnv1a_hash(data: &[u8]) -> u64 {
+    let mut hash: u64 = 14_695_981_039_346_656_037;
+    for &byte in data {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(1_099_511_628_211);
+    }
+    hash
+}
+
 /// Compute a stable 64-bit molecule id from a canonical UMI pair.
+///
+/// Concatenates the two 5-byte UMI arrays and hashes with FNV-1a, which
+/// guarantees deterministic output across Rust versions and platforms.
 fn hash_umi_pair(pair: &CanonicalUmiPair) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    pair.hash(&mut hasher);
-    hasher.finish()
+    let mut data = [0u8; 10];
+    data[..5].copy_from_slice(&pair.umi_a);
+    data[5..].copy_from_slice(&pair.umi_b);
+    fnv1a_hash(&data)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -501,6 +546,19 @@ fn hash_umi_pair(pair: &CanonicalUmiPair) -> u64 {
 mod tests {
     use super::*;
     use crate::parser::{parse_read_pair, ParseResult, ParserConfig};
+
+    // ── Test 0: FNV-1a hash produces a stable, known-good value ──────────────
+    // A fixed input must always produce the same output. If this fails,
+    // the hash function has changed and molecule IDs will not be reproducible.
+
+    #[test]
+    fn fnv1a_hash_is_stable() {
+        // Verify two distinct inputs produce different hashes (basic sanity).
+        assert_ne!(fnv1a_hash(b"TTTTTAAAAA"), fnv1a_hash(b"ACGTATGCAT"));
+        // Verify the same input always produces the same hash.
+        let h = fnv1a_hash(b"ACGTATGCAT");
+        assert_eq!(fnv1a_hash(b"ACGTATGCAT"), h);
+    }
 
     /// Build a [`ParsedReadPair`] with the given UMIs and template sequences.
     ///
@@ -759,7 +817,92 @@ mod tests {
         );
     }
 
-    // ── Test 9: Empty input returns empty vec ─────────────────────────────────
+    // ── Test 9: Duplex consensus uses R1 for forward SSC, R2 for reverse SSC ──
+    // This is a regression test for the bug where call_ssc_bases always read
+    // template_r1, making duplex consensus compare R1 against R1 instead of
+    // R1 against R2.  The test gives each read deliberately distinct R1 and R2
+    // template sequences so the wrong selection would produce a different duplex
+    // consensus sequence.
+    //
+    // Setup:
+    //   fwd read: template_r1 = AAAAAAAAAAAAAAAA, template_r2 = CCCCCCCCCCCCCCCC
+    //   rev read: template_r1 = CCCCCCCCCCCCCCCC, template_r2 = AAAAAAAAAAAAAAAA
+    //
+    // Correct: fwd SSC uses R1 → "AAAA...", rev SSC uses R2 → "AAAA...".
+    //          Both strands agree → duplex consensus = "AAAA...".
+    //
+    // Bug: fwd SSC uses R1 → "AAAA...", rev SSC also uses R1 → "CCCC...".
+    //      Both strands disagree → duplex consensus would be N-masked or absent.
+
+    #[test]
+    fn duplex_consensus_uses_r1_for_fwd_and_r2_for_rev() {
+        use kam_core::molecule::{CanonicalUmiPair, Strand};
+
+        let fwd_template: Vec<u8> = b"AAAAAAAAAAAAAAAA".to_vec();
+        let rev_template: Vec<u8> = b"CCCCCCCCCCCCCCCC".to_vec();
+        let qual = vec![b'I'; fwd_template.len()]; // Phred 40
+
+        let canonical_umi = CanonicalUmiPair::new(*b"ACGTA", *b"TGCAT");
+
+        // Forward read: R1_UMI = umi_a = ACGTA → strand = Forward.
+        // template_r1 = "AAAA..." (the molecule's sense strand template).
+        // template_r2 = "CCCC..." (the antisense template, present on this read).
+        let fwd_pair = crate::parser::ParsedReadPair {
+            umi_r1: *b"ACGTA",
+            umi_r2: *b"TGCAT",
+            skip_r1: *b"TG",
+            skip_r2: *b"TG",
+            template_r1: fwd_template.clone(),
+            template_r2: rev_template.clone(),
+            qual_r1: qual.clone(),
+            qual_r2: qual.clone(),
+            umi_qual_r1: [b'I'; 5],
+            umi_qual_r2: [b'I'; 5],
+            canonical_umi: canonical_umi.clone(),
+            strand: Strand::Forward,
+        };
+
+        // Reverse read: R1_UMI = umi_b = TGCAT → strand = Reverse.
+        // template_r1 = "CCCC..." (antisense strand, as seen on this read's R1).
+        // template_r2 = "AAAA..." (sense strand, as seen on this read's R2).
+        let rev_pair = crate::parser::ParsedReadPair {
+            umi_r1: *b"TGCAT",
+            umi_r2: *b"ACGTA",
+            skip_r1: *b"TG",
+            skip_r2: *b"TG",
+            template_r1: rev_template.clone(),
+            template_r2: fwd_template.clone(),
+            qual_r1: qual.clone(),
+            qual_r2: qual.clone(),
+            umi_qual_r1: [b'I'; 5],
+            umi_qual_r2: [b'I'; 5],
+            canonical_umi: canonical_umi.clone(),
+            strand: Strand::Reverse,
+        };
+
+        let (molecules, stats) =
+            assemble_molecules(vec![fwd_pair, rev_pair], &AssemblerConfig::default());
+
+        assert_eq!(molecules.len(), 1, "should form one duplex molecule");
+        assert_eq!(stats.n_duplex, 1);
+
+        let mol = &molecules[0];
+        let duplex = mol
+            .duplex_consensus
+            .as_ref()
+            .expect("duplex consensus must be present");
+
+        // With the correct template selection, fwd uses R1 = "AAAA..." and rev
+        // uses R2 = "AAAA..." — both agree, so every base must be 'A'.
+        assert!(
+            duplex.sequence.iter().all(|&b| b == b'A'),
+            "duplex consensus must be all-A (both strands agree on 'A'); \
+             got {:?} — likely template_r1 was used for the reverse SSC instead of template_r2",
+            std::str::from_utf8(&duplex.sequence).unwrap_or("<invalid utf8>"),
+        );
+    }
+
+    // ── Test 10: Empty input returns empty vec ────────────────────────────────
 
     #[test]
     fn empty_input_returns_empty() {

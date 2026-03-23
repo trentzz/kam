@@ -271,11 +271,8 @@ pub struct DuplexBase {
 
 /// Combine forward and reverse single-strand consensus into a duplex consensus.
 ///
-/// Both SSCs must be the same length. Returns `None` if either input slice is empty.
-///
-/// # Panics
-///
-/// Panics if `fwd_ssc` and `rev_ssc` have different lengths.
+/// Both SSCs must be the same length. Returns `None` if either input slice is
+/// empty or if the two SSCs have different lengths.
 ///
 /// # Algorithm
 ///
@@ -308,11 +305,17 @@ pub fn duplex_consensus(
         return None;
     }
 
-    assert_eq!(
-        fwd_ssc.len(),
-        rev_ssc.len(),
-        "duplex_consensus: fwd_ssc and rev_ssc must have the same length"
-    );
+    // A length mismatch is unexpected (both SSCs should derive from the same
+    // template), but must not panic in library code. Return None with a
+    // diagnostic message so the caller can log and skip the molecule.
+    if fwd_ssc.len() != rev_ssc.len() {
+        eprintln!(
+            "duplex_consensus: length mismatch (fwd={}, rev={}) — skipping molecule",
+            fwd_ssc.len(),
+            rev_ssc.len()
+        );
+        return None;
+    }
 
     let result = fwd_ssc
         .iter()
@@ -578,9 +581,10 @@ mod tests {
         assert!(duplex_consensus(&fwd, &rev, DisagreementStrategy::PickBest).is_none());
     }
 
+    // BUG-005: mismatched-length SSC inputs must not panic; the function must
+    // return None and emit a diagnostic message instead.
     #[test]
-    #[should_panic(expected = "same length")]
-    fn duplex_mismatched_lengths_panics() {
+    fn duplex_mismatched_lengths_returns_none() {
         let base = ConsensusBase {
             base: b'A',
             error_prob: 0.001,
@@ -589,7 +593,11 @@ mod tests {
         };
         let fwd = vec![base.clone(), base.clone()];
         let rev = vec![base];
-        duplex_consensus(&fwd, &rev, DisagreementStrategy::PickBest);
+        let result = duplex_consensus(&fwd, &rev, DisagreementStrategy::PickBest);
+        assert!(
+            result.is_none(),
+            "mismatched lengths should return None, not panic"
+        );
     }
 
     #[test]
