@@ -36,11 +36,11 @@ INDEL_HEADER = """\
 """
 
 SNV_ROWS = [
-    ("chr1", 50,   "A", "T",      "TYPE=SNP"),
-    ("chr1", 200,  "A", "G",      "TYPE=SNP"),
-    ("chr1", 450,  "G", "A",      "TYPE=SNP"),
-    ("chr1", 800,  "G", "A",      "TYPE=SNP"),
-    ("chr1", 1200, "A", "C",      "TYPE=SNP"),
+    ("chr1", 150,  "C", "A",      "TYPE=SNP"),
+    ("chr1", 350,  "G", "A",      "TYPE=SNP"),
+    ("chr1", 600,  "A", "C",      "TYPE=SNP"),
+    ("chr1", 850,  "G", "A",      "TYPE=SNP"),
+    ("chr1", 1100, "G", "A",      "TYPE=SNP"),
 ]
 
 INDEL_ROWS = [
