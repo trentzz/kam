@@ -115,11 +115,13 @@ and move on — document the reasoning.
 4. If unsure about scope, err on the side of smaller
 
 ### Task Queue
-- `docs/claudeloop/queue/` — tasks to pick up (sorted by filename)
-- `docs/claudeloop/in_progress/` — currently being worked on
-- `docs/claudeloop/done/` — completed tasks
-- `docs/claudeloop/needs_review/` — tasks Claude got stuck on
-- `docs/claudeloop/open_questions.md` — design decisions needing user input
+- `docs/claudetracking/todo/` — tasks to pick up
+- `docs/claudetracking/inprogress/` — currently being worked on
+- `docs/claudetracking/done/` — completed tasks
+- `docs/claudetracking/blocked/` — tasks blocked on a decision or dependency
+- `docs/claudetracking/overallplans/` — epic-level plans (one per major work stream)
+- `docs/claudetracking/open_questions.md` — design decisions needing user input
 
 ### Current Sprint Goal
-Implement kam-core types and kam-assemble parser for Twist UMI duplex data.
+Benchmarking: separate SNV/indel scoring, synthetic varforge datasets for
+SNV/indel and new SV types (INS, large DEL, INVDEL).

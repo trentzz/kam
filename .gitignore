@@ -1,1 +1,8 @@
 target/
+
+# Benchmarking: generated FASTQ and BAM outputs from varforge simulations.
+# Only configs, truth VCFs, and result summaries are committed.
+docs/benchmarking/sv/results/sim_ins_vaf010/
+docs/benchmarking/sv/results/sim_largedel_vaf010/
+docs/benchmarking/sv/results/sim_invdel_vaf010/
+docs/benchmarking/snvindel/results/
