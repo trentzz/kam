@@ -1,8 +1,8 @@
 # varforge config: SV benchmarking at VAF 1.0%
-reference: docs/benchmarking/svexperiments/data/ref.fa
+reference: docs/benchmarking/sv/data/ref.fa
 
 output:
-  directory: docs/benchmarking/svexperiments/results/sim_vaf010
+  directory: docs/benchmarking/sv/results/sim_vaf010
   fastq: true
   bam: false
   truth_vcf: true
@@ -28,7 +28,7 @@ tumour:
   ploidy: 2
 
 mutations:
-  vcf: docs/benchmarking/svexperiments/data/truth_svs_vaf010.vcf
+  vcf: docs/benchmarking/sv/data/truth_svs_vaf010.vcf
 
 umi:
   length: 5
