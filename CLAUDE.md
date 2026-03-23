@@ -88,23 +88,16 @@ See `docs/planning/rust_workspace_architecture.md` for full architecture.
 - `docs/paper/` — publication materials
 - `docs/manual/` — end-user documentation
 
-## Investigation Documentation
+## Guides
 
-Whenever a diagnostic investigation uncovers a non-obvious finding (root cause of a bug,
-unexpected performance characteristic, surprising benchmark result, failed hypothesis), write
-it up in `docs/research/` immediately. Use the pattern established in
-`sensitivity_investigation.md` and `anchor_missing_investigation.md`:
+Detailed instructions for working in this repo live in `docs/claudeguide/`.
+Read the relevant guide before starting work in that area.
 
-1. State the symptom and the diagnostic data that revealed it.
-2. State the hypothesis tested and why it was right or wrong.
-3. State the actual root cause with supporting evidence.
-4. State what would actually fix it and what the expected improvement is.
-5. State what was implemented and what the measured result was.
-
-This log is essential context for future sessions and paper writing. Do not just fix the code
-and move on — document the reasoning.
-
----
+| Guide | When to read |
+|-------|-------------|
+| `benchmarking.md` | Running benchmarks, adding datasets, scoring results |
+| `task-tracking.md` | Picking up tasks, creating epics, committing work |
+| `investigation-docs.md` | Writing up a diagnostic investigation |
 
 ## Autonomous Session Behaviour
 
@@ -113,30 +106,6 @@ and move on — document the reasoning.
 2. Tests fail after 3 attempts → write `// TODO: [what you tried]` and move on
 3. **Never change interface definitions in kam-core** without explicit instruction
 4. If unsure about scope, err on the side of smaller
-
-### Task Queue
-- `docs/claudetracking/todo/` — tasks to pick up
-- `docs/claudetracking/inprogress/` — currently being worked on
-- `docs/claudetracking/done/` — completed tasks
-- `docs/claudetracking/blocked/` — tasks blocked on a decision or dependency
-- `docs/claudetracking/overallplans/` — epic-level plans (one per major work stream)
-- `docs/claudetracking/open_questions.md` — design decisions needing user input
-
-### Benchmarking Output Requirements
-
-Every benchmarking run must produce both:
-
-1. **Discovery mode** output — kam run without `--target-variants`. All variant
-   calls, no prior knowledge.
-2. **Tumour-informed (monitoring) mode** output — kam run with
-   `--target-variants <truth_vcf>`. Filters to known variants only.
-
-Both output files must be saved per dataset. Name them consistently:
-- `kam_<dataset>/calls_discovery.vcf` (or .tsv)
-- `kam_<dataset>/calls_monitoring.vcf` (or .tsv)
-
-Never report results from only one mode. The comparison between discovery and
-monitoring sensitivity is a primary result.
 
 ### Current Sprint Goal
 Benchmarking: varforge VAF sweeps for SNV/indel (0.5–5%) and SV new types
