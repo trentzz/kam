@@ -8,7 +8,7 @@
 ## Background
 
 This report covers SV detection performance after the inversion classifier fix (SV-002)
-and the addition of monitoring mode to the SV benchmark (SV-004).
+and the addition of tumour-informed mode to the SV benchmark (SV-004).
 
 Three synthetic SV types were tested on a 2000 bp synthetic reference (chr1):
 
@@ -116,14 +116,14 @@ SNVs.
 
 All FPs in discovery mode are low-molecule SNV/MNV calls arising from
 sequencing errors in the SV target windows. These are correctly suppressed
-to zero by monitoring mode. The monitoring truth VCF is derived from the
-discovery PASS SV calls using `make_monitoring_vcf.py`, which applies the
+to zero by tumour-informed mode. The tumour-informed truth VCF is derived from the
+discovery PASS SV calls using `make_tumour_informed_vcf.py`, which applies the
 same variant-key extraction logic as kam's internal `apply_target_filter`.
 
-One consequence: the monitoring truth VCF is generated from the discovery run
-and therefore ties the monitoring filter to that run's detection results. If
+One consequence: the tumour-informed truth VCF is generated from the discovery run
+and therefore ties the tumour-informed filter to that run's detection results. If
 an SV is not detected in discovery (e.g. DUP at 0.5%), it does not appear in
-the monitoring truth VCF and is not filtered. This is the intended behaviour
+the tumour-informed truth VCF and is not filtered. This is the intended behaviour
 for personalised monitoring: only confirmed tumour variants are tracked.
 
 ---

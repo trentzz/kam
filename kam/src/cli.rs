@@ -170,7 +170,7 @@ pub struct CallArgs {
     #[arg(long)]
     pub max_vaf: Option<f64>,
 
-    /// VCF file of expected somatic variants for tumour-informed monitoring mode.
+    /// VCF file of expected somatic variants for tumour-informed mode.
     ///
     /// When provided, only calls whose (CHROM, POS, REF, ALT) matches an entry
     /// in this VCF are marked PASS. All other calls are labelled NotTargeted.
@@ -260,7 +260,7 @@ pub struct RunArgs {
     #[arg(long)]
     pub max_vaf: Option<f64>,
 
-    /// VCF file of expected somatic variants for tumour-informed monitoring mode.
+    /// VCF file of expected somatic variants for tumour-informed mode.
     ///
     /// When provided, only calls whose (CHROM, POS, REF, ALT) matches an entry
     /// in this VCF are marked PASS. All other calls are labelled NotTargeted.

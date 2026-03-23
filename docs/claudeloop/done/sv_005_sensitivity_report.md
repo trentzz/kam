@@ -6,11 +6,11 @@ After tasks SV-003 and SV-004 are complete, write
 `docs/research/sv_sensitivity_report.md` summarising:
 
 1. **Results table**: TP/FP/FN, filter status, and molecule count for each
-   SV type at each VAF level in both discovery and monitoring mode.
+   SV type at each VAF level in both discovery and tumour-informed mode.
 
 2. **Analysis**:
    - At what VAF does each SV type become detectable?
-   - Does monitoring mode eliminate all FPs?
+   - Does tumour-informed mode eliminate all FPs?
    - How do molecule counts compare to SNV/indel performance at equivalent VAF?
    - What are the remaining limitations?
 

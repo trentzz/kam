@@ -92,7 +92,7 @@ pub enum VariantFilter {
     HighVaf,
     /// Variant does not match any entry in the target variants set.
     ///
-    /// Applied in tumour-informed monitoring mode (`--target-variants`).
+    /// Applied in tumour-informed mode (`--target-variants`).
     /// A call at this locus passed all statistical filters but the
     /// called allele is not one of the expected somatic variants.
     NotTargeted,
@@ -158,7 +158,7 @@ pub struct CallerConfig {
     /// Minimum alt molecule count for structural variant types. Default: 1.
     ///
     /// SVs with even a single supporting molecule can be reported in
-    /// monitoring mode where the target allele is pre-specified. In discovery
+    /// tumour-informed mode where the target allele is pre-specified. In discovery
     /// mode, the confidence filter still governs whether the call is PASS.
     pub sv_min_alt_molecules: u32,
 }

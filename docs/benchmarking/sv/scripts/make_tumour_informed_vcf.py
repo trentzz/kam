@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Generate a monitoring-mode truth VCF from kam discovery results.
+"""Generate a tumour-informed truth VCF from kam discovery results.
 
 For each PASS SV call (LargeDeletion, TandemDuplication, Inversion) in the
 discovery variants.tsv, this script applies the same variant-key extraction
 logic as kam's targeting::extract_variant_key Rust function, producing a VCF
-that monitoring mode can match exactly.
+that tumour-informed mode can match exactly.
 
 Usage:
-    python make_monitoring_vcf.py <variants.tsv> <output.vcf>
+    python make_tumour_informed_vcf.py <variants.tsv> <output.vcf>
 """
 
 import sys
@@ -260,7 +260,7 @@ def main():
             svtype = {'LargeDeletion': 'DEL', 'TandemDuplication': 'DUP', 'Inversion': 'INV'}[sv_type]
             f.write(f'{chrom}\t{pos}\t.\t{ref_allele}\t{alt_allele}\t.\tPASS\tSVTYPE={svtype}\n')
 
-    print(f"Wrote {len(entries)} SV monitoring entries to {vcf_path}")
+    print(f"Wrote {len(entries)} SV tumour-informed entries to {vcf_path}")
 
 
 if __name__ == '__main__':

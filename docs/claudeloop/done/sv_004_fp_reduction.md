@@ -11,15 +11,15 @@ error variants.
 
 1. Update `docs/benchmarking/sv/scripts/run_kam_sv.sh` to run a second pass
    per VAF level using `--target-variants truth_svs_vaf${TAG}.vcf`.
-   Write results to `kam_vaf${TAG}_monitoring/variants.tsv`.
+   Write results to `kam_vaf${TAG}_tumour_informed/variants.tsv`.
 
-2. In monitoring mode, verify:
+2. In tumour-informed mode, verify:
    - Only the true SV (DEL / DUP / INV) is labelled PASS.
    - All SNV/MNV false positives are relabelled NotTargeted.
    - FP count drops to 0.
 
 3. Check whether the truth VCF symbolic allele format (`<DEL>`, `<DUP>`,
-   `<INV>`) matches what kam outputs. The monitoring mode matching logic in
+   `<INV>`) matches what kam outputs. The tumour-informed mode matching logic in
    `kam-call/src/targeting.rs` uses exact (CHROM, POS, REF, ALT) comparison.
    Symbolic alleles may require special handling.
 
@@ -29,6 +29,6 @@ error variants.
 
 ## Definition of done
 
-- `run_kam_sv.sh` runs both discovery and monitoring passes.
+- `run_kam_sv.sh` runs both discovery and tumour-informed passes.
 - Monitoring mode results in 0 FPs for each SV type at each VAF level.
 - Discovery mode FP count is documented for comparison.

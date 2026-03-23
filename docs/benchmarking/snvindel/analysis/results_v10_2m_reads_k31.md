@@ -585,7 +585,7 @@ Stage timing: assemble 11,139ms · index 5,070ms · pathfind 1,130ms · call 3ms
 
 ## Tumour-informed filter comparison
 
-This section shows the effect of tumour-informed monitoring (`--target-variants`) on
+This section shows the effect of tumour-informed (`--target-variants`) on
 background biology calls. The comparison uses the 15ng 0% VAF sample at full read depth
 (not the 2M-read subset used in the main benchmark).
 
@@ -610,21 +610,21 @@ part of the spiked-in somatic panel. They pass all quality filters — minimum m
 strand balance, confidence — because they are genuine biological variants. They are just
 not the target variants.
 
-### 15ng 0% VAF, full read depth — tumour-informed monitoring mode
+### 15ng 0% VAF, full read depth — tumour-informed mode
 
 | Metric | Value |
 |--------|-------|
 | PASS calls | 0 |
 | NotTargeted calls | 62 |
 
-All 62 background biology PASS calls are relabelled NotTargeted. The monitoring mode
+All 62 background biology PASS calls are relabelled NotTargeted. The tumour-informed mode
 output has zero PASS calls, as expected for a 0% spiked-in VAF sample. Background biology
 is completely suppressed.
 
 ### Interpretation
 
 The tumour-informed filter is the mechanism by which kam achieves near-zero false positives
-in monitoring mode. Without it, discovery mode produces 35–72 background biology PASS calls
+in tumour-informed mode. Without it, discovery mode produces 35–72 background biology PASS calls
 per cfDNA sample depending on the sample quality and read depth. With it, only variants
 matching the known somatic panel pass.
 

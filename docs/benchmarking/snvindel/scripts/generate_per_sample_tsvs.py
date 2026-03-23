@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate per-sample discovery and monitoring TSV files for all titration samples.
+"""Generate per-sample discovery and tumour-informed TSV files for all titration samples.
 
 For each sample, runs kam twice:
   1. Discovery mode: no --target-variants. All quality-passing calls included.
@@ -148,7 +148,7 @@ def run_kam(r1: Path, r2: Path, out_dir: Path,
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate per-sample discovery and monitoring TSVs")
+    parser = argparse.ArgumentParser(description="Generate per-sample discovery and tumour-informed TSVs")
     parser.add_argument("--reads", type=int, default=READS_PER_SAMPLE,
                         help=f"Read pairs per sample (default: {READS_PER_SAMPLE:,})")
     parser.add_argument("--output-dir", type=Path, default=_DEFAULT_OUT,
@@ -174,7 +174,7 @@ def main() -> None:
         print(f"ERROR: no samples found in {args.fastq_dir}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Found {len(samples)} samples. Generating discovery + monitoring TSVs...\n")
+    print(f"Found {len(samples)} samples. Generating discovery + tumour-informed TSVs...\n")
 
     for i, sample in enumerate(samples, 1):
         name = sample["name"]
@@ -184,7 +184,7 @@ def main() -> None:
         monitoring_out = args.output_dir / f"{name}_monitoring.tsv"
 
         need_disc = not discovery_out.exists() or (name, "discovery") not in timing_done
-        need_mon  = not monitoring_out.exists() or (name, "monitoring") not in timing_done
+        need_mon  = not monitoring_out.exists() or (name, "tumour-informed") not in timing_done
 
         if not need_disc and not need_mon:
             print(f"  already complete, skipping")
@@ -217,26 +217,26 @@ def main() -> None:
 
             # Monitoring run
             if need_mon:
-                print(f"  running monitoring mode...")
-                mon_dir = tmp / "monitoring"
+                print(f"  running tumour-informed mode...")
+                mon_dir = tmp / "tumour-informed"
                 tsv, stderr = run_kam(r1_sub, r2_sub, mon_dir, target_variants=TRUTH_VCF)
                 if tsv:
                     shutil.copy(tsv, monitoring_out)
                     timing = parse_timing(stderr)
                     append_timing(timing_path, {
-                        "sample": name, "mode": "monitoring",
+                        "sample": name, "mode": "tumour-informed",
                         "n_reads": args.reads, **timing,
                     })
                     print(f"  -> {monitoring_out.name}  ({timing.get('total_ms', '?')} ms)")
                 else:
-                    print(f"  FAILED: monitoring mode")
+                    print(f"  FAILED: tumour-informed mode")
 
         print()
 
     print(f"Done. TSVs written to: {args.output_dir}")
     disc_count = len(list(args.output_dir.glob("*_discovery.tsv")))
     mon_count  = len(list(args.output_dir.glob("*_monitoring.tsv")))
-    print(f"  {disc_count} discovery TSVs, {mon_count} monitoring TSVs")
+    print(f"  {disc_count} discovery TSVs, {mon_count} tumour-informed TSVs")
     if timing_path.exists():
         timing_rows = load_timing_index(timing_path)
         print(f"  {len(timing_rows)} timing rows in {timing_path.name}")

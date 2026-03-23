@@ -36,7 +36,7 @@ thresholds when the type is an SV.
 2. Re-run all VAF levels (0.25%, 0.5%, 1%, 2%, 5%).
 3. Show DUP at 0.5% VAF now PASS (confidence 0.981 > 0.95).
 4. Confirm no new false positives in discovery mode.
-5. Confirm monitoring mode still eliminates all FPs.
+5. Confirm tumour-informed mode still eliminates all FPs.
 
 ## Expected Result
 

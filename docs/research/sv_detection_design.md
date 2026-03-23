@@ -97,7 +97,7 @@ invisible to the DFS.
 
 **Fix**: augment the allowlist with junction k-mers for each known SV. When a duplication
 is known (from a prior tissue biopsy), its junction k-mers can be computed and added to the
-allowlist. This is compatible with the tumour-informed monitoring approach already used for
+allowlist. This is compatible with the tumour-informed approach already used for
 SNVs.
 
 For de novo discovery of duplications, the junction k-mers are unknown. Detection requires
@@ -361,7 +361,7 @@ reference end) helps small indels but does not help large SVs where the alt path
 completely different genomic coordinate. The junction-window design sidesteps this by
 making the alt path fit within the window.
 
-**De novo SV discovery is not addressed**. This design covers tumour-informed monitoring
+**De novo SV discovery is not addressed**. This design covers tumour-informed
 of known SVs. De novo discovery of SVs (where the breakpoint coordinates are unknown)
 requires a different approach: scanning for k-mers with high molecule support that are not
 in the reference. This is phase 2.

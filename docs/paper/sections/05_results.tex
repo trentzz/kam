@@ -59,7 +59,7 @@ Precision is 1.0 at all VAF levels and concentrations when tumour-informed
 filtering is applied (Figure~\ref{fig:precision_recall}).
 Zero false positives are produced for any sample.
 The 0\% VAF negative controls produce zero calls, confirming that no background
-biological cfDNA variants are reported in monitoring mode.
+biological cfDNA variants are reported in tumour-informed mode.
 
 \begin{figure}[t]
   \centering
@@ -126,10 +126,10 @@ backpressure that limits effective depth (Section~\ref{sec:evaluation}).
 \subsection{Negative control}
 
 The 0\% VAF samples (no spike-in variants present) produced zero calls in
-tumour-informed monitoring mode.
+tumour-informed mode.
 No background biological cfDNA variants, germline SNPs, or clonal
 haematopoiesis events are reported because none match the 375-variant target set.
-This is the key property of monitoring mode: the noise floor is zero by
+This is the key property of tumour-informed mode: the noise floor is zero by
 construction when none of the expected alleles happen to be present in the sample.
 
 % ── Structural variant detection ──────────────────────────────────────────────
@@ -167,7 +167,7 @@ Table~\ref{tab:sv-results} shows detection results in discovery mode (no \texttt
 
 Large deletions are detected at all four VAF levels with PASS confidence. The observed VAF is approximately $2\times$ the simulated VAF because the deleted segment is absent from the alt path, creating a higher relative molecule count in the shorter window. Inversions are detected at all four VAF levels, including 0.5\% with 3 supporting molecules. Prior to the partial-inversion fix (Section~\ref{sec:sv-detection}), inversions were misclassified as MNVs at all VAFs because the classifier checked the full-path reverse complement rather than the central inverted segment. Tandem duplications use an SV-specific confidence threshold of 0.95 (compared to 0.99 for SNVs and indels). A 100\,bp structural event with even 2 supporting molecules carries qualitatively stronger signal than 2 molecules of a single-base change — background errors cannot produce a 100\,bp insertion signature. With this threshold, duplications reach PASS at $\ge 0.5\%$ VAF (2 molecules, confidence 0.98). At 1\% VAF only 1 molecule spans the head-to-tail junction (confidence 0.79), remaining below the SV threshold.
 
-Discovery mode produces 2--7 false positives per VAF level, all low-molecule SNV or MNV calls arising from sequencing errors in the SV target windows. In monitoring mode, a truth VCF derived from the discovery PASS SV calls is provided via \texttt{--target-variants}. Monitoring mode eliminates all false positives at every VAF level: only the true SV calls remain labelled PASS; all other calls are relabelled NotTargeted.
+Discovery mode produces 2--7 false positives per VAF level, all low-molecule SNV or MNV calls arising from sequencing errors in the SV target windows. In tumour-informed mode, a truth VCF derived from the discovery PASS SV calls is provided via \texttt{--target-variants}. Monitoring mode eliminates all false positives at every VAF level: only the true SV calls remain labelled PASS; all other calls are relabelled NotTargeted.
 
 % ── Runtime and memory ────────────────────────────────────────────────────────
 \subsection{Runtime and memory}

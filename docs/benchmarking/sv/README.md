@@ -39,17 +39,17 @@ levels). All detection is simplex-based.
 False positives in discovery mode: 2–7 per VAF level, all low-molecule SNV/MNV
 calls arising from sequencing errors in the SV target windows.
 
-## Key results (monitoring mode)
+## Key results (tumour-informed mode)
 
 Monitoring mode uses a truth VCF derived from the discovery PASS SV calls
-(via `scripts/make_monitoring_vcf.py`). All false positives are eliminated: only
+(via `scripts/make_tumour_informed_vcf.py`). All false positives are eliminated: only
 the true SV calls remain labelled PASS; all other PASS calls are relabelled
 NotTargeted.
 
 | Metric                        | Value                                         |
 |-------------------------------|-----------------------------------------------|
-| Precision (monitoring mode)   | 1.0 at all VAF levels                         |
-| False positives (monitoring)  | 0 at all VAF levels                           |
+| Precision (tumour-informed mode)   | 1.0 at all VAF levels                         |
+| False positives (tumour-informed)  | 0 at all VAF levels                           |
 | DEL sensitivity               | PASS at 0.5%–5% VAF                           |
 | INV sensitivity               | PASS at 0.5%–5% VAF                           |
 | DUP sensitivity               | PASS at 0.5%, 2%, 5%; LowConf at 1% (1 mol.) |
@@ -98,12 +98,12 @@ sv/
 │   ├── make_sv_targets.py       — generate sv_targets.fa and sv_junctions.fa
 │   ├── make_varforge_configs.py — generate per-VAF varforge YAML configs
 │   ├── check_junction_kmers.py  — verify junction k-mer presence in FASTQs
-│   ├── make_monitoring_vcf.py   — extract PASS SV calls into monitoring truth VCF
-│   └── run_kam_sv.sh            — run all VAF levels (discovery + monitoring)
+│   ├── make_tumour_informed_vcf.py   — extract PASS SV calls into tumour-informed truth VCF
+│   └── run_kam_sv.sh            — run all VAF levels (discovery + tumour-informed)
 └── results/              — per-VAF kam outputs (gitignored except QC JSONs and TSVs)
     ├── sim_vaf{tag}/             — varforge simulated FASTQs
     ├── kam_vaf{tag}/             — discovery mode outputs
-    └── kam_vaf{tag}_monitoring/  — monitoring mode outputs
+    └── kam_vaf{tag}_tumour_informed/  — tumour-informed mode outputs
 ```
 
 ## Re-running the benchmark
@@ -114,7 +114,7 @@ cd docs/benchmarking/sv
 bash scripts/run_kam_sv.sh
 ```
 
-The script runs discovery and monitoring passes for VAF levels 0.5%, 1%, 2%,
+The script runs discovery and tumour-informed passes for VAF levels 0.5%, 1%, 2%,
 and 5%. Each pass reads simulated FASTQs from `results/sim_vaf{tag}/` and
 writes QC JSON files and a `variants.tsv` to `results/kam_vaf{tag}/`.
 

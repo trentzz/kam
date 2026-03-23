@@ -57,8 +57,8 @@ At shallower depths (200K--500K reads) the duplex rate was near zero because
 duplex pairs require both strands of the same fragment to be sampled.
 Duplex yield grows with depth until fragment saturation.
 
-% ── Tumour-informed monitoring mode ──────────────────────────────────────────
-\subsection{Tumour-informed monitoring mode}
+% ── Tumour-informed tumour-informed mode ──────────────────────────────────────────
+\subsection{Tumour-informed tumour-informed mode}
 \label{sec:eval:targeting}
 
 Discovery mode --- the default --- finds all alternative paths within each
@@ -174,7 +174,7 @@ filters without also removing true spike-in variants at similar VAF, as the two
 populations overlap in all measured evidence dimensions.
 
 Monitoring mode (\texttt{--target-variants}) eliminates this entire class of
-false positives. The 0\% VAF negative controls produce zero calls in monitoring
+false positives. The 0\% VAF negative controls produce zero calls in tumour-informed mode
 mode because none of the background biological variants coincide with the
 375-variant target set.
 

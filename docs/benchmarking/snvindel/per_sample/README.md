@@ -1,7 +1,7 @@
 # Per-sample variant TSVs: SNV and indel titration
 
 This directory contains raw kam output TSVs for all 24 titration samples, in both
-discovery and monitoring modes.
+discovery and tumour-informed modes.
 
 ## File naming
 
@@ -48,7 +48,7 @@ All calls (PASS and filtered), one row per candidate variant path per target. Co
 | `confidence` | Posterior confidence |
 | `filter` | PASS / LowConfidence / StrandBias / LowDuplex / HighVaf / NotTargeted |
 
-## Discovery vs monitoring
+## Discovery vs tumour-informed
 
 **Discovery**: `filter=PASS` means the call passed all quality filters. At 2M reads,
 these samples produce PASS calls only for variants that genuinely exist in the sample.
@@ -58,7 +58,7 @@ molecules at 2M reads to pass the default filters.
 **Monitoring**: `filter=PASS` means the call passed quality filters AND matches an entry
 in `truth_variants.vcf`. All other quality-passing calls are relabelled `NotTargeted`.
 At full read depth (not 2M reads), the 15ng 0% VAF sample produces 62 background biology
-PASS calls in discovery mode; all 62 become NotTargeted in monitoring mode.
+PASS calls in discovery mode; all 62 become NotTargeted in tumour-informed mode.
 
 ## Sample list (24 samples)
 

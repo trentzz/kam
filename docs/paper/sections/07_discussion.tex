@@ -5,7 +5,7 @@ kam is a proof of concept that alignment-free variant detection is feasible for
 Twist duplex UMI panel sequencing.
 The pipeline preserves molecule-level information from raw FASTQ to variant call
 without any alignment step, detecting 52--61\% of truth variants at 2\% VAF
-with precision 1.0 in tumour-informed monitoring mode using 2M read pairs per
+with precision 1.0 in tumour-informed mode using 2M read pairs per
 sample, running in 16--22 seconds on a single core.
 
 Evaluation identified and fixed two implementation bugs: a strand
@@ -15,14 +15,14 @@ genuine duplex pairs from being grouped correctly.
 With both fixes applied, sensitivity extends to the 0.25--0.5\% VAF range at
 15--30\,ng input.
 
-\paragraph{Tumour-informed monitoring mode.}
+\paragraph{Tumour-informed tumour-informed mode.}
 The \texttt{--target-variants} flag converts kam from a somatic discovery tool
 to a confirmatory monitoring tool.
 In discovery mode, a background noise floor of 35--72 false positives per sample
 remains after applying germline VAF and singleton molecule filters.
 These are real biological cfDNA variants indistinguishable from spike-in calls
 without external annotation.
-In monitoring mode, this entire class of false positives is eliminated: the
+In tumour-informed mode, this entire class of false positives is eliminated: the
 noise floor drops to zero because background biological variants do not match
 the expected somatic alleles.
 Sensitivity is unchanged because true positive calls, by definition, match the

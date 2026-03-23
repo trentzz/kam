@@ -94,7 +94,7 @@ To test whether more molecules change graph structure or path enumeration:
 The graph has 40% more k-mers at 10M but the pathfind results barely change: only 5 more
 targets find alt paths. The extra k-mers are resequencing noise on already-seen molecules, not
 new variant-covering paths. More importantly, the 10M run produces 33% more PASS calls in
-discovery mode (541 vs 407) but sensitivity in monitoring mode is identical — the extra calls
+discovery mode (541 vs 407) but sensitivity in tumour-informed mode is identical — the extra calls
 are background biological FPs and spurious paths, not true positives.
 
 **The second cause of the plateau: the extra molecules at 10M increase graph density, filling

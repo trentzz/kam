@@ -109,7 +109,7 @@ If the `target_id` cannot be parsed as a genomic coordinate (e.g., it is a gene 
 ##FILTER=<ID=LowDuplex,Description="Insufficient duplex support">
 ##FILTER=<ID=CollisionRisk,Description="UMI collision risk">
 ##FILTER=<ID=HighVaf,Description="VAF exceeds maximum threshold (likely germline)">
-##FILTER=<ID=NotTargeted,Description="Allele not in --target-variants set (tumour-informed monitoring mode)">
+##FILTER=<ID=NotTargeted,Description="Allele not in --target-variants set (tumour-informed mode)">
 ```
 
 **VCF INFO field summary:**
@@ -240,7 +240,7 @@ When `run_titration_batch.py` is run with `--save-vcfs DIR`, two VCF files are s
 
 | File | Description |
 |------|-------------|
-| `<name>.monitoring.vcf` | Calls after tumour-informed filter (when `--target-variants` was used) |
+| `<name>.tumour_informed.vcf` | Calls after tumour-informed filter (when `--target-variants` was used) |
 | `<name>.discovery.vcf` | Calls in discovery mode (a second kam run without `--target-variants`) |
 
-The monitoring VCF shows only variants matching the truth set. The discovery VCF shows everything that passes quality filters, including background biology. Comparing the two reveals the biological noise floor specific to each sample.
+The tumour-informed VCF shows only variants matching the truth set. The discovery VCF shows everything that passes quality filters, including background biology. Comparing the two reveals the biological noise floor specific to each sample.

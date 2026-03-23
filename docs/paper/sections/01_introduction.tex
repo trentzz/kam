@@ -28,8 +28,8 @@ Variant calling operates on molecule counts, not read counts, and uses a statist
 
 kam supports two operating modes.
 In \emph{discovery mode}, it finds all alternative paths within each 100\,bp target window and reports every path that passes statistical quality filters.
-In \emph{tumour-informed monitoring mode} (\texttt{--target-variants}), a VCF of expected somatic variants is provided and the caller only reports calls whose (CHROM, POS, REF, ALT) matches an entry in that set.
-Discovery mode is appropriate for initial somatic profiling; monitoring mode is appropriate for serial liquid biopsy where the variant panel is known from a prior biopsy.
+In \emph{tumour-informed mode} (\texttt{--target-variants}), a VCF of expected somatic variants is provided and the caller only reports calls whose (CHROM, POS, REF, ALT) matches an entry in that set.
+Discovery mode is appropriate for initial somatic profiling; tumour-informed mode is appropriate for serial liquid biopsy where the variant panel is known from a prior biopsy.
 
 On the Twist cfDNA Pan-Cancer Reference Standard v2 titration series with tumour-informed filtering applied, kam detects 52--61\% of truth variants at 2\% VAF with precision 1.0 (zero false positives), running in 19--35 seconds per sample on a single core.
 

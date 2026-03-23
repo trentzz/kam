@@ -52,7 +52,7 @@ KAM_MIN_ALT_DUPLEX: int | None = None
 
 # When set, save per-sample VCFs to this directory.
 # Each sample produces:
-#   <name>.monitoring.vcf  — calls with tumour-informed filter applied (PASS = truth matches)
+#   <name>.tumour_informed.vcf  — calls with tumour-informed filter applied (PASS = truth matches)
 #   <name>.discovery.vcf   — calls in discovery mode (no truth filter; PASS = all quality-passing calls)
 # If --target-variants is not set, only <name>.discovery.vcf is written.
 VCF_SAVE_DIR: Path | None = None
@@ -519,8 +519,8 @@ def run_sample(sample, truth_set, tmp_dir):
         src_vcf = out_dir / "variants.vcf"
         if src_vcf.exists():
             if KAM_TARGET_VARIANTS is not None:
-                # This run used monitoring mode → save as .monitoring.vcf
-                dst = VCF_SAVE_DIR / f"{name}.monitoring.vcf"
+                # This run used tumour-informed mode → save as .tumour_informed.vcf
+                dst = VCF_SAVE_DIR / f"{name}.tumour_informed.vcf"
                 shutil.copy(src_vcf, dst)
                 # Also run a second pass in discovery mode for the pre-filter view.
                 disc_out = tmp_dir / "kam_disc"
@@ -550,7 +550,7 @@ def run_sample(sample, truth_set, tmp_dir):
                 if disc_vcf.exists():
                     shutil.copy(disc_vcf, VCF_SAVE_DIR / f"{name}.discovery.vcf")
             else:
-                # No monitoring filter — this is already discovery mode.
+                # No tumour-informed filter — this is already discovery mode.
                 shutil.copy(src_vcf, VCF_SAVE_DIR / f"{name}.discovery.vcf")
 
     status = "OK" if proc.returncode == 0 else "FAIL"
@@ -605,7 +605,7 @@ def main():
                         help="Minimum reads per UMI family to keep a molecule (default: 1). "
                              "Use 2 to replicate HUMID-style singleton filtering.")
     parser.add_argument("--target-variants", type=Path, default=None,
-                        help="VCF of expected somatic variants for tumour-informed monitoring "
+                        help="VCF of expected somatic variants for tumour-informed "
                              "mode. Only calls matching (CHROM, POS, REF, ALT) in this VCF "
                              "are marked PASS. Suppresses background biological FPs.")
     parser.add_argument("--min-alt-duplex", type=int, default=None,
@@ -614,7 +614,7 @@ def main():
                              "on every call. Calls below threshold are labelled LowDuplex.")
     parser.add_argument("--save-vcfs", type=Path, default=None,
                         help="Directory to save per-sample VCF outputs. When set, each sample "
-                             "produces <name>.monitoring.vcf (tumour-informed calls) and "
+                             "produces <name>.tumour_informed.vcf (tumour-informed calls) and "
                              "<name>.discovery.vcf (all quality-passing calls, no truth filter). "
                              "If --target-variants is not set, only discovery VCFs are written.")
     parser.add_argument("--kmer-size", type=int, default=None,

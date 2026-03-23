@@ -214,8 +214,7 @@ graph from alt reads. The soft anchor is not needed for junction window
 targets (both anchors are in the flanks), but the mechanism does not break
 either.
 
-**De novo SV discovery**: All current SV detection is tumour-informed
-monitoring. The breakpoint coordinates must be known from a prior tissue
+**De novo SV discovery**: All current SV detection is tumour-informed. The breakpoint coordinates must be known from a prior tissue
 biopsy to construct the junction targets and junction k-mers. De novo
 discovery (scanning for k-mers with high molecule support not in the
 reference) is Phase 2.

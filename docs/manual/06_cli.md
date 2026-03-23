@@ -61,7 +61,7 @@ kam run --r1 <R1.fastq.gz> --r2 <R2.fastq.gz> --targets <targets.fa> --output-di
 | `--min-alt-molecules` | 2 | Minimum molecules supporting the alt allele. A single-molecule call (n_alt=1) is accepted only if duplex-confirmed (see `min_alt_duplex_for_single`). Setting to 3 or higher increases specificity but reduces sensitivity for low-VAF variants. |
 | `--min-alt-duplex` | 0 | Minimum variant-specific duplex molecules. Counts only duplex molecules whose k-mers are at the variant site (alt-specific k-mers), not at the flanking anchor k-mers. Default 0 disables this filter. Set to 1 to require at least one duplex confirmation at the variant site. Recommended only at duplex fractions ≥15% or depth ≥5M reads. |
 | `--max-vaf` | (none) | Maximum VAF for a PASS call. Calls with VAF above this are labelled HighVaf. For ctDNA somatic calling, germline heterozygous variants have VAF ≈ 0.5. Setting `--max-vaf 0.35` eliminates them while retaining all low-VAF somatic calls. |
-| `--target-variants` | (none) | VCF file of expected somatic variants. When set, only calls matching a `(CHROM, POS, REF, ALT)` entry in this VCF are marked PASS. All other quality-passing calls are labelled NotTargeted. This is tumour-informed monitoring mode. Use it when the somatic variant panel is known from a prior tissue biopsy. Produces near-zero false positives. |
+| `--target-variants` | (none) | VCF file of expected somatic variants. When set, only calls matching a `(CHROM, POS, REF, ALT)` entry in this VCF are marked PASS. All other quality-passing calls are labelled NotTargeted. This is tumour-informed mode. Use it when the somatic variant panel is known from a prior tissue biopsy. Produces near-zero false positives. |
 
 ### Output options
 
@@ -244,7 +244,7 @@ kam run \
   --output-format vcf
 ```
 
-### Full pipeline, tumour-informed monitoring mode
+### Full pipeline, tumour-informed mode
 
 ```bash
 kam run \

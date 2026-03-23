@@ -189,7 +189,7 @@ pub fn write_vcf(calls: &[VariantCall], writer: &mut dyn Write) -> io::Result<()
     )?;
     writeln!(
         writer,
-        "##FILTER=<ID=NotTargeted,Description=\"Allele not in --target-variants set (tumour-informed monitoring mode)\">"
+        "##FILTER=<ID=NotTargeted,Description=\"Allele not in --target-variants set (tumour-informed mode)\">"
     )?;
     writeln!(
         writer,

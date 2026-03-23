@@ -90,7 +90,7 @@ kam run \
   --output-format vcf
 ```
 
-Never report results from only one mode. The discovery vs monitoring comparison
+Never report results from only one mode. The discovery vs tumour-informed comparison
 is a primary result.
 
 ---

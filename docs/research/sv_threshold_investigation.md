@@ -69,7 +69,7 @@ data, no new varforge runs):
 DUP at 0.5% (confidence 0.982 > 0.95) now passes. DUP at 1% (confidence 0.791
 < 0.95, 1 supporting molecule) remains LowConfidence. The 1-molecule call
 represents genuinely weak evidence; accepting it would increase the risk of
-spurious calls in monitoring mode.
+spurious calls in tumour-informed mode.
 
 False positives in discovery mode: unchanged (3, 2, 6, 7 at 0.5%–5% VAF). All
 FPs are SNV/MNV types — the SV-specific threshold does not affect them.

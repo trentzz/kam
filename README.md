@@ -5,7 +5,7 @@ Alignment-free variant detection for Twist duplex UMI sequencing.
 kam replaces the four-tool chain HUMID + Jellyfish + km + kmtools with a single
 Rust binary that preserves molecule-level evidence from raw FASTQ reads through
 to variant calls. It supports two operating modes: somatic discovery and
-tumour-informed monitoring.
+tumour-informed.
 
 ---
 
@@ -14,9 +14,9 @@ tumour-informed monitoring.
 - **Alignment-free**: no reference alignment required at call time.
 - **Molecule-aware**: every k-mer carries a `MoleculeEvidence` record with
   distinct molecule count, duplex support, and strand breakdown.
-- **Two modes**: discovery (all alt paths) and tumour-informed monitoring
+- **Two modes**: discovery (all alt paths) and tumour-informed
   (`--target-variants`).
-- **Tumour-informed monitoring**: precision 1.0 at all VAF levels. Background
+- **Tumour-informed**: precision 1.0 at all VAF levels. Background
   cfDNA variants are eliminated because they do not match the expected somatic
   alleles.
 - **Fast**: 16--22 seconds per sample on a single core at 2 M read pairs.
@@ -66,7 +66,7 @@ kam run \
   --output-dir results/
 ```
 
-#### Tumour-informed monitoring mode
+#### Tumour-informed tumour-informed mode
 
 Supply a VCF of expected somatic variants. Only calls matching an entry in the
 target set are reported; all other calls are labelled `NotTargeted`.
@@ -108,7 +108,7 @@ kam call --paths paths.bin --targets targets.fa --output calls.vcf
 | `--max-vaf F` | — | Discard calls above this VAF (removes germline heterozygotes). |
 | `--min-alt-molecules N` | 2 | Minimum alt molecules to emit a call. |
 | `--min-confidence F` | 0.99 | Minimum posterior confidence. |
-| `--target-variants VCF` | — | Enable tumour-informed monitoring mode. |
+| `--target-variants VCF` | — | Enable tumour-informed mode. |
 
 ---
 

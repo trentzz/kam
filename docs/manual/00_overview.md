@@ -112,7 +112,7 @@ from a prior tissue biopsy.
 | SNV sensitivity | 69–80% |
 | Indel sensitivity | 32–39% |
 | False positives (discovery mode) | 35–72 |
-| False positives (monitoring mode) | 0 |
+| False positives (tumour-informed mode) | 0 |
 | Runtime (single core) | 19–35s |
 | Peak RSS | 1.5–2.0 GB |
 

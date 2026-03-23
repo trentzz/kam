@@ -1,4 +1,4 @@
-//! Tumour-informed filtering for monitoring mode.
+//! Tumour-informed filtering for tumour-informed mode.
 //!
 //! When a set of expected somatic variants is known in advance (e.g. from a
 //! matched tumour biopsy or a reference standard truth set), `--target-variants`

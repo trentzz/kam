@@ -12,15 +12,15 @@ Reference Standard v2 titration series.
 - **Chemistry**: Twist duplex UMI (5 bp UMI, 2 bp skip, inline).
 - **Read depths tested**: 250K, 500K, 1M, 2M read pairs per sample.
 
-## Key results (2M read pairs, tumour-informed monitoring mode)
+## Key results (2M read pairs, tumour-informed mode)
 
 | Metric | Value |
 |--------|-------|
 | Sensitivity at 2% VAF | 52–61% (varies by input mass) |
 | SNV sensitivity at 2% VAF | 69–80% |
 | Indel sensitivity at 2% VAF | 31–39% |
-| Precision (monitoring mode) | 1.0 at all VAF levels |
-| False positives | 0 (monitoring mode) |
+| Precision (tumour-informed mode) | 1.0 at all VAF levels |
+| False positives | 0 (tumour-informed mode) |
 
 See [`analysis/results_v10_2m_reads_k31.md`](analysis/results_v10_2m_reads_k31.md)
 for full results tables and figures.

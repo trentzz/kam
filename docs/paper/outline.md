@@ -25,11 +25,11 @@ context for why molecule provenance matters, not a competitor to benchmark again
 
 **One-sentence summary**: kam is an alignment-free, molecule-aware variant detection
 pipeline for Twist duplex UMI sequencing that supports both somatic discovery and
-tumour-informed monitoring modes.
+tumour-informed modes.
 
 **Key contribution (what makes this interesting)**:
 1. Single-tool replacement for a four-tool chain, with molecule-level evidence preserved end-to-end
-2. Tumour-informed monitoring mode (`--target-variants`) achieves precision 1.0 with zero FPs
+2. Tumour-informed tumour-informed mode (`--target-variants`) achieves precision 1.0 with zero FPs
 3. Discovery mode is available for de novo somatic profiling
 4. Both modes run in 16–22 seconds per sample on a single core
 
@@ -40,7 +40,7 @@ tumour-informed monitoring modes.
 ### Abstract
 - One paragraph on the problem (ctDNA, duplex UMI, molecule information loss)
 - One paragraph on what kam does (alignment-free, molecule-aware, two modes)
-- Numbers: sensitivity 52–61% at 2% VAF, precision 1.0 in monitoring mode, 16–22s runtime
+- Numbers: sensitivity 52–61% at 2% VAF, precision 1.0 in tumour-informed mode, 16–22s runtime
 - Mention bug fixes (strand bias, duplex orientation) — these validate the evaluation
 
 ### 1. Introduction
@@ -48,8 +48,8 @@ tumour-informed monitoring modes.
 - Information loss in current pipelines: HUMID discards molecule identity; Jellyfish sees only counts
 - Two consequences: PCR duplicate inflation, no duplex/strand distinction at call stage
 - kam: single tool, molecule provenance preserved
-- Two operating modes: discovery and monitoring
-- Key result: monitoring mode → precision 1.0, zero FPs; discovery mode → standard somatic discovery
+- Two operating modes: discovery and tumour-informed
+- Key result: tumour-informed mode → precision 1.0, zero FPs; discovery mode → standard somatic discovery
 - Paper structure
 
 ### 2. Background
@@ -83,7 +83,7 @@ Required content:
 - Key numbers at 2% VAF: 15ng 61.3%, 30ng 59.2%, 5ng 51.7% — precision 1.0 everywhere
 - SNV vs indel sensitivity: SNV 69–80%, indel 31–39%
 - Depth scaling (250K to 2M): gains flatten above 1M
-- Negative control: 0% VAF → zero calls in monitoring mode
+- Negative control: 0% VAF → zero calls in tumour-informed mode
 - Runtime: 16–22 s per sample, peak RSS 1.8–2.0 GB
 
 Required figures:
@@ -100,7 +100,7 @@ Focus: how did we validate the implementation and what is the operating envelope
 Subsections:
 1. **Strand bias overcounting bug** — inflated Fisher test ~70×, how it was found, fix
 2. **Duplex orientation comparison bug** — XOR always failed for genuine pairs, fix
-3. **Tumour-informed monitoring mode** — the key FP elimination mechanism
+3. **Tumour-informed tumour-informed mode** — the key FP elimination mechanism
    - Discovery mode FPs: 35–72 per sample after statistical filters
    - Why they cannot be removed statistically (overlap with true calls in all evidence dimensions)
    - Monitoring mode: exact allele match to target VCF → 0 FPs
@@ -153,7 +153,7 @@ Runtime: 16.3–21.7 s per sample. Peak RSS: 1.8–2.0 GB.
 ## What NOT to Include
 
 - Quantitative comparison to HUMID+km (thesis pipeline): it used a different truth set
-  version, different mode (monitoring only), and is the predecessor not a competitor
+  version, different mode (tumour-informed only), and is the predecessor not a competitor
 - Detailed HUMID algorithm description: covered in related work only
 - Comparison to any alignment-based caller: deferred to future work
 - Nextflow workflow details: not yet released

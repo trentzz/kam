@@ -5,8 +5,8 @@
 #   1. Discovery mode  — no --target-variants; all variants reported.
 #   2. Monitoring mode — --target-variants derived VCF; FPs relabelled NotTargeted.
 #
-# The monitoring truth VCF is generated from the discovery PASS SV calls using
-# make_monitoring_vcf.py, which applies the same variant-key extraction logic
+# The tumour-informed truth VCF is generated from the discovery PASS SV calls using
+# make_tumour_informed_vcf.py, which applies the same variant-key extraction logic
 # as kam's internal apply_target_filter. This guarantees exact key matching
 # regardless of VCF representation differences between the simulation truth VCF
 # and kam's internal normalisation.
@@ -17,7 +17,7 @@
 #
 # Outputs:
 #   docs/benchmarking/sv/results/kam_vaf{tag}/            — discovery
-#   docs/benchmarking/sv/results/kam_vaf{tag}_monitoring/ — monitoring
+#   docs/benchmarking/sv/results/kam_vaf{tag}_tumour_informed/ — tumour-informed
 
 set -euo pipefail
 
@@ -54,10 +54,10 @@ for TAG in 005 010 020 050; do
         2>&1 | grep -E "^\[|ERROR|molecules|on.target" || true
     echo "  Done: $OUTDIR/"
 
-    # Generate monitoring truth VCF from discovery PASS SV calls.
-    python3 "$SCRIPTS/make_monitoring_vcf.py" "$OUTDIR/variants.tsv" "$MONTRUTH"
+    # Generate tumour-informed truth VCF from discovery PASS SV calls.
+    python3 "$SCRIPTS/make_tumour_informed_vcf.py" "$OUTDIR/variants.tsv" "$MONTRUTH"
 
-    echo "=== VAF ${TAG} — monitoring ==="
+    echo "=== VAF ${TAG} — tumour-informed ==="
     $KAM run \
         --r1 "$R1" \
         --r2 "$R2" \

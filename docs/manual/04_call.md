@@ -198,7 +198,7 @@ All filters passed. The call is a genuine somatic variant.
 
 ---
 
-## Tumour-informed monitoring mode
+## Tumour-informed tumour-informed mode
 
 When `--target-variants VCF` is provided, a post-calling filter is applied:
 
@@ -208,7 +208,7 @@ When `--target-variants VCF` is provided, a post-calling filter is applied:
 
 Only calls that exactly match a pre-specified truth variant remain `PASS`. All other quality-passing calls are suppressed. This produces zero false positives for a correctly specified truth set (e.g., from a matched tissue biopsy).
 
-The monitoring filter is the reason kam achieves near-zero false positives in tracking mode. The background biology in cfDNA (germline variants, clonal haematopoiesis, somatic mosaicism in normal tissue) produces ~35–72 PASS calls per sample in discovery mode. Monitoring mode filters all of them.
+The tumour-informed filter is the reason kam achieves near-zero false positives in tracking mode. The background biology in cfDNA (germline variants, clonal haematopoiesis, somatic mosaicism in normal tissue) produces ~35–72 PASS calls per sample in discovery mode. Monitoring mode filters all of them.
 
 ---
 
