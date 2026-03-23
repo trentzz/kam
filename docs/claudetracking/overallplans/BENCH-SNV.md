@@ -31,6 +31,9 @@ Twist titration FASTQs, which are large and not in the repo.
 |----|------|--------|
 | BENCH-SNV-001 | done/bench_snv_001_separate_scoring.md | done |
 | BENCH-SNV-002 | done/bench_snv_002_synthetic_datasets.md | done |
+| BENCH-SNV-003 | done/bench_snv_003_snv_vaf_sweep.md | done |
+| BENCH-SNV-004 | done/bench_snv_004_indel_vaf_sweep.md | done |
+| BENCH-SNV-005 | done/bench_snv_005_combined_datasets.md | done |
 
 ## Scope
 

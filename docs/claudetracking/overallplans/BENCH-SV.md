@@ -28,6 +28,7 @@ the path-walking stage.
 | ID | File | Status |
 |----|------|--------|
 | BENCH-SV-001 | done/bench_sv_001_new_sv_types.md | done |
+| BENCH-SV-002 | done/bench_sv_002_new_types_vaf_sweep.md | done |
 
 ## Scope
 
