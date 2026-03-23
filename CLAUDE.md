@@ -122,6 +122,22 @@ and move on — document the reasoning.
 - `docs/claudetracking/overallplans/` — epic-level plans (one per major work stream)
 - `docs/claudetracking/open_questions.md` — design decisions needing user input
 
+### Benchmarking Output Requirements
+
+Every benchmarking run must produce both:
+
+1. **Discovery mode** output — kam run without `--target-variants`. All variant
+   calls, no prior knowledge.
+2. **Tumour-informed (monitoring) mode** output — kam run with
+   `--target-variants <truth_vcf>`. Filters to known variants only.
+
+Both output files must be saved per dataset. Name them consistently:
+- `kam_<dataset>/calls_discovery.vcf` (or .tsv)
+- `kam_<dataset>/calls_monitoring.vcf` (or .tsv)
+
+Never report results from only one mode. The comparison between discovery and
+monitoring sensitivity is a primary result.
+
 ### Current Sprint Goal
-Benchmarking: separate SNV/indel scoring, synthetic varforge datasets for
-SNV/indel and new SV types (INS, large DEL, INVDEL).
+Benchmarking: varforge VAF sweeps for SNV/indel (0.5–5%) and SV new types
+(INS, large DEL, INVDEL at 0.5–5%).
