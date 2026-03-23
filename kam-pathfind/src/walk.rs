@@ -67,34 +67,21 @@ impl Default for WalkConfig {
     }
 }
 
-/// Find all paths from `start_kmer` to `end_kmer` in the graph.
+/// Shared iterative DFS implementation parameterised by successor ordering.
 ///
-/// Uses iterative DFS with a single path buffer and a `HashSet` for O(1) cycle
-/// detection. Memory use is O(B × L) where B is the maximum branching factor
-/// and L is `max_path_length` — constant regardless of the number of paths
-/// enumerated.
-///
-/// Enumeration stops once `config.max_paths` complete paths have been found.
-/// Returns an empty `Vec` if no path exists or either k-mer is not in the graph.
-///
-/// # Example
-/// ```
-/// use kam_pathfind::graph::DeBruijnGraph;
-/// use kam_pathfind::walk::{walk_paths, WalkConfig};
-///
-/// let mut g = DeBruijnGraph::new(3);
-/// g.add_edge(1, 2);
-/// g.add_edge(2, 3);
-/// let paths = walk_paths(&g, 1, 3, &WalkConfig::default());
-/// assert_eq!(paths.len(), 1);
-/// assert_eq!(paths[0].length, 3);
-/// ```
-pub fn walk_paths(
+/// `sort_successors` is called on each node's successor list before the DFS
+/// explores it. Pass a no-op closure for unordered traversal or a sort by
+/// molecule count for evidence-biased traversal.
+fn walk_paths_inner<F>(
     graph: &DeBruijnGraph,
     start_kmer: u64,
     end_kmer: u64,
     config: &WalkConfig,
-) -> Vec<GraphPath> {
+    sort_successors: F,
+) -> Vec<GraphPath>
+where
+    F: Fn(&mut Vec<u64>),
+{
     let k = graph.k();
     let mut completed: Vec<GraphPath> = Vec::new();
 
@@ -116,18 +103,22 @@ pub fn walk_paths(
         return completed;
     }
 
-    // DFS state: stack of (node, next_successor_index_to_try).
-    // current_path holds the single in-progress path; visited tracks nodes in it.
-    let mut stack: Vec<(u64, usize)> = vec![(start_kmer, 0)];
+    // Stack stores (node, pre-ordered successors, next index to try).
+    // Successors are sorted once on first visit so the ordering is stable for
+    // the lifetime of that DFS frame.
+    let start_succs = {
+        let mut s = graph.successors(start_kmer).to_vec();
+        sort_successors(&mut s);
+        s
+    };
+    let mut stack: Vec<(u64, Vec<u64>, usize)> = vec![(start_kmer, start_succs, 0)];
     let mut current_path: Vec<u64> = vec![start_kmer];
     let mut visited: HashSet<u64> = HashSet::from([start_kmer]);
 
-    while let Some((node, succ_idx)) = stack.last_mut() {
+    while let Some((_node, succs, succ_idx)) = stack.last_mut() {
         if completed.len() >= config.max_paths {
             break;
         }
-
-        let succs = graph.successors(*node);
 
         if *succ_idx >= succs.len() {
             // All successors of this node tried — backtrack.
@@ -162,11 +153,44 @@ pub fn walk_paths(
             // Extend the current path and push a new DFS frame.
             visited.insert(next);
             current_path.push(next);
-            stack.push((next, 0));
+            let mut next_succs = graph.successors(next).to_vec();
+            sort_successors(&mut next_succs);
+            stack.push((next, next_succs, 0));
         }
     }
 
     completed
+}
+
+/// Find all paths from `start_kmer` to `end_kmer` in the graph.
+///
+/// Uses iterative DFS with a single path buffer and a `HashSet` for O(1) cycle
+/// detection. Memory use is O(B × L) where B is the maximum branching factor
+/// and L is `max_path_length` — constant regardless of the number of paths
+/// enumerated.
+///
+/// Enumeration stops once `config.max_paths` complete paths have been found.
+/// Returns an empty `Vec` if no path exists or either k-mer is not in the graph.
+///
+/// # Example
+/// ```
+/// use kam_pathfind::graph::DeBruijnGraph;
+/// use kam_pathfind::walk::{walk_paths, WalkConfig};
+///
+/// let mut g = DeBruijnGraph::new(3);
+/// g.add_edge(1, 2);
+/// g.add_edge(2, 3);
+/// let paths = walk_paths(&g, 1, 3, &WalkConfig::default());
+/// assert_eq!(paths.len(), 1);
+/// assert_eq!(paths[0].length, 3);
+/// ```
+pub fn walk_paths(
+    graph: &DeBruijnGraph,
+    start_kmer: u64,
+    end_kmer: u64,
+    config: &WalkConfig,
+) -> Vec<GraphPath> {
+    walk_paths_inner(graph, start_kmer, end_kmer, config, |_succs| {})
 }
 
 /// Find alt paths by branching off the reference path at each position.
@@ -299,79 +323,9 @@ pub fn walk_paths_biased(
     config: &WalkConfig,
     molecule_count: impl Fn(u64) -> u32,
 ) -> Vec<GraphPath> {
-    let k = graph.k();
-    let mut completed: Vec<GraphPath> = Vec::new();
-
-    if start_kmer == end_kmer {
-        if graph.contains(start_kmer) {
-            let kmers = vec![start_kmer];
-            let sequence = decode_kmer(start_kmer, k);
-            completed.push(GraphPath {
-                length: kmers.len(),
-                kmers,
-                sequence,
-            });
-        }
-        return completed;
-    }
-
-    if !graph.contains(start_kmer) {
-        return completed;
-    }
-
-    // Stack stores (node, pre-sorted successors, next index to try).
-    // Successors are sorted descending by molecule count on first visit so the
-    // DFS explores the highest-evidence branch first.
-    let sorted_start_succs = {
-        let mut s = graph.successors(start_kmer).to_vec();
-        s.sort_by_key(|&km| std::cmp::Reverse(molecule_count(km)));
-        s
-    };
-    let mut stack: Vec<(u64, Vec<u64>, usize)> = vec![(start_kmer, sorted_start_succs, 0)];
-    let mut current_path: Vec<u64> = vec![start_kmer];
-    let mut visited: HashSet<u64> = HashSet::from([start_kmer]);
-
-    while let Some((_node, succs, succ_idx)) = stack.last_mut() {
-        if completed.len() >= config.max_paths {
-            break;
-        }
-
-        if *succ_idx >= succs.len() {
-            let popped = current_path.pop().expect("path never empty during DFS");
-            visited.remove(&popped);
-            stack.pop();
-            continue;
-        }
-
-        let next = succs[*succ_idx];
-        *succ_idx += 1;
-
-        if visited.contains(&next) {
-            continue;
-        }
-        if current_path.len() >= config.max_path_length {
-            continue;
-        }
-
-        if next == end_kmer {
-            let mut path_kmers = current_path.clone();
-            path_kmers.push(next);
-            let sequence = reconstruct_sequence(&path_kmers, k);
-            completed.push(GraphPath {
-                length: path_kmers.len(),
-                kmers: path_kmers,
-                sequence,
-            });
-        } else {
-            visited.insert(next);
-            current_path.push(next);
-            let mut next_succs = graph.successors(next).to_vec();
-            next_succs.sort_by_key(|&km| std::cmp::Reverse(molecule_count(km)));
-            stack.push((next, next_succs, 0));
-        }
-    }
-
-    completed
+    walk_paths_inner(graph, start_kmer, end_kmer, config, |succs| {
+        succs.sort_by_key(|&km| std::cmp::Reverse(molecule_count(km)));
+    })
 }
 
 /// Reconstruct the DNA sequence from an ordered list of encoded k-mers.
