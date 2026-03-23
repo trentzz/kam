@@ -13,6 +13,8 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
+use crate::caller_config::CallerConfigArgs;
+
 /// Alignment-free variant detection for duplex UMI sequencing.
 #[derive(Parser, Debug)]
 #[command(
@@ -164,6 +166,20 @@ pub struct CallArgs {
     #[arg(long)]
     pub min_alt_duplex: Option<u32>,
 
+    /// Minimum posterior probability for a structural variant PASS call.
+    ///
+    /// Applies to LargeDeletion, TandemDuplication, and Inversion types.
+    /// Default: 0.95.
+    #[arg(long)]
+    pub sv_min_confidence: Option<f64>,
+
+    /// Minimum alt-supporting molecules for a structural variant PASS call.
+    ///
+    /// Applies to LargeDeletion, TandemDuplication, and Inversion types.
+    /// Default: 1.
+    #[arg(long)]
+    pub sv_min_alt_molecules: Option<u32>,
+
     /// Maximum VAF for a PASS call. Calls above this are labelled HighVaf.
     /// Useful for ctDNA somatic calling where germline heterozygous variants
     /// (VAF ≈ 0.5) should be excluded. Example: --max-vaf 0.35.
@@ -188,6 +204,54 @@ pub struct CallArgs {
     /// (exact REF/ALT matching only).
     #[arg(long, default_value_t = 0u32)]
     pub ti_position_tolerance: u32,
+}
+
+impl CallerConfigArgs for CallArgs {
+    fn min_confidence(&self) -> Option<f64> {
+        self.min_confidence
+    }
+    fn strand_bias_threshold(&self) -> Option<f64> {
+        self.strand_bias_threshold
+    }
+    fn min_alt_molecules(&self) -> Option<u32> {
+        self.min_alt_molecules
+    }
+    fn min_alt_duplex(&self) -> Option<u32> {
+        self.min_alt_duplex
+    }
+    fn sv_min_confidence(&self) -> Option<f64> {
+        self.sv_min_confidence
+    }
+    fn sv_min_alt_molecules(&self) -> Option<u32> {
+        self.sv_min_alt_molecules
+    }
+    fn max_vaf(&self) -> Option<f64> {
+        self.max_vaf
+    }
+}
+
+impl CallerConfigArgs for RunArgs {
+    fn min_confidence(&self) -> Option<f64> {
+        self.min_confidence
+    }
+    fn strand_bias_threshold(&self) -> Option<f64> {
+        self.strand_bias_threshold
+    }
+    fn min_alt_molecules(&self) -> Option<u32> {
+        self.min_alt_molecules
+    }
+    fn min_alt_duplex(&self) -> Option<u32> {
+        self.min_alt_duplex
+    }
+    fn sv_min_confidence(&self) -> Option<f64> {
+        self.sv_min_confidence
+    }
+    fn sv_min_alt_molecules(&self) -> Option<u32> {
+        self.sv_min_alt_molecules
+    }
+    fn max_vaf(&self) -> Option<f64> {
+        self.max_vaf
+    }
 }
 
 /// Arguments for the `run` subcommand (full pipeline).
