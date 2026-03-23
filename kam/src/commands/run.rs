@@ -12,8 +12,8 @@ use kam_assemble::assembler::{assemble_molecules, AssemblerConfig};
 use kam_assemble::consensus::ConsensusConfig;
 use kam_assemble::io::read_fastq_pairs;
 use kam_assemble::parser::ParserConfig;
-use kam_call::caller::{call_variant, CallerConfig, VariantFilter};
-use kam_call::output::{write_variants, OutputFormat};
+use kam_call::caller::{call_variant, VariantFilter};
+use kam_call::output::write_variants;
 use kam_call::targeting::{
     apply_target_filter, apply_target_filter_with_tolerance, load_target_variants,
 };
@@ -28,9 +28,11 @@ use kam_pathfind::graph::DeBruijnGraph;
 use kam_pathfind::score::{score_and_rank_paths, ScoredPath};
 use kam_pathfind::walk::{find_alt_paths_from_reference, walk_paths_biased, GraphPath, WalkConfig};
 
+use crate::caller_config::caller_config_from_args;
 use crate::cli::RunArgs;
 use crate::commands::index::{molecules_to_consensus_reads, read_fasta};
 use crate::commands::pathfind::parse_maxpath_from_id;
+use crate::output::{format_extension, parse_output_formats};
 
 /// Run the full pipeline end-to-end in memory (zero-copy hot path).
 ///
@@ -493,29 +495,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
 
     // ── Stage 4: Call ─────────────────────────────────────────────────────────
     let t_call = std::time::Instant::now();
-    let caller_config = CallerConfig {
-        min_confidence: args
-            .min_confidence
-            .unwrap_or(CallerConfig::default().min_confidence),
-        strand_bias_threshold: args
-            .strand_bias_threshold
-            .unwrap_or(CallerConfig::default().strand_bias_threshold),
-        min_alt_molecules: args
-            .min_alt_molecules
-            .unwrap_or(CallerConfig::default().min_alt_molecules),
-        min_alt_duplex: args
-            .min_alt_duplex
-            .unwrap_or(CallerConfig::default().min_alt_duplex),
-        max_vaf: args.max_vaf.or(CallerConfig::default().max_vaf),
-        sv_min_confidence: args
-            .sv_min_confidence
-            .unwrap_or(CallerConfig::default().sv_min_confidence),
-        sv_min_alt_molecules: args
-            .sv_min_alt_molecules
-            .unwrap_or(CallerConfig::default().sv_min_alt_molecules),
-        sv_strand_bias_threshold: args.sv_strand_bias_threshold,
-        ..CallerConfig::default()
-    };
+    let caller_config = caller_config_from_args(&args);
 
     let mut all_calls = Vec::new();
     let mut n_pass: u64 = 0;
@@ -659,35 +639,6 @@ fn find_soft_anchor(
         }
     }
     None
-}
-
-/// Parse a comma-separated format string into [`OutputFormat`] values.
-fn parse_output_formats(s: &str) -> Result<Vec<OutputFormat>, Box<dyn std::error::Error>> {
-    let mut formats = Vec::new();
-    for token in s.split(',') {
-        let fmt = match token.trim().to_ascii_lowercase().as_str() {
-            "tsv" => OutputFormat::Tsv,
-            "csv" => OutputFormat::Csv,
-            "json" => OutputFormat::Json,
-            "vcf" => OutputFormat::Vcf,
-            other => return Err(format!("unknown output format: '{other}'").into()),
-        };
-        formats.push(fmt);
-    }
-    if formats.is_empty() {
-        formats.push(OutputFormat::Tsv);
-    }
-    Ok(formats)
-}
-
-/// Return the file extension string for an output format.
-fn format_extension(fmt: OutputFormat) -> &'static str {
-    match fmt {
-        OutputFormat::Tsv => "tsv",
-        OutputFormat::Csv => "csv",
-        OutputFormat::Json => "json",
-        OutputFormat::Vcf => "vcf",
-    }
 }
 
 /// Construct a synthetic [`GraphPath`] for a tandem duplication alt allele.
@@ -915,5 +866,65 @@ mod tests {
 
         run_pipeline(args).expect("run_pipeline with empty input should succeed");
         assert!(output_dir.join("assembly_qc.json").exists());
+    }
+
+    /// Multi-format output: requesting tsv,vcf produces both output files.
+    #[test]
+    fn run_pipeline_multi_format_output() {
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        let template = "ACGTACGTACGTACGTACGTACGT";
+        let r1_seq = format!("ACGTATG{template}");
+        let r2_seq = format!("TGCATAG{template}");
+        let qual = "I".repeat(r1_seq.len());
+
+        let r1_path = dir.path().join("R1.fq");
+        let r2_path = dir.path().join("R2.fq");
+        write_fastq(&r1_path, &[("read1", &r1_seq, &qual)]);
+        write_fastq(&r2_path, &[("read1", &r2_seq, &qual)]);
+
+        let targets_path = dir.path().join("targets.fa");
+        write_fasta(&targets_path, &[("target1", template)]);
+
+        let output_dir = dir.path().join("results");
+
+        let args = RunArgs {
+            r1: r1_path,
+            r2: r2_path,
+            targets: targets_path,
+            output_dir: output_dir.clone(),
+            chemistry: "twist-umi-duplex".to_string(),
+            min_umi_quality: 0,
+            min_family_size: 1,
+            min_template_length: None,
+            kmer_size: 8,
+            min_confidence: None,
+            strand_bias_threshold: None,
+            min_alt_molecules: None,
+            min_alt_duplex: None,
+            sv_min_confidence: None,
+            sv_min_alt_molecules: None,
+            max_vaf: None,
+            sv_junctions: None,
+            target_variants: None,
+            ti_position_tolerance: 0,
+            sv_strand_bias_threshold: 1.0,
+            output_format: "tsv,vcf".to_string(),
+            qc_output: None,
+            log_dir: None,
+            log: vec![],
+            threads: None,
+        };
+
+        run_pipeline(args).expect("run_pipeline multi-format should succeed");
+
+        assert!(
+            output_dir.join("variants.tsv").exists(),
+            "variants.tsv should exist"
+        );
+        assert!(
+            output_dir.join("variants.vcf").exists(),
+            "variants.vcf should exist"
+        );
     }
 }
