@@ -122,6 +122,10 @@ for tag in "${VAF_TAGS[@]}"; do
 done
 
 echo ""
+echo "[BUILD] Rebuilding per-sample directories..."
+python3 "${REPO}/docs/benchmarking/build_sample_dirs.py"
+
+echo ""
 echo "=== DONE ==="
 echo "Failed: ${#FAILED[@]}"
 for f in "${FAILED[@]}"; do echo "  $f"; done

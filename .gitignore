@@ -1,6 +1,8 @@
 target/
 
-# Benchmarking: generated FASTQ and BAM outputs from varforge simulations.
-# Only configs, truth VCFs, and result summaries are committed.
-docs/benchmarking/sv/results/
-docs/benchmarking/snvindel/results/
+# Benchmarking: varforge FASTQ simulation outputs (large, reproducible).
+# The samples/ directories with per-sample TSV results ARE committed.
+docs/benchmarking/sv/results/sim_*/
+docs/benchmarking/sv/results/kam_*/
+docs/benchmarking/snvindel/results/sim_*/
+docs/benchmarking/snvindel/results/kam_*/

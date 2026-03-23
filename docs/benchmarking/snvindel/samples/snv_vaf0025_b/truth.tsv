@@ -1,0 +1,6 @@
+chrom	pos	ref	alt	vaf	type
+chr1	150	C	A	0.0025	SNP
+chr1	350	G	A	0.0025	SNP
+chr1	600	A	C	0.0025	SNP
+chr1	850	G	A	0.0025	SNP
+chr1	1100	G	A	0.0025	SNP

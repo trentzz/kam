@@ -1,6 +1,6 @@
 # BENCH-VARFORGE: Extensive Varforge Benchmarking Suite
 
-**Status**: active
+**Status**: done
 **Priority**: high
 **Branch**: epic/BENCH-VARFORGE
 
@@ -74,12 +74,16 @@ For each variant class, produce:
 
 | ID | File | Status |
 |----|------|--------|
-| BENCH-VF-001 | todo/bench_vf_001_snv_suite.md | todo |
-| BENCH-VF-002 | todo/bench_vf_002_indel_suite.md | todo |
-| BENCH-VF-003 | todo/bench_vf_003_sv_suite.md | todo |
-| BENCH-VF-004 | todo/bench_vf_004_run_all.md | todo |
-| BENCH-VF-005 | todo/bench_vf_005_score_aggregate.md | todo |
-| BENCH-VF-006 | todo/bench_vf_006_figures.md | todo |
+| BENCH-VF-001 | done/bench_vf_001_snv_suite.md | done |
+| BENCH-VF-002 | done/bench_vf_002_indel_suite.md | done |
+| BENCH-VF-003 | done/bench_vf_003_sv_suite.md | done |
+| BENCH-VF-004 | done/bench_vf_004_run_all.md | done |
+| BENCH-VF-005 | done/bench_vf_005_score_aggregate.md | done |
+| BENCH-VF-006 | done/bench_vf_006_figures.md | done |
+| BENCH-VF-007 | done/bench_vf_007_fix_snv_pos50.md | done |
+| BENCH-VF-008 | done/bench_vf_008_sv_ti_position_filter.md | done |
+| BENCH-VF-009 | done/bench_vf_009_large_sv_detection.md | done |
+| BENCH-VF-010 | done/bench_vf_010_per_sample_dirs.md | done |
 
 ## Scope
 

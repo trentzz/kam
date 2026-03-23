@@ -119,6 +119,7 @@ run_dataset() {
     cp "${out_dir}/tmp_ti/variants.vcf" "$ti_vcf"
     cp "${out_dir}/tmp_ti/variants.tsv" "${out_dir}/calls_tumour_informed.tsv"
     rm -rf "${out_dir}/tmp_ti"
+
 }
 
 SV_TARGETS="${DATADIR}/sv_suite_targets.fa"
@@ -139,6 +140,10 @@ for tag in "${VAF_TAGS[@]}"; do
         run_dataset invdel  invdel  "$tag" "$rep" "$INVDEL_TARGETS" ""
     done
 done
+
+echo ""
+echo "[BUILD] Rebuilding per-sample directories..."
+python3 "${REPO}/docs/benchmarking/build_sample_dirs.py"
 
 echo ""
 echo "=== DONE ==="
