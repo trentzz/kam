@@ -130,7 +130,7 @@ pub struct AssemblyStats {
 /// let r1_qual = b"IIIIIIIIIIIIIIIII";
 /// let r2_seq  = b"TGCATAGNNNNNNNNNN";
 /// let r2_qual = b"IIIIIIIIIIIIIIIII";
-/// let pair = match parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &config_parser) {
+/// let pair = match parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &config_parser).unwrap() {
 ///     ParseResult::Ok(p) => p,
 ///     ParseResult::Dropped { .. } => panic!("unexpected drop"),
 /// };
@@ -521,7 +521,9 @@ mod tests {
         let r2_qual = vec![b'I'; r2_seq.len()];
 
         let config = ParserConfig::default();
-        match parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &config) {
+        match parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &config)
+            .expect("make_pair: parse error")
+        {
             ParseResult::Ok(p) => p,
             ParseResult::Dropped { reason, detail } => {
                 panic!("make_pair produced Dropped({reason:?}): {detail}");

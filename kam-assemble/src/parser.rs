@@ -9,6 +9,52 @@
 use kam_core::chemistry::ReadStructure;
 use kam_core::molecule::{CanonicalUmiPair, Strand};
 
+// ── Error type ────────────────────────────────────────────────────────────────
+
+/// Errors returned by [`parse_read_pair`].
+///
+/// These represent programmer errors: a [`ReadStructure`] was supplied whose
+/// fixed-width fields do not match the compile-time array sizes expected by
+/// [`ParsedReadPair`] (UMI = 5 bp, skip = 2 bp).  With the standard Twist UMI
+/// duplex preset these errors cannot occur.
+///
+/// # Example
+/// ```
+/// use kam_assemble::parser::{ParseError, ParserConfig, parse_read_pair};
+/// use kam_core::chemistry::ReadStructure;
+///
+/// // Non-standard read structure with UMI length 8 — will produce an error.
+/// let bad_config = ParserConfig {
+///     read_structure: ReadStructure { umi_length: 8, skip_length: 2 },
+///     ..ParserConfig::default()
+/// };
+/// let r1_seq  = b"ACGTATGNNNNNNNNNN";
+/// let r1_qual = b"IIIIIIIIIIIIIIIII";
+/// let r2_seq  = b"TGCATAGNNNNNNNNNN";
+/// let r2_qual = b"IIIIIIIIIIIIIIIII";
+/// // The read passes the ReadTooShort guard (17 >= 10), but umi_len=8
+/// // cannot be coerced into [u8; 5] — error is returned rather than panic.
+/// let result = parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &bad_config);
+/// assert!(matches!(result, Err(ParseError::UmiLengthMismatch { actual: 8 })));
+/// ```
+#[derive(Debug, thiserror::Error)]
+pub enum ParseError {
+    /// The UMI length in [`ReadStructure`] is not 5 bp, so the extracted slice
+    /// cannot be coerced into `[u8; 5]`.
+    #[error("UMI length {actual} does not match expected 5 bp")]
+    UmiLengthMismatch {
+        /// Actual `umi_length` from the [`ReadStructure`].
+        actual: usize,
+    },
+    /// The skip length in [`ReadStructure`] is not 2 bp, so the extracted slice
+    /// cannot be coerced into `[u8; 2]`.
+    #[error("skip length {actual} does not match expected 2 bp")]
+    SkipLengthMismatch {
+        /// Actual `skip_length` from the [`ReadStructure`].
+        actual: usize,
+    },
+}
+
 // ── Configuration ────────────────────────────────────────────────────────────
 
 /// Configuration passed to [`parse_read_pair`].
@@ -165,6 +211,13 @@ pub struct ParseStats {
 /// * `r2_seq` / `r2_qual` — raw base and quality bytes for R2.
 /// * `config` — parser configuration (chemistry preset + optional filters).
 ///
+/// # Errors
+///
+/// Returns [`ParseError::UmiLengthMismatch`] or [`ParseError::SkipLengthMismatch`]
+/// when the [`ReadStructure`] in `config` specifies a UMI length other than 5 bp
+/// or a skip length other than 2 bp.  With the standard Twist UMI duplex preset
+/// these errors cannot occur.
+///
 /// # Examples
 ///
 /// ```
@@ -173,18 +226,10 @@ pub struct ParseStats {
 /// let config = ParserConfig::default();
 /// // 5 bp UMI + 2 bp skip + 10 bp template = 17 bp total
 /// let r1_seq  = b"ACGTATGNNNNNNNNNN";
-/// let r1_qual = b"IIIIIIIIIIIIIIIIII";
-/// // r1_qual is 18 bytes but r1_seq is 17 — quality truncation is handled
-/// // by only slicing as many bytes as there are sequence bases.
-/// let r2_seq  = b"TGCATAGNNNNNNNNNNN";
-/// let r2_qual = b"IIIIIIIIIIIIIIIIIIII";
-///
-/// // Use equal-length inputs for well-formed FASTQ:
-/// let r1_seq  = b"ACGTATGNNNNNNNNNN";
 /// let r1_qual = b"IIIIIIIIIIIIIIIII";
 /// let r2_seq  = b"TGCATAGNNNNNNNNNN";
 /// let r2_qual = b"IIIIIIIIIIIIIIIII";
-/// let result = parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &config);
+/// let result = parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &config).unwrap();
 /// assert!(matches!(result, ParseResult::Ok(_)));
 /// ```
 pub fn parse_read_pair(
@@ -193,7 +238,7 @@ pub fn parse_read_pair(
     r2_seq: &[u8],
     r2_qual: &[u8],
     config: &ParserConfig,
-) -> ParseResult {
+) -> Result<ParseResult, ParseError> {
     let umi_len = config.read_structure.umi_length;
     let tmpl_start = config.read_structure.template_start();
 
@@ -205,28 +250,41 @@ pub fn parse_read_pair(
             r2_seq.len(),
             tmpl_start
         );
-        return ParseResult::Dropped {
+        return Ok(ParseResult::Dropped {
             reason: DropReason::ReadTooShort,
             detail,
-        };
+        });
     }
 
     // ── 2. Extract UMI, skip, template ───────────────────────────────────
-    let umi_r1: [u8; 5] = r1_seq[..umi_len].try_into().expect("umi_length==5");
-    let umi_r2: [u8; 5] = r2_seq[..umi_len].try_into().expect("umi_length==5");
+    // The ReadTooShort guard above ensures both reads are at least `tmpl_start`
+    // bytes long, so the slice bounds are valid.  The only way these coercions
+    // can fail is when `umi_len != 5` or `skip_len != 2` — i.e. a non-standard
+    // ReadStructure was supplied.  Return an error instead of panicking.
+    let umi_r1: [u8; 5] = r1_seq[..umi_len]
+        .try_into()
+        .map_err(|_| ParseError::UmiLengthMismatch { actual: umi_len })?;
+    let umi_r2: [u8; 5] = r2_seq[..umi_len]
+        .try_into()
+        .map_err(|_| ParseError::UmiLengthMismatch { actual: umi_len })?;
 
+    let skip_len = tmpl_start - umi_len;
     let skip_r1: [u8; 2] = r1_seq[umi_len..tmpl_start]
         .try_into()
-        .expect("skip_length==2");
+        .map_err(|_| ParseError::SkipLengthMismatch { actual: skip_len })?;
     let skip_r2: [u8; 2] = r2_seq[umi_len..tmpl_start]
         .try_into()
-        .expect("skip_length==2");
+        .map_err(|_| ParseError::SkipLengthMismatch { actual: skip_len })?;
 
     let template_r1 = r1_seq[tmpl_start..].to_vec();
     let template_r2 = r2_seq[tmpl_start..].to_vec();
 
-    let umi_qual_r1: [u8; 5] = r1_qual[..umi_len].try_into().expect("umi_length==5");
-    let umi_qual_r2: [u8; 5] = r2_qual[..umi_len].try_into().expect("umi_length==5");
+    let umi_qual_r1: [u8; 5] = r1_qual[..umi_len]
+        .try_into()
+        .map_err(|_| ParseError::UmiLengthMismatch { actual: umi_len })?;
+    let umi_qual_r2: [u8; 5] = r2_qual[..umi_len]
+        .try_into()
+        .map_err(|_| ParseError::UmiLengthMismatch { actual: umi_len })?;
 
     let qual_r1 = r1_qual[tmpl_start..].to_vec();
     let qual_r2 = r2_qual[tmpl_start..].to_vec();
@@ -237,10 +295,10 @@ pub fn parse_read_pair(
         let t2 = template_r2.len();
         if t1 < min_tmpl || t2 < min_tmpl {
             let detail = format!("r1_template={t1}bp,r2_template={t2}bp,min={min_tmpl}");
-            return ParseResult::Dropped {
+            return Ok(ParseResult::Dropped {
                 reason: DropReason::TemplateTooShort,
                 detail,
-            };
+            });
         }
     }
 
@@ -253,10 +311,10 @@ pub fn parse_read_pair(
             let phred = raw.saturating_sub(33);
             if phred < min_q {
                 let detail = format!("r1_umi_base={i},quality={phred},min={min_q}");
-                return ParseResult::Dropped {
+                return Ok(ParseResult::Dropped {
                     reason: DropReason::LowUmiQuality,
                     detail,
-                };
+                });
             }
         }
         // Check R2 UMI qualities
@@ -264,10 +322,10 @@ pub fn parse_read_pair(
             let phred = raw.saturating_sub(33);
             if phred < min_q {
                 let detail = format!("r2_umi_base={i},quality={phred},min={min_q}");
-                return ParseResult::Dropped {
+                return Ok(ParseResult::Dropped {
                     reason: DropReason::LowUmiQuality,
                     detail,
-                };
+                });
             }
         }
     }
@@ -276,7 +334,7 @@ pub fn parse_read_pair(
     let canonical_umi = CanonicalUmiPair::new(umi_r1, umi_r2);
     let strand = canonical_umi.strand_of_r1(&umi_r1);
 
-    ParseResult::Ok(ParsedReadPair {
+    Ok(ParseResult::Ok(ParsedReadPair {
         umi_r1,
         umi_r2,
         skip_r1,
@@ -289,7 +347,7 @@ pub fn parse_read_pair(
         umi_qual_r2,
         canonical_umi,
         strand,
-    })
+    }))
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -320,7 +378,8 @@ mod tests {
     fn valid_read_pair_long_template() {
         let (r1_seq, r1_qual) = make_read(b"ACGTA", b"TG", b"NNNNNNNNNNNNNNNNNNNN");
         let (r2_seq, r2_qual) = make_read(b"TGCAT", b"AC", b"NNNNNNNNNNNNNNNNNNNN");
-        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
+        let result =
+            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config()).unwrap();
         match result {
             ParseResult::Ok(p) => {
                 assert_eq!(p.umi_r1, *b"ACGTA");
@@ -344,7 +403,8 @@ mod tests {
     fn zero_length_template_no_min_length() {
         let (r1_seq, r1_qual) = make_read(b"ACGTA", b"TG", b"");
         let (r2_seq, r2_qual) = make_read(b"TGCAT", b"AC", b"");
-        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
+        let result =
+            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config()).unwrap();
         match result {
             ParseResult::Ok(p) => {
                 assert_eq!(p.template_r1.len(), 0);
@@ -364,7 +424,7 @@ mod tests {
         let r1_qual = b"IIII";
         let r2_seq = b"TGCATAGNNNNNNNNNN";
         let r2_qual = b"IIIIIIIIIIIIIIIII";
-        let result = parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &default_config());
+        let result = parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &default_config()).unwrap();
         assert!(
             matches!(
                 result,
@@ -387,7 +447,7 @@ mod tests {
             min_template_length: Some(20),
             ..ParserConfig::default()
         };
-        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &config);
+        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &config).unwrap();
         assert!(
             matches!(
                 result,
@@ -406,7 +466,8 @@ mod tests {
     fn template_10bp_ok_when_no_min_length() {
         let (r1_seq, r1_qual) = make_read(b"ACGTA", b"TG", b"NNNNNNNNNN");
         let (r2_seq, r2_qual) = make_read(b"TGCAT", b"AC", b"NNNNNNNNNN");
-        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
+        let result =
+            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config()).unwrap();
         assert!(matches!(result, ParseResult::Ok(_)), "Expected Ok");
     }
 
@@ -417,7 +478,8 @@ mod tests {
         let (r1_seq, r1_qual) = make_read(b"AAAAA", b"CC", tmpl);
         let (r2_seq, r2_qual) = make_read(b"TTTTT", b"GG", tmpl);
         assert_eq!(r1_seq.len(), r2_seq.len());
-        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
+        let result =
+            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config()).unwrap();
         match result {
             ParseResult::Ok(p) => {
                 assert_eq!(p.template_r1.len(), 12);
@@ -434,7 +496,8 @@ mod tests {
     fn umi_extracted_from_positions_0_to_5() {
         let (r1_seq, r1_qual) = make_read(b"GGGGG", b"CC", b"AAAAAAAAAA");
         let (r2_seq, r2_qual) = make_read(b"CCCCC", b"TT", b"TTTTTTTTTT");
-        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
+        let result =
+            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config()).unwrap();
         match result {
             ParseResult::Ok(p) => {
                 assert_eq!(&p.umi_r1, b"GGGGG");
@@ -451,7 +514,8 @@ mod tests {
     fn skip_extracted_from_positions_5_to_7() {
         let (r1_seq, r1_qual) = make_read(b"AAAAA", b"XY", b"NNNNNNNNNN");
         let (r2_seq, r2_qual) = make_read(b"TTTTT", b"ZW", b"NNNNNNNNNN");
-        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
+        let result =
+            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config()).unwrap();
         match result {
             ParseResult::Ok(p) => {
                 assert_eq!(&p.skip_r1, b"XY");
@@ -472,7 +536,7 @@ mod tests {
         let r1_qual = b"IIIIIIIIIIIIIIIIII";
         let r2_seq = b"TGCATACGGGGGGGGGGG";
         let r2_qual = b"IIIIIIIIIIIIIIIIII";
-        let result = parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &default_config());
+        let result = parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &default_config()).unwrap();
         match result {
             ParseResult::Ok(p) => {
                 assert_eq!(p.template_r1, b"CCCCCCCCCCC");
@@ -490,7 +554,8 @@ mod tests {
         let tmpl = b"ACGTACGTACGT"; // 12 bp template
         let (r1_seq, r1_qual) = make_read(b"AAAAA", b"CC", tmpl);
         let (r2_seq, r2_qual) = make_read(b"TTTTT", b"GG", tmpl);
-        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
+        let result =
+            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config()).unwrap();
         match result {
             ParseResult::Ok(p) => {
                 assert_eq!(p.qual_r1.len(), p.template_r1.len());
@@ -511,7 +576,8 @@ mod tests {
         // Forward strand.
         let (r1_seq, r1_qual) = make_read(b"ACGTA", b"TG", b"NNNNNNNNNN");
         let (r2_seq, r2_qual) = make_read(b"TGCAT", b"AC", b"NNNNNNNNNN");
-        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
+        let result =
+            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config()).unwrap();
         match result {
             ParseResult::Ok(p) => {
                 assert_eq!(p.canonical_umi.umi_a, *b"ACGTA");
@@ -531,7 +597,8 @@ mod tests {
         // Reverse strand.
         let (r1_seq, r1_qual) = make_read(b"TGCAT", b"AC", b"NNNNNNNNNN");
         let (r2_seq, r2_qual) = make_read(b"ACGTA", b"TG", b"NNNNNNNNNN");
-        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
+        let result =
+            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config()).unwrap();
         match result {
             ParseResult::Ok(p) => {
                 assert_eq!(p.canonical_umi.umi_a, *b"ACGTA");
@@ -556,7 +623,7 @@ mod tests {
             min_umi_quality: Some(30), // '#' = 2 < 30
             ..ParserConfig::default()
         };
-        let result = parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &config);
+        let result = parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &config).unwrap();
         assert!(
             matches!(
                 result,
@@ -577,7 +644,7 @@ mod tests {
         let r1_qual = b"II#IIIIIIIIIIIIII";
         let r2_seq = b"TGCATAGNNNNNNNNNN";
         let r2_qual = b"IIIIIIIIIIIIIIIII";
-        let result = parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &default_config());
+        let result = parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &default_config()).unwrap();
         assert!(matches!(result, ParseResult::Ok(_)), "Expected Ok");
     }
 
@@ -591,7 +658,7 @@ mod tests {
             min_template_length: Some(20),
             ..ParserConfig::default()
         };
-        match parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &config) {
+        match parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &config).unwrap() {
             ParseResult::Dropped {
                 reason: DropReason::TemplateTooShort,
                 detail,
@@ -617,7 +684,7 @@ mod tests {
             min_umi_quality: Some(30),
             ..ParserConfig::default()
         };
-        match parse_read_pair(r1_seq2, r1_qual2, r2_seq2, r2_qual2, &config2) {
+        match parse_read_pair(r1_seq2, r1_qual2, r2_seq2, r2_qual2, &config2).unwrap() {
             ParseResult::Dropped {
                 reason: DropReason::LowUmiQuality,
                 detail,
@@ -642,7 +709,9 @@ mod tests {
             long_seq,
             long_qual,
             &default_config(),
-        ) {
+        )
+        .unwrap()
+        {
             ParseResult::Dropped {
                 reason: DropReason::ReadTooShort,
                 detail,
@@ -658,6 +727,31 @@ mod tests {
             }
             other => panic!("Expected ReadTooShort, got: {other:?}"),
         }
+    }
+
+    // Test 15: Non-standard ReadStructure with umi_length != 5 returns
+    // ParseError::UmiLengthMismatch instead of panicking.
+    #[test]
+    fn non_standard_umi_length_returns_error() {
+        use kam_core::chemistry::ReadStructure;
+        let bad_config = ParserConfig {
+            read_structure: ReadStructure {
+                umi_length: 8,
+                skip_length: 2,
+            },
+            ..ParserConfig::default()
+        };
+        // Read is long enough to pass ReadTooShort (10 bp minimum for umi=8, skip=2),
+        // but umi_len=8 cannot coerce into [u8; 5].
+        let r1_seq = b"ACGTACGTATGNNNNNNNNNN";
+        let r1_qual = b"IIIIIIIIIIIIIIIIIIIII";
+        let r2_seq = b"TGCATACGTAGNNNNNNNNNN";
+        let r2_qual = b"IIIIIIIIIIIIIIIIIIIII";
+        let result = parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &bad_config);
+        assert!(
+            matches!(result, Err(ParseError::UmiLengthMismatch { actual: 8 })),
+            "Expected UmiLengthMismatch, got: {result:?}"
+        );
     }
 
     // Additional: ParseStats default values are all zero.

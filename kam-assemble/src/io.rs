@@ -116,7 +116,7 @@ pub fn read_fastq_pairs(
 
                 stats.n_processed += 1;
 
-                match parse_read_pair(&r1_seq, r1_qual, &r2_seq, r2_qual, config) {
+                match parse_read_pair(&r1_seq, r1_qual, &r2_seq, r2_qual, config)? {
                     crate::parser::ParseResult::Ok(parsed) => {
                         stats.n_passed += 1;
                         pairs.push(parsed);
