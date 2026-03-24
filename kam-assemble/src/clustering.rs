@@ -19,11 +19,11 @@ use kam_core::molecule::CanonicalUmiPair;
 /// use kam_core::molecule::CanonicalUmiPair;
 /// use kam_assemble::clustering::umi_pair_hamming_distance;
 ///
-/// let a = CanonicalUmiPair::new(*b"ACGTA", *b"TGCAT");
-/// let b = CanonicalUmiPair::new(*b"ACGTA", *b"TGCAT");
+/// let a = CanonicalUmiPair::new(b"ACGTA".to_vec(), b"TGCAT".to_vec());
+/// let b = CanonicalUmiPair::new(b"ACGTA".to_vec(), b"TGCAT".to_vec());
 /// assert_eq!(umi_pair_hamming_distance(&a, &b), 0);
 ///
-/// let c = CanonicalUmiPair::new(*b"ACGTT", *b"TGCAT"); // last base of umi_a differs
+/// let c = CanonicalUmiPair::new(b"ACGTT".to_vec(), b"TGCAT".to_vec()); // last base of umi_a differs
 /// assert_eq!(umi_pair_hamming_distance(&a, &c), 1);
 /// ```
 pub fn umi_pair_hamming_distance(a: &CanonicalUmiPair, b: &CanonicalUmiPair) -> u32 {
@@ -66,8 +66,8 @@ pub fn umi_pair_hamming_distance(a: &CanonicalUmiPair, b: &CanonicalUmiPair) -> 
 /// use kam_assemble::clustering::cluster_umi_pairs;
 ///
 /// let pairs = vec![
-///     (CanonicalUmiPair::new(*b"ACGTA", *b"TGCAT"), 10_u32),
-///     (CanonicalUmiPair::new(*b"ACGTT", *b"TGCAT"), 2_u32),  // 1 mismatch from idx 0
+///     (CanonicalUmiPair::new(b"ACGTA".to_vec(), b"TGCAT".to_vec()), 10_u32),
+///     (CanonicalUmiPair::new(b"ACGTT".to_vec(), b"TGCAT".to_vec()), 2_u32),  // 1 mismatch from idx 0
 /// ];
 /// let groups = cluster_umi_pairs(&pairs, 1);
 /// assert_eq!(groups.len(), 1);
@@ -125,8 +125,8 @@ pub fn cluster_umi_pairs(pairs: &[(CanonicalUmiPair, u32)], max_distance: u32) -
 mod tests {
     use super::*;
 
-    fn pair(a: &[u8; 5], b: &[u8; 5]) -> CanonicalUmiPair {
-        CanonicalUmiPair::new(*a, *b)
+    fn pair(a: &[u8], b: &[u8]) -> CanonicalUmiPair {
+        CanonicalUmiPair::new(a.to_vec(), b.to_vec())
     }
 
     // Test 1: Hamming distance of identical pairs is 0.

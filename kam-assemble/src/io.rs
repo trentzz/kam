@@ -119,7 +119,7 @@ pub fn read_fastq_pairs(
                 match parse_read_pair(&r1_seq, r1_qual, &r2_seq, r2_qual, config)? {
                     crate::parser::ParseResult::Ok(parsed) => {
                         stats.n_passed += 1;
-                        pairs.push(parsed);
+                        pairs.push(*parsed);
                     }
                     crate::parser::ParseResult::Dropped { reason, .. } => match reason {
                         DropReason::ReadTooShort => stats.n_read_too_short += 1,

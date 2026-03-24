@@ -222,7 +222,7 @@ mod tests {
         let config = ParserConfig::default();
         let pair =
             match parse_read_pair(r1_seq, &qual, r2_seq, &qual, &config).expect("parse error") {
-                ParseResult::Ok(p) => p,
+                ParseResult::Ok(p) => *p,
                 ParseResult::Dropped { reason, detail } => {
                     panic!("unexpected drop: {reason:?}: {detail}");
                 }

@@ -130,7 +130,7 @@ pub struct AssemblyStats {
 /// let r2_seq  = b"TGCATAGNNNNNNNNNN";
 /// let r2_qual = b"IIIIIIIIIIIIIIIII";
 /// let pair = match parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &config_parser).unwrap() {
-///     ParseResult::Ok(p) => p,
+///     ParseResult::Ok(p) => *p,
 ///     ParseResult::Dropped { .. } => panic!("unexpected drop"),
 /// };
 ///
@@ -331,8 +331,8 @@ fn build_molecule(
 
     // ── Derive canonical UMI from the first read in the group ─────────────
     let canonical_umi = &read_pairs[indices[0]].canonical_umi;
-    let umi_fwd = canonical_umi.umi_a;
-    let umi_rev = canonical_umi.umi_b;
+    let umi_fwd = canonical_umi.umi_a.clone();
+    let umi_rev = canonical_umi.umi_b.clone();
 
     // ── Single-strand consensus (forward) ─────────────────────────────────
     // Call SSC whenever there are forward reads, regardless of min_duplex_reads.
@@ -564,7 +564,7 @@ mod tests {
     ///
     /// Template length must be at least 8 bases so fingerprinting is
     /// meaningful.  Both templates are set to the same value for simplicity.
-    fn make_pair(umi_r1: &[u8; 5], umi_r2: &[u8; 5], template: &[u8]) -> ParsedReadPair {
+    fn make_pair(umi_r1: &[u8], umi_r2: &[u8], template: &[u8]) -> ParsedReadPair {
         let mut r1_seq = Vec::new();
         r1_seq.extend_from_slice(umi_r1);
         r1_seq.extend_from_slice(b"TG"); // skip
@@ -582,7 +582,7 @@ mod tests {
         match parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &config)
             .expect("make_pair: parse error")
         {
-            ParseResult::Ok(p) => p,
+            ParseResult::Ok(p) => *p,
             ParseResult::Dropped { reason, detail } => {
                 panic!("make_pair produced Dropped({reason:?}): {detail}");
             }
@@ -598,8 +598,8 @@ mod tests {
 
         assert_eq!(molecules.len(), 1, "expected exactly one molecule");
         let mol = &molecules[0];
-        assert_eq!(mol.umi_fwd, *b"ACGTA");
-        assert_eq!(mol.umi_rev, *b"TGCAT");
+        assert_eq!(mol.umi_fwd, b"ACGTA");
+        assert_eq!(mol.umi_rev, b"TGCAT");
         assert_eq!(stats.n_singletons, 1);
         assert_eq!(stats.n_duplex, 0);
     }
@@ -769,35 +769,35 @@ mod tests {
         // UMIs: ACGTA < TGCAT → canonical = (ACGTA, TGCAT).
         // Forward read: R1_UMI = umi_a = ACGTA → strand = Forward.
         // Reverse read: R1_UMI = umi_b = TGCAT → strand = Reverse.
-        let canonical_umi = CanonicalUmiPair::new(*b"ACGTA", *b"TGCAT");
+        let canonical_umi = CanonicalUmiPair::new(b"ACGTA".to_vec(), b"TGCAT".to_vec());
         let qual = vec![b'I'; t.len()];
 
         let fwd_pair = crate::parser::ParsedReadPair {
-            umi_r1: *b"ACGTA",
-            umi_r2: *b"TGCAT",
-            skip_r1: *b"TG",
-            skip_r2: *b"TG",
+            umi_r1: b"ACGTA".to_vec(),
+            umi_r2: b"TGCAT".to_vec(),
+            skip_r1: b"TG".to_vec(),
+            skip_r2: b"TG".to_vec(),
             template_r1: t.clone(),
             template_r2: rc_t.clone(),
             qual_r1: qual.clone(),
             qual_r2: qual.clone(),
-            umi_qual_r1: [b'I'; 5],
-            umi_qual_r2: [b'I'; 5],
+            umi_qual_r1: vec![b'I'; 5],
+            umi_qual_r2: vec![b'I'; 5],
             canonical_umi: canonical_umi.clone(),
             strand: Strand::Forward,
         };
 
         let rev_pair = crate::parser::ParsedReadPair {
-            umi_r1: *b"TGCAT",
-            umi_r2: *b"ACGTA",
-            skip_r1: *b"TG",
-            skip_r2: *b"TG",
+            umi_r1: b"TGCAT".to_vec(),
+            umi_r2: b"ACGTA".to_vec(),
+            skip_r1: b"TG".to_vec(),
+            skip_r2: b"TG".to_vec(),
             template_r1: rc_t.clone(),
             template_r2: t.clone(),
             qual_r1: qual.clone(),
             qual_r2: qual.clone(),
-            umi_qual_r1: [b'I'; 5],
-            umi_qual_r2: [b'I'; 5],
+            umi_qual_r1: vec![b'I'; 5],
+            umi_qual_r2: vec![b'I'; 5],
             canonical_umi: canonical_umi.clone(),
             strand: Strand::Reverse,
         };
@@ -842,22 +842,22 @@ mod tests {
         let rev_template: Vec<u8> = b"CCCCCCCCCCCCCCCC".to_vec();
         let qual = vec![b'I'; fwd_template.len()]; // Phred 40
 
-        let canonical_umi = CanonicalUmiPair::new(*b"ACGTA", *b"TGCAT");
+        let canonical_umi = CanonicalUmiPair::new(b"ACGTA".to_vec(), b"TGCAT".to_vec());
 
         // Forward read: R1_UMI = umi_a = ACGTA → strand = Forward.
         // template_r1 = "AAAA..." (the molecule's sense strand template).
         // template_r2 = "CCCC..." (the antisense template, present on this read).
         let fwd_pair = crate::parser::ParsedReadPair {
-            umi_r1: *b"ACGTA",
-            umi_r2: *b"TGCAT",
-            skip_r1: *b"TG",
-            skip_r2: *b"TG",
+            umi_r1: b"ACGTA".to_vec(),
+            umi_r2: b"TGCAT".to_vec(),
+            skip_r1: b"TG".to_vec(),
+            skip_r2: b"TG".to_vec(),
             template_r1: fwd_template.clone(),
             template_r2: rev_template.clone(),
             qual_r1: qual.clone(),
             qual_r2: qual.clone(),
-            umi_qual_r1: [b'I'; 5],
-            umi_qual_r2: [b'I'; 5],
+            umi_qual_r1: vec![b'I'; 5],
+            umi_qual_r2: vec![b'I'; 5],
             canonical_umi: canonical_umi.clone(),
             strand: Strand::Forward,
         };
@@ -866,16 +866,16 @@ mod tests {
         // template_r1 = "CCCC..." (antisense strand, as seen on this read's R1).
         // template_r2 = "AAAA..." (sense strand, as seen on this read's R2).
         let rev_pair = crate::parser::ParsedReadPair {
-            umi_r1: *b"TGCAT",
-            umi_r2: *b"ACGTA",
-            skip_r1: *b"TG",
-            skip_r2: *b"TG",
+            umi_r1: b"TGCAT".to_vec(),
+            umi_r2: b"ACGTA".to_vec(),
+            skip_r1: b"TG".to_vec(),
+            skip_r2: b"TG".to_vec(),
             template_r1: rev_template.clone(),
             template_r2: fwd_template.clone(),
             qual_r1: qual.clone(),
             qual_r2: qual.clone(),
-            umi_qual_r1: [b'I'; 5],
-            umi_qual_r2: [b'I'; 5],
+            umi_qual_r1: vec![b'I'; 5],
+            umi_qual_r2: vec![b'I'; 5],
             canonical_umi: canonical_umi.clone(),
             strand: Strand::Reverse,
         };

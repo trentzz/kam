@@ -35,25 +35,28 @@ pub struct ConsensusRead {
 /// placing the lexicographically smaller UMI in `umi_a`, so both strands map to
 /// the identical key.
 ///
+/// UMI length is variable: any length is accepted. The standard Twist UMI
+/// duplex chemistry uses 5 bp UMIs, but longer or shorter UMIs are supported.
+///
 /// # Example
 /// ```
 /// use kam_core::molecule::{CanonicalUmiPair, Strand};
 ///
 /// // "ACGTA" < "TGCAT", so umi_a stays as-is.
-/// let pair = CanonicalUmiPair::new(*b"ACGTA", *b"TGCAT");
-/// assert_eq!(pair.umi_a, *b"ACGTA");
-/// assert_eq!(pair.umi_b, *b"TGCAT");
+/// let pair = CanonicalUmiPair::new(b"ACGTA".to_vec(), b"TGCAT".to_vec());
+/// assert_eq!(pair.umi_a, b"ACGTA");
+/// assert_eq!(pair.umi_b, b"TGCAT");
 ///
 /// // Swapped inputs produce the identical canonical pair.
-/// let pair2 = CanonicalUmiPair::new(*b"TGCAT", *b"ACGTA");
+/// let pair2 = CanonicalUmiPair::new(b"TGCAT".to_vec(), b"ACGTA".to_vec());
 /// assert_eq!(pair, pair2);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct CanonicalUmiPair {
     /// The lexicographically smaller UMI.
-    pub umi_a: [u8; 5],
+    pub umi_a: Vec<u8>,
     /// The lexicographically larger UMI (or equal, for self-complementary UMIs).
-    pub umi_b: [u8; 5],
+    pub umi_b: Vec<u8>,
 }
 
 impl CanonicalUmiPair {
@@ -63,15 +66,18 @@ impl CanonicalUmiPair {
     /// This ensures forward and reverse strand reads from the same molecule
     /// hash to the same key.
     ///
+    /// Accepts any UMI length; the standard Twist UMI duplex chemistry uses
+    /// 5 bp UMIs.
+    ///
     /// # Example
     /// ```
     /// use kam_core::molecule::CanonicalUmiPair;
     ///
-    /// let pair = CanonicalUmiPair::new(*b"ACGTA", *b"TGCAT");
-    /// assert_eq!(pair.umi_a, *b"ACGTA");
-    /// assert_eq!(pair.umi_b, *b"TGCAT");
+    /// let pair = CanonicalUmiPair::new(b"ACGTA".to_vec(), b"TGCAT".to_vec());
+    /// assert_eq!(pair.umi_a, b"ACGTA");
+    /// assert_eq!(pair.umi_b, b"TGCAT");
     /// ```
-    pub fn new(umi_r1: [u8; 5], umi_r2: [u8; 5]) -> Self {
+    pub fn new(umi_r1: Vec<u8>, umi_r2: Vec<u8>) -> Self {
         if umi_r1 <= umi_r2 {
             Self {
                 umi_a: umi_r1,
@@ -92,12 +98,12 @@ impl CanonicalUmiPair {
     /// ```
     /// use kam_core::molecule::{CanonicalUmiPair, Strand};
     ///
-    /// let pair = CanonicalUmiPair::new(*b"ACGTA", *b"TGCAT");
-    /// assert_eq!(pair.strand_of_r1(&b"ACGTA"), Strand::Forward);
-    /// assert_eq!(pair.strand_of_r1(&b"TGCAT"), Strand::Reverse);
+    /// let pair = CanonicalUmiPair::new(b"ACGTA".to_vec(), b"TGCAT".to_vec());
+    /// assert_eq!(pair.strand_of_r1(b"ACGTA"), Strand::Forward);
+    /// assert_eq!(pair.strand_of_r1(b"TGCAT"), Strand::Reverse);
     /// ```
-    pub fn strand_of_r1(&self, umi_r1: &[u8; 5]) -> Strand {
-        if umi_r1 == &self.umi_a {
+    pub fn strand_of_r1(&self, umi_r1: &[u8]) -> Strand {
+        if umi_r1 == self.umi_a {
             Strand::Forward
         } else {
             Strand::Reverse
@@ -168,10 +174,10 @@ impl FamilyType {
 pub struct Molecule {
     /// Stable molecule identifier derived from hashing the canonical UMI pair.
     pub id: u64,
-    /// Forward-strand UMI (5 bp, Twist chemistry).
-    pub umi_fwd: [u8; 5],
-    /// Reverse-strand UMI.
-    pub umi_rev: [u8; 5],
+    /// Forward-strand UMI (variable length; 5 bp for Twist UMI duplex chemistry).
+    pub umi_fwd: Vec<u8>,
+    /// Reverse-strand UMI (variable length; 5 bp for Twist UMI duplex chemistry).
+    pub umi_rev: Vec<u8>,
     /// Consensus from the forward-strand reads, if available.
     pub consensus_fwd: Option<ConsensusRead>,
     /// Consensus from the reverse-strand reads, if available.
@@ -190,61 +196,69 @@ mod tests {
 
     #[test]
     fn canonical_pair_r1_smaller() {
-        let pair = CanonicalUmiPair::new(*b"ACGTA", *b"TGCAT");
-        assert_eq!(pair.umi_a, *b"ACGTA");
-        assert_eq!(pair.umi_b, *b"TGCAT");
+        let pair = CanonicalUmiPair::new(b"ACGTA".to_vec(), b"TGCAT".to_vec());
+        assert_eq!(pair.umi_a, b"ACGTA");
+        assert_eq!(pair.umi_b, b"TGCAT");
     }
 
     #[test]
     fn canonical_pair_r1_larger_swapped() {
-        let pair = CanonicalUmiPair::new(*b"TGCAT", *b"ACGTA");
-        assert_eq!(pair.umi_a, *b"ACGTA");
-        assert_eq!(pair.umi_b, *b"TGCAT");
+        let pair = CanonicalUmiPair::new(b"TGCAT".to_vec(), b"ACGTA".to_vec());
+        assert_eq!(pair.umi_a, b"ACGTA");
+        assert_eq!(pair.umi_b, b"TGCAT");
     }
 
     #[test]
     fn canonical_pair_equal_umis() {
-        let pair = CanonicalUmiPair::new(*b"AAAAA", *b"AAAAA");
-        assert_eq!(pair.umi_a, *b"AAAAA");
-        assert_eq!(pair.umi_b, *b"AAAAA");
+        let pair = CanonicalUmiPair::new(b"AAAAA".to_vec(), b"AAAAA".to_vec());
+        assert_eq!(pair.umi_a, b"AAAAA");
+        assert_eq!(pair.umi_b, b"AAAAA");
     }
 
     #[test]
     fn canonical_pair_all_a_vs_all_t() {
         // "AAAAA" < "TTTTT" lexicographically
-        let pair = CanonicalUmiPair::new(*b"TTTTT", *b"AAAAA");
-        assert_eq!(pair.umi_a, *b"AAAAA");
-        assert_eq!(pair.umi_b, *b"TTTTT");
+        let pair = CanonicalUmiPair::new(b"TTTTT".to_vec(), b"AAAAA".to_vec());
+        assert_eq!(pair.umi_a, b"AAAAA");
+        assert_eq!(pair.umi_b, b"TTTTT");
+    }
+
+    #[test]
+    fn canonical_pair_variable_length() {
+        // 8 bp UMIs — not tied to the Twist 5 bp preset.
+        let pair = CanonicalUmiPair::new(b"ACGTACGT".to_vec(), b"TGCATGCA".to_vec());
+        assert_eq!(pair.umi_a, b"ACGTACGT");
+        assert_eq!(pair.umi_b, b"TGCATGCA");
     }
 
     // ── strand_of_r1() ──────────────────────────────────────────────────────
 
     #[test]
     fn strand_of_r1_forward() {
-        let pair = CanonicalUmiPair::new(*b"ACGTA", *b"TGCAT");
+        let pair = CanonicalUmiPair::new(b"ACGTA".to_vec(), b"TGCAT".to_vec());
         assert_eq!(pair.strand_of_r1(b"ACGTA"), Strand::Forward);
     }
 
     #[test]
     fn strand_of_r1_reverse() {
-        let pair = CanonicalUmiPair::new(*b"ACGTA", *b"TGCAT");
+        let pair = CanonicalUmiPair::new(b"ACGTA".to_vec(), b"TGCAT".to_vec());
         assert_eq!(pair.strand_of_r1(b"TGCAT"), Strand::Reverse);
     }
 
     #[test]
     fn same_molecule_both_orientations_produce_identical_pair() {
         // Read from forward strand: R1=ACGTA, R2=TGCAT
-        let pair_fwd = CanonicalUmiPair::new(*b"ACGTA", *b"TGCAT");
+        let pair_fwd = CanonicalUmiPair::new(b"ACGTA".to_vec(), b"TGCAT".to_vec());
         // Read from reverse strand: R1 and R2 are swapped
-        let pair_rev = CanonicalUmiPair::new(*b"TGCAT", *b"ACGTA");
+        let pair_rev = CanonicalUmiPair::new(b"TGCAT".to_vec(), b"ACGTA".to_vec());
         assert_eq!(pair_fwd, pair_rev);
     }
 
     #[test]
     fn canonical_pair_hash_consistent() {
         use std::collections::HashSet;
-        let pair_a = CanonicalUmiPair::new(*b"ACGTA", *b"TGCAT");
-        let pair_b = CanonicalUmiPair::new(*b"TGCAT", *b"ACGTA");
+        let pair_a = CanonicalUmiPair::new(b"ACGTA".to_vec(), b"TGCAT".to_vec());
+        let pair_b = CanonicalUmiPair::new(b"TGCAT".to_vec(), b"ACGTA".to_vec());
         let mut set = HashSet::new();
         set.insert(pair_a.clone());
         // The same canonical pair (built from swapped inputs) must already be in the set.
