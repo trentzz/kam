@@ -1,8 +1,8 @@
 # SV-STRAND: SV-Aware Strand Bias Filter
 
-**Status**: active
+**Status**: complete
 **Priority**: high
-**Branch**: epic/SV-STRAND
+**Branch**: epic/SV-STRAND (merged to main 2026-03-24)
 
 ## Goal
 
@@ -86,9 +86,9 @@ behaviour is unchanged.
 
 | ID | File | Status |
 |----|------|--------|
-| SV-STRAND-001 | todo/sv_strand_001_config_field.md | todo |
-| SV-STRAND-002 | todo/sv_strand_002_cli_wire.md | todo |
-| SV-STRAND-003 | todo/sv_strand_003_benchmark_rerun.md | todo |
+| SV-STRAND-001 | done/sv_strand_001_config_field.md | done |
+| SV-STRAND-002 | done/sv_strand_002_cli_wire.md | done |
+| SV-STRAND-003 | done/sv_strand_003_benchmark_rerun.md | done |
 
 ## Scope
 

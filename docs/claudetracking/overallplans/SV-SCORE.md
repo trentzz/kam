@@ -1,8 +1,8 @@
 # SV-SCORE: SV Junction Evidence Model
 
-**Status**: active
+**Status**: complete
 **Priority**: high
-**Branch**: epic/SV-SCORE
+**Branch**: epic/SV-SCORE (merged to main 2026-03-24)
 
 ## Goal
 
@@ -73,9 +73,9 @@ This change is internal to the scoring model. No new CLI flags required.
 
 | ID | File | Status |
 |----|------|--------|
-| SV-SCORE-001 | todo/sv_score_001_mean_vs_molecules.md | todo |
-| SV-SCORE-002 | todo/sv_score_002_caller_sv_evidence.md | todo |
-| SV-SCORE-003 | todo/sv_score_003_benchmark_rerun.md | todo |
+| SV-SCORE-001 | done/sv_score_001_mean_vs_molecules.md | done |
+| SV-SCORE-002 | done/sv_score_002_caller_sv_evidence.md | done |
+| SV-SCORE-003 | done/sv_score_003_benchmark_rerun.md | done |
 
 ## Scope
 
