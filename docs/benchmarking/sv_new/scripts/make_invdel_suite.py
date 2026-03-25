@@ -4,17 +4,20 @@
 Produces 25 VAF levels × 2 replicates = 50 configs and 50 truth VCFs,
 all targeting the sv_new benchmark suite.
 
-The InvDel truth VCF uses the same variant definition as the existing
-docs/benchmarking/sv/data/truth_invdel_vaf010.vcf: a 120 bp InvDel at
-chr1:300 on the 2000 bp synthetic reference. The only difference is that
-configs and outputs go under docs/benchmarking/sv_new/ and use the
-invdel_ prefix with the seed range 90000+.
+The InvDel variant is an 80 bp event fully contained within the 200 bp
+target window chr1:801-1000 on the 2000 bp synthetic reference:
+  - REF: ref[860:940] (1-based POS=861), 80 bp
+  - ALT: RC(ref[860:920]), 60 bp (inversion of first 60 bp; last 20 bp deleted)
+  - Target window: ref[800:1000] (1-based 801-1000), 200 bp
+  - Junction: last 35 bp of ALT + first 35 bp of ref after variant (ref[940:975])
+
+The variant is fully inside the target window (0-based [860,940) inside [800,1000)),
+so no part of the REF allele extends before or after the window.
 
 Run from the repo root:
     python3 docs/benchmarking/sv_new/scripts/make_invdel_suite.py
 """
 
-import re
 from pathlib import Path
 
 VAF_LEVELS = [
@@ -30,12 +33,12 @@ CFGS = ROOT / "configs"
 # The reference is shared with all other SV benchmarks.
 REF_PATH = "docs/benchmarking/sv/data/ref.fa"
 
-# InvDel variant definition: 120 bp event at chr1:300.
-# REF sequence spans positions 300–419 (1-based, inclusive).
-# ALT is the reverse complement of the flanking regions with an inner deletion,
-# producing the InvDel signature the classifier detects.
-# These sequences are taken directly from truth_invdel_vaf010.vcf so that
-# varforge generates the same allele geometry as the existing suite.
+# InvDel variant definition: 80 bp event at chr1:861 (1-based).
+# REF: ref[860:940] (0-based), 80 bp, fully within target window ref[800:1000].
+# ALT: RC(ref[860:920]), 60 bp. First 60 bp are inverted; last 20 bp are deleted.
+# alt path (60 bp) < ref path (80 bp) confirms the deletion component.
+# Verified: REF matches ref.fa exactly; ALT is RC of the inverted segment.
+INVDEL_POS = 861
 INVDEL_HEADERS = [
     "##fileformat=VCFv4.2",
     "##contig=<ID=chr1,length=2000>",
@@ -45,15 +48,10 @@ INVDEL_HEADERS = [
     "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO",
 ]
 
-# REF and ALT from the canonical 1% truth VCF.
-INVDEL_REF = (
-    "CTTCAATGTTTAAATGACCCTCTCGTCATAAAACCTTTCTACTATGTGTTCCGCAAGAATCAACAACTAC"
-    "AATGGCGCGTCGTGAATAACGCGACGGCTGAGACGAACGGCGCGTGAATGAAGCGCTTAA"
-)
-INVDEL_ALT = (
-    "CGAAGCGCTTCATTCACGCGCGCCGTTCGTCTCAGCCGTCGCGTTATTCACGACGCGCCATTGTAGTTGT"
-    "TGATTCTTGCGGAACACATAGTAGAAAGGTTTTATGACGAGAGGGTCATTTAAA"
-)
+# REF: ref[860:940] from the 2000 bp synthetic reference (80 bp).
+INVDEL_REF = "GAGGGTCCTCCCATCTCCTGTGATGCATGGTGTGCTTACTGGGATGAATGCGCCGCAAGTAGCAGGTCCCGGCGTGGATA"
+# ALT: RC(ref[860:920]) — inversion of the first 60 bp, with the last 20 bp deleted (60 bp).
+INVDEL_ALT = "ACTTGCGGCGCATTCATCCCAGTAAGCACACCATGCATCACAGGAGATGGGAGGACCCTC"
 
 
 CONFIG_TEMPLATE = """\
@@ -112,8 +110,8 @@ def vaf_tag(vaf: float) -> str:
 def write_vcf(path: Path, vaf: float) -> None:
     """Write a truth VCF for one InvDel sample at the given VAF."""
     row = (
-        f"chr1\t300\t.\t{INVDEL_REF}\t{INVDEL_ALT}\t.\tPASS"
-        f"\tSVTYPE=INVDEL;SVLEN=120;VAF={vaf}"
+        f"chr1\t{INVDEL_POS}\t.\t{INVDEL_REF}\t{INVDEL_ALT}\t.\tPASS"
+        f"\tSVTYPE=INVDEL;SVLEN=80;VAF={vaf}"
     )
     with open(path, "w") as f:
         for h in INVDEL_HEADERS:

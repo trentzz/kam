@@ -466,15 +466,23 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
 
-            // Always try synthetic DUP alt paths from the junction file.
-            // The graph-based traversal cannot find DUP paths at low VAF because
-            // the full junction k-mer chain is not in the raw graph; graph-derived
-            // paths (SNVs, chimeric bridges) may already be in `paths` but are
-            // unrelated to the DUP. The synthetic path is added unconditionally so
-            // it is scored alongside any graph-derived paths.
+            // Always try synthetic DUP and InvDel alt paths from the junction file.
+            // The graph-based traversal cannot find these paths at low VAF because:
+            // - DUP: the full junction k-mer chain is not in the raw graph.
+            // - InvDel: the alt path starts with an inverted sequence that shares no
+            //   k-mers with the reference, so the reference-guided walker cannot
+            //   enter the alt branch at all.
+            // Graph-derived paths (SNVs, chimeric bridges) may already be in `paths`
+            // but are unrelated to the SV. Synthetic paths are added unconditionally
+            // so they are scored alongside any graph-derived paths.
             if let Some(ref jdata) = sv_junctions_data {
                 for (_junc_id, junc_seq) in jdata {
                     if let Some(alt_path) = synthesize_dup_alt_path(target_seq, junc_seq, k) {
+                        if existing_seqs.insert(alt_path.sequence.clone()) {
+                            paths.push(alt_path);
+                        }
+                    }
+                    if let Some(alt_path) = synthesize_invdel_alt_path(target_seq, junc_seq, k) {
                         if existing_seqs.insert(alt_path.sequence.clone()) {
                             paths.push(alt_path);
                         }
@@ -955,6 +963,121 @@ fn synthesize_dup_alt_path(target_seq: &[u8], junc_seq: &[u8], k: usize) -> Opti
     })
 }
 
+/// Construct a synthetic [`GraphPath`] for an inversion-deletion (InvDel) alt allele.
+///
+/// InvDel alt paths cannot be found by reference-guided graph traversal because the
+/// alt allele starts with an inverted sequence that shares no k-mers with the reference.
+/// This function bypasses the graph by reconstructing the expected alt sequence from the
+/// target and junction sequences.
+///
+/// The InvDel junction sequence is:
+/// - Left half:  last `half` bp of the alt allele at the variant boundary.
+///   This is the sequence immediately before the post-variant reference continues.
+///   It is the reverse-complement of the first `half` bp of the inverted region.
+/// - Right half: first `half` bp of the reference IMMEDIATELY after the variant ends.
+///   This is `target[inv_end..inv_end + half]` where `inv_end` is the variant end
+///   position in the target.
+///
+/// The alt sequence reconstructed here covers the target window as follows:
+/// - If the inverted region starts within the target (`inv_start < inv_end`):
+///   `target[0..inv_start] + RC(target[inv_start..inv_end]) + target[inv_end..]`
+/// - If the inverted region starts before the target (no `inv_start` match):
+///   `RC(target[0..inv_end - half]) + junction_left + junction_right + target[inv_end + half..]`
+///
+/// In the second (common) case the interior of the inverted region is approximated by
+/// the RC of the reference.  The junction-spanning k-mers (those that cross the
+/// inversion boundary) are reconstructed exactly from the junction sequence.  These
+/// are the discriminatory k-mers that distinguish the alt allele from the reference.
+///
+/// The returned path uses raw (forward) k-mer encodings and is scored by the
+/// caller via the canonical index.
+///
+/// Returns `None` if the junction does not match this target (right half absent from
+/// target, or the lengths are invalid).
+fn synthesize_invdel_alt_path(target_seq: &[u8], junc_seq: &[u8], k: usize) -> Option<GraphPath> {
+    if junc_seq.len() < 2 || !junc_seq.len().is_multiple_of(2) {
+        return None;
+    }
+    let half = junc_seq.len() / 2;
+    if half < k {
+        // Junction too short to produce any unique k-mers.
+        return None;
+    }
+
+    let left_half = &junc_seq[..half];
+    let right_half = &junc_seq[half..];
+
+    // The right half of the junction is the reference sequence immediately after the
+    // variant ends.  Find it in the target to locate inv_end.
+    let inv_end = find_subseq(target_seq, right_half)?;
+
+    // Try to locate where the inversion starts within the target by searching for the
+    // RC of the junction left half.  The left half of the junction is the last `half`
+    // bp of the alt allele, which is the RC of the last `half` bp of the inverted
+    // region in the reference.  Therefore RC(left_half) = last `half` bp of the
+    // inverted region as it appears in the reference (i.e. in the target).
+    let rc_left = rc_seq(left_half);
+    let inv_start_opt = find_subseq(target_seq, &rc_left);
+
+    let alt_seq: Vec<u8> = if let Some(inv_start) = inv_start_opt {
+        if inv_start >= inv_end {
+            return None;
+        }
+        // The inversion is entirely within the target.
+        // alt = target[0..inv_start] + RC(target[inv_start..inv_end]) + target[inv_end..]
+        let inverted = rc_seq(&target_seq[inv_start..inv_end]);
+        let mut seq = Vec::with_capacity(target_seq.len());
+        seq.extend_from_slice(&target_seq[..inv_start]);
+        seq.extend_from_slice(&inverted);
+        seq.extend_from_slice(&target_seq[inv_end..]);
+        seq
+    } else {
+        // The inversion starts before the target window (common for InvDel variants
+        // where the target amplicon begins inside the inverted region).
+        // Use the junction as an exact anchor for the boundary k-mers and approximate
+        // the interior using the RC of the reference.
+        if inv_end < half {
+            return None;
+        }
+        let interior_rc = rc_seq(&target_seq[..inv_end - half]);
+        let suffix = &target_seq[inv_end + half..];
+        let mut seq = Vec::with_capacity(interior_rc.len() + junc_seq.len() + suffix.len());
+        seq.extend_from_slice(&interior_rc);
+        seq.extend_from_slice(left_half);
+        seq.extend_from_slice(right_half);
+        seq.extend_from_slice(suffix);
+        seq
+    };
+
+    let kmers: Vec<u64> = KmerIterator::new(&alt_seq, k).map(|(_, km)| km).collect();
+    let length = kmers.len();
+    if length == 0 {
+        return None;
+    }
+
+    Some(GraphPath {
+        kmers,
+        sequence: alt_seq,
+        length,
+    })
+}
+
+/// Reverse-complement a DNA byte slice.
+///
+/// Non-ACGT bytes are complemented as `N` → `N`.
+fn rc_seq(seq: &[u8]) -> Vec<u8> {
+    seq.iter()
+        .rev()
+        .map(|&b| match b {
+            b'A' | b'a' => b'T',
+            b'T' | b't' => b'A',
+            b'C' | b'c' => b'G',
+            b'G' | b'g' => b'C',
+            _ => b'N',
+        })
+        .collect()
+}
+
 /// Find the first occurrence of `needle` in `haystack`.
 ///
 /// Returns the start index, or `None` if absent.
@@ -1353,5 +1476,143 @@ min_umi_quality = 0
             !config_output_dir.exists(),
             "config-specified dir should not be created"
         );
+    }
+
+    // ── synthesize_invdel_alt_path unit tests ─────────────────────────────────
+
+    /// Helper: compute the reverse complement of a byte slice.
+    fn rc(seq: &[u8]) -> Vec<u8> {
+        seq.iter()
+            .rev()
+            .map(|&b| match b {
+                b'A' => b'T',
+                b'T' => b'A',
+                b'C' => b'G',
+                b'G' => b'C',
+                _ => b'N',
+            })
+            .collect()
+    }
+
+    /// Inversion fully within the target: inv_start and inv_end both found.
+    ///
+    /// Layout:
+    ///   target = AAAACCCCTTTT (12bp)
+    ///   inverted region = target[4..8] = CCCC
+    ///   inv_start = 4 (RC(junction_left) = RC(GGGG) = CCCC found at target[4])
+    ///   inv_end   = 8 (junction_right = TTTT found at target[8])
+    ///   alt = AAAA + RC(CCCC) + TTTT = AAAAGGGGT TTT → AAAAGGGGTTTT
+    #[test]
+    fn synthesize_invdel_inversion_fully_within_target() {
+        // target:       AAAA CCCC TTTT
+        //                    ^^^^ inverted region (target[4..8])
+        // alt:          AAAA GGGG TTTT
+        //
+        // junction_left = last 4bp of alt at the boundary = GGGG
+        //   (= RC of CCCC = last half of the inverted region)
+        // RC(junction_left) = RC(GGGG) = CCCC → found at target[4] = inv_start
+        // junction_right = TTTT → found at target[8] = inv_end
+        let target = b"AAAACCCCTTTT"; // 12bp
+        let junc = b"GGGGTTTT"; // half=4; left=GGGG, right=TTTT
+        let k = 4;
+
+        let path = synthesize_invdel_alt_path(target, junc, k).expect("should produce a path");
+
+        let expected: &[u8] = b"AAAAGGGGTTTT";
+        assert_eq!(
+            path.sequence, expected,
+            "fully-within inversion should be AAAA+GGGG+TTTT"
+        );
+        assert!(!path.kmers.is_empty(), "path should have k-mers");
+        assert_eq!(path.length, path.kmers.len(), "length field must match");
+    }
+
+    /// Inversion starting before the target window (the common InvDel case).
+    ///
+    /// The RC of junction_left does not appear in the target (because the start of
+    /// the inverted region is before the target).  The fallback path is:
+    ///   RC(target[0..inv_end - half]) + junction_left + junction_right + target[inv_end + half..]
+    ///
+    /// Layout:
+    ///   target = TTTTACGTACGT (12bp)
+    ///   inv_end = 4 (ACGT starts at target[4])
+    ///   half = 4
+    ///   junction_left = CCCC (RC=GGGG, not in target → inversion started before target)
+    ///   interior_rc = RC(target[0..0]) = "" (empty, since inv_end - half = 0)
+    ///   alt = "" + CCCC + ACGT + target[8..] = CCCC + ACGT + ACGT = CCCCACGTACGT
+    #[test]
+    fn synthesize_invdel_inversion_starts_before_target() {
+        let target = b"TTTTACGTACGT";
+        // junction: left=CCCC (RC=GGGG, absent from target → uses fallback)
+        //           right=ACGT (appears at target[4] → inv_end=4)
+        let junc = b"CCCCACGT"; // 8 bytes, half=4
+        let k = 4;
+
+        let path = synthesize_invdel_alt_path(target, junc, k)
+            .expect("fallback path should be produced for inversion-before-target");
+
+        // inv_end=4, half=4, interior_rc = RC(target[0..0]) = ""
+        // alt = "" + CCCC + ACGT + target[8..12] = CCCCACGTACGT
+        let expected: Vec<u8> = b"CCCCACGTACGT".to_vec();
+        assert_eq!(path.sequence, expected);
+        assert!(!path.kmers.is_empty());
+    }
+
+    /// inv_end < half causes None because the interior slice would underflow.
+    #[test]
+    fn synthesize_invdel_inv_end_less_than_half_returns_none() {
+        // target = ACGTTTTT (8bp)
+        // right_half = ACGT appears at position 0. inv_end=0, half=4. 0 < 4 → None.
+        let target = b"ACGTTTTT";
+        let junc = b"CCCCACGT"; // right half ACGT found at pos 0, inv_end=0 < half=4
+        assert!(
+            synthesize_invdel_alt_path(target, junc, 4).is_none(),
+            "inv_end < half should return None to prevent underflow"
+        );
+    }
+
+    /// Junction with odd length returns None.
+    #[test]
+    fn synthesize_invdel_odd_junction_returns_none() {
+        let target = b"ACGTACGT";
+        let junc = b"ACGTACG"; // 7 bytes — odd, not multiple of 2
+        assert!(
+            synthesize_invdel_alt_path(target, junc, 4).is_none(),
+            "odd-length junction should return None"
+        );
+    }
+
+    /// Right half not found in target returns None.
+    #[test]
+    fn synthesize_invdel_right_half_absent_returns_none() {
+        let target = b"ACGTACGT";
+        // right half = TTTT, not in target
+        let junc = b"CCCCTTTT";
+        assert!(
+            synthesize_invdel_alt_path(target, junc, 4).is_none(),
+            "absent right half should return None"
+        );
+    }
+
+    /// Junction shorter than 2*k returns None (no discriminatory k-mers possible).
+    #[test]
+    fn synthesize_invdel_junction_too_short_returns_none() {
+        let target = b"ACGTACGT";
+        // junction is 4 bytes (half=2), k=4, half < k → None
+        let junc = b"ACGT";
+        assert!(
+            synthesize_invdel_alt_path(target, junc, 4).is_none(),
+            "junction shorter than 2*k should return None"
+        );
+    }
+
+    /// rc_seq correctly reverse-complements a simple sequence.
+    #[test]
+    fn rc_seq_correctness() {
+        assert_eq!(rc_seq(b"ACGT"), b"ACGT"); // ACGT is its own RC
+        assert_eq!(rc_seq(b"AAAA"), b"TTTT");
+        assert_eq!(rc_seq(b"CCCC"), b"GGGG");
+        assert_eq!(rc_seq(b"ATCG"), b"CGAT");
+        assert_eq!(rc_seq(b""), b"" as &[u8]);
     }
 }
