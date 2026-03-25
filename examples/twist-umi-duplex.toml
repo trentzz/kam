@@ -1,0 +1,114 @@
+# kam run configuration — Twist UMI duplex chemistry
+#
+# Designed for the Twist Biosciences duplex UMI panel.
+# Read structure: 5bp UMI + 2bp skip + template (both R1 and R2).
+#
+# Usage:
+#   kam run --config twist-umi-duplex.toml \
+#           --r1 sample_R1.fq.gz \
+#           --r2 sample_R2.fq.gz \
+#           --targets panel.fa \
+#           --output-dir results/
+#
+# CLI flags always override values set here.
+
+# ── Chemistry ─────────────────────────────────────────────────────────────────
+
+[chemistry]
+# Length of the random UMI region at the start of each read.
+# Twist Biosciences: 5 bp.
+umi_length = 5
+
+# Length of the monotemplate spacer/skip region after the UMI.
+# Twist Biosciences: 2 bp.
+skip_length = 2
+
+# ── Assembly ──────────────────────────────────────────────────────────────────
+
+[assembly]
+# Minimum Phred quality for UMI bases. Reads with any UMI base below this
+# threshold are dropped before molecule grouping. Set to 0 to disable.
+min_umi_quality = 20
+
+# Minimum reads in a UMI family to be included in consensus building.
+# Setting 2 requires at least one read on each strand for duplex assembly.
+# Setting 1 includes singleton families (single-strand molecules).
+min_family_size = 1
+
+# Minimum template length in bases. Reads shorter than this after stripping
+# the UMI and skip region are dropped. Comment out to disable.
+# min_template_length = 30
+
+# Maximum Hamming distance between canonical UMI pairs for merging into the
+# same molecule cluster. 1 corrects single-base UMI errors.
+max_hamming_distance = 1
+
+# ── Indexing ──────────────────────────────────────────────────────────────────
+
+[indexing]
+# K-mer size. Larger values increase specificity; 31 is recommended for panels
+# with targets ≥ 100 bp and sequencing depth ≥ 1 M read pairs.
+kmer_size = 31
+
+# Optional FASTA of SV junction sequences to augment the k-mer allowlist.
+# Required to detect deletions, tandem duplications, and inversions whose
+# breakpoint k-mers are not present in the reference target sequences.
+# Comment out for standard SNV/indel calling.
+# sv_junctions = "sv_junctions.fa"
+
+# ── Calling ───────────────────────────────────────────────────────────────────
+
+[calling]
+# Minimum posterior probability for a PASS variant call.
+# 0.99 corresponds to a Bayesian false-discovery rate of roughly 1%.
+min_confidence = 0.99
+
+# Fisher exact test p-value cutoff for the strand bias filter.
+# Calls with significant strand imbalance (p < threshold) are labelled
+# StrandBias. 0.01 is appropriate for most ctDNA panel applications.
+strand_bias_threshold = 0.01
+
+# Minimum number of alt-supporting molecules to emit a call.
+# 2 requires at least two independent molecules to reduce false positives
+# from polymerase errors.
+min_alt_molecules = 2
+
+# Minimum variant-specific duplex molecules for a PASS call.
+# Counts only duplex molecules whose k-mers overlap the alt path.
+# Set to 1 to require duplex confirmation on the alt allele.
+# 0 disables the filter (recommended at lower duplex rates, e.g. < 15%).
+min_alt_duplex = 0
+
+# Minimum posterior probability for structural variant types
+# (LargeDeletion, TandemDuplication, Inversion).
+# SVs with even 2 supporting molecules are strong evidence; 0.95 is
+# appropriate.
+sv_min_confidence = 0.95
+
+# Minimum alt molecule count for structural variant types.
+sv_min_alt_molecules = 1
+
+# Fisher p-value threshold for strand bias on SV-type calls.
+# 1.0 disables the filter (recommended: inversion reads are structurally
+# strand-biased and cannot pass a standard threshold).
+sv_strand_bias_threshold = 1.0
+
+# Maximum VAF for a PASS call. Calls above this are labelled HighVaf.
+# Uncomment to exclude germline heterozygous variants (VAF ≈ 0.5).
+# max_vaf = 0.35
+
+# VCF of expected somatic variants for tumour-informed monitoring mode.
+# When set, only calls matching this truth set are marked PASS.
+# target_variants = "tumour_truth.vcf"
+
+# Position tolerance (bp) for tumour-informed matching.
+# 0 requires exact REF/ALT matching. Use > 0 for large SVs.
+ti_position_tolerance = 0
+
+# ── Output ────────────────────────────────────────────────────────────────────
+
+[output]
+# Output format(s). Comma-separated list.
+# Supported values: tsv, csv, json, vcf.
+# Both TSV and VCF are recommended for downstream analysis.
+format = "tsv,vcf"

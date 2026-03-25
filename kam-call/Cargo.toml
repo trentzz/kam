@@ -12,6 +12,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 statrs = { workspace = true }
 log = { workspace = true }
+needletail = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"

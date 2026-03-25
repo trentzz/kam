@@ -1,0 +1,81 @@
+# kam run configuration — simplex 12 bp UMI chemistry
+#
+# For protocols using a 12 bp UMI with no skip/spacer region.
+# Only the forward strand is sequenced (simplex). Duplex assembly is not
+# applicable; molecules will be assembled as simplex-forward.
+#
+# Usage:
+#   kam run --config simplex-umi-12bp.toml \
+#           --r1 sample_R1.fq.gz \
+#           --r2 sample_R2.fq.gz \
+#           --targets panel.fa \
+#           --output-dir results/
+#
+# CLI flags always override values set here.
+
+# ── Chemistry ─────────────────────────────────────────────────────────────────
+
+[chemistry]
+# 12 bp UMI region at the start of each read.
+umi_length = 12
+
+# No spacer/skip region after the UMI.
+skip_length = 0
+
+# ── Assembly ──────────────────────────────────────────────────────────────────
+
+[assembly]
+# Minimum Phred quality for UMI bases.
+# For 12 bp UMIs, one low-quality base is more common by chance.
+# Consider lowering to 15 if too many reads are dropped.
+min_umi_quality = 20
+
+# Minimum reads per UMI family. 1 accepts singletons.
+min_family_size = 1
+
+# Minimum template length.
+# min_template_length = 30
+
+# Maximum Hamming distance for UMI merging.
+# With 12 bp UMIs the collision space is larger; 1 is conservative.
+max_hamming_distance = 1
+
+# ── Indexing ──────────────────────────────────────────────────────────────────
+
+[indexing]
+# K-mer size. 31 is appropriate for most panel target sizes.
+kmer_size = 31
+
+# ── Calling ───────────────────────────────────────────────────────────────────
+
+[calling]
+# Minimum posterior probability for a PASS call.
+min_confidence = 0.99
+
+# Fisher strand bias p-value cutoff.
+# Simplex protocols have inherent strand asymmetry; a relaxed threshold
+# reduces false strand-bias labels in the absence of paired strands.
+strand_bias_threshold = 0.001
+
+# Minimum alt-supporting molecules.
+min_alt_molecules = 2
+
+# Variant-specific duplex filter — disabled (no duplex molecules in simplex).
+min_alt_duplex = 0
+
+# SV calling thresholds.
+sv_min_confidence = 0.95
+sv_min_alt_molecules = 1
+sv_strand_bias_threshold = 1.0
+
+# Maximum VAF filter — disabled by default.
+# max_vaf = 0.35
+
+# Tumour-informed monitoring — disabled by default.
+# target_variants = "tumour_truth.vcf"
+ti_position_tolerance = 0
+
+# ── Output ────────────────────────────────────────────────────────────────────
+
+[output]
+format = "tsv,vcf"

@@ -10,6 +10,7 @@ use crate::cli::{Cli, Commands};
 mod caller_config;
 mod cli;
 mod commands;
+pub mod config;
 mod output;
 
 fn main() {

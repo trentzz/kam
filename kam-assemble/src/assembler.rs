@@ -129,7 +129,9 @@ pub struct AssemblyStats {
 /// let r1_qual = b"IIIIIIIIIIIIIIIII";
 /// let r2_seq  = b"TGCATAGNNNNNNNNNN";
 /// let r2_qual = b"IIIIIIIIIIIIIIIII";
-/// let pair = match parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &config_parser).unwrap() {
+/// let pair = match parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &config_parser)
+///     .expect("parse error")
+/// {
 ///     ParseResult::Ok(p) => *p,
 ///     ParseResult::Dropped { .. } => panic!("unexpected drop"),
 /// };
@@ -516,28 +518,30 @@ fn call_ssc_bases(
     single_strand_consensus(&seqs, &quals, &config.consensus)
 }
 
-/// FNV-1a hash over a byte slice.
-///
-/// Produces a stable 64-bit value regardless of Rust version or platform.
-/// Offset basis and prime from the FNV-1a specification.
-fn fnv1a_hash(data: &[u8]) -> u64 {
-    let mut hash: u64 = 14_695_981_039_346_656_037;
-    for &byte in data {
-        hash ^= byte as u64;
-        hash = hash.wrapping_mul(1_099_511_628_211);
-    }
-    hash
-}
-
 /// Compute a stable 64-bit molecule id from a canonical UMI pair.
 ///
-/// Concatenates the two 5-byte UMI arrays and hashes with FNV-1a, which
-/// guarantees deterministic output across Rust versions and platforms.
+// Uses FNV-1a: streams umi_a, a 0xFF separator (which cannot appear in a
+/// valid UMI), then umi_b.  The separator prevents "ACGT" + "TTTTT" from
+/// colliding with "ACGTT" + "TTTT" if UMI lengths ever differ.
+/// Supports UMIs of any length and produces deterministic output across
+/// Rust versions and platforms.
 fn hash_umi_pair(pair: &CanonicalUmiPair) -> u64 {
-    let mut data = [0u8; 10];
-    data[..5].copy_from_slice(&pair.umi_a);
-    data[5..].copy_from_slice(&pair.umi_b);
-    fnv1a_hash(&data)
+    const OFFSET_BASIS: u64 = 14_695_981_039_346_656_037;
+    const PRIME: u64 = 1_099_511_628_211;
+
+    let mut hash = OFFSET_BASIS;
+    for &byte in &pair.umi_a {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(PRIME);
+    }
+    // Separator — 0xFF is not a valid ASCII base, so it cannot appear in a UMI.
+    hash ^= 0xFF_u64;
+    hash = hash.wrapping_mul(PRIME);
+    for &byte in &pair.umi_b {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(PRIME);
+    }
+    hash
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -547,23 +551,25 @@ mod tests {
     use super::*;
     use crate::parser::{parse_read_pair, ParseResult, ParserConfig};
 
-    // ── Test 0: FNV-1a hash produces a stable, known-good value ──────────────
+    // ── Test 0: hash_umi_pair produces a stable, deterministic value ─────────
     // A fixed input must always produce the same output. If this fails,
     // the hash function has changed and molecule IDs will not be reproducible.
 
     #[test]
-    fn fnv1a_hash_is_stable() {
-        // Verify two distinct inputs produce different hashes (basic sanity).
-        assert_ne!(fnv1a_hash(b"TTTTTAAAAA"), fnv1a_hash(b"ACGTATGCAT"));
-        // Verify the same input always produces the same hash.
-        let h = fnv1a_hash(b"ACGTATGCAT");
-        assert_eq!(fnv1a_hash(b"ACGTATGCAT"), h);
+    fn hash_umi_pair_is_stable() {
+        let pair_a = CanonicalUmiPair::new(b"ACGTA".to_vec(), b"TGCAT".to_vec());
+        let pair_b = CanonicalUmiPair::new(b"AAAAA".to_vec(), b"TTTTT".to_vec());
+        // Two distinct pairs must produce different hashes.
+        assert_ne!(hash_umi_pair(&pair_a), hash_umi_pair(&pair_b));
+        // The same pair must always produce the same hash.
+        assert_eq!(hash_umi_pair(&pair_a), hash_umi_pair(&pair_a));
     }
 
     /// Build a [`ParsedReadPair`] with the given UMIs and template sequences.
     ///
     /// Template length must be at least 8 bases so fingerprinting is
     /// meaningful.  Both templates are set to the same value for simplicity.
+    /// UMIs may be any length.
     fn make_pair(umi_r1: &[u8], umi_r2: &[u8], template: &[u8]) -> ParsedReadPair {
         let mut r1_seq = Vec::new();
         r1_seq.extend_from_slice(umi_r1);
@@ -775,8 +781,8 @@ mod tests {
         let fwd_pair = crate::parser::ParsedReadPair {
             umi_r1: b"ACGTA".to_vec(),
             umi_r2: b"TGCAT".to_vec(),
-            skip_r1: b"TG".to_vec(),
-            skip_r2: b"TG".to_vec(),
+            skip_r1: *b"TG",
+            skip_r2: *b"TG",
             template_r1: t.clone(),
             template_r2: rc_t.clone(),
             qual_r1: qual.clone(),
@@ -790,8 +796,8 @@ mod tests {
         let rev_pair = crate::parser::ParsedReadPair {
             umi_r1: b"TGCAT".to_vec(),
             umi_r2: b"ACGTA".to_vec(),
-            skip_r1: b"TG".to_vec(),
-            skip_r2: b"TG".to_vec(),
+            skip_r1: *b"TG",
+            skip_r2: *b"TG",
             template_r1: rc_t.clone(),
             template_r2: t.clone(),
             qual_r1: qual.clone(),
@@ -850,8 +856,8 @@ mod tests {
         let fwd_pair = crate::parser::ParsedReadPair {
             umi_r1: b"ACGTA".to_vec(),
             umi_r2: b"TGCAT".to_vec(),
-            skip_r1: b"TG".to_vec(),
-            skip_r2: b"TG".to_vec(),
+            skip_r1: *b"TG",
+            skip_r2: *b"TG",
             template_r1: fwd_template.clone(),
             template_r2: rev_template.clone(),
             qual_r1: qual.clone(),
@@ -868,8 +874,8 @@ mod tests {
         let rev_pair = crate::parser::ParsedReadPair {
             umi_r1: b"TGCAT".to_vec(),
             umi_r2: b"ACGTA".to_vec(),
-            skip_r1: b"TG".to_vec(),
-            skip_r2: b"TG".to_vec(),
+            skip_r1: *b"TG",
+            skip_r2: *b"TG",
             template_r1: rev_template.clone(),
             template_r2: fwd_template.clone(),
             qual_r1: qual.clone(),
@@ -911,5 +917,80 @@ mod tests {
         assert_eq!(stats.n_molecules, 0);
         assert_eq!(stats.n_duplex, 0);
         assert_eq!(stats.n_singletons, 0);
+    }
+
+    // ── Test 11: 12 bp UMI — full assemble pipeline works ────────────────────
+    // Exercises the arbitrary-UMI-length path introduced in CHEM-003.
+
+    #[test]
+    fn twelve_bp_umi_assembles_correctly() {
+        use kam_core::chemistry::ReadStructure;
+
+        let config_parser = ParserConfig {
+            read_structure: ReadStructure {
+                umi_length: 12,
+                skip_length: 2,
+            },
+            ..ParserConfig::default()
+        };
+
+        // Build two reads from opposite strands of the same molecule.
+        // R1 UMI forward: "ACGTACGTACGT" < "TGCATGCATGCA" → umi_a = first one → Forward.
+        // R1 UMI reverse: "TGCATGCATGCA" → Reverse.
+        let template = b"AAAAAAAAAAAAAAAA"; // 16 bp — long enough for fingerprinting
+
+        let mut r1_fwd = b"ACGTACGTACGT".to_vec(); // 12 bp UMI
+        r1_fwd.extend_from_slice(b"TG"); // skip
+        r1_fwd.extend_from_slice(template);
+        let q_fwd = vec![b'I'; r1_fwd.len()];
+
+        let mut r2_fwd = b"TGCATGCATGCA".to_vec();
+        r2_fwd.extend_from_slice(b"TG");
+        r2_fwd.extend_from_slice(template);
+        let q2_fwd = vec![b'I'; r2_fwd.len()];
+
+        let fwd_pair = match parse_read_pair(&r1_fwd, &q_fwd, &r2_fwd, &q2_fwd, &config_parser)
+            .expect("parse error")
+        {
+            ParseResult::Ok(p) => *p,
+            ParseResult::Dropped { reason, detail } => {
+                panic!("Dropped({reason:?}): {detail}");
+            }
+        };
+
+        let mut r1_rev = b"TGCATGCATGCA".to_vec();
+        r1_rev.extend_from_slice(b"TG");
+        r1_rev.extend_from_slice(template);
+        let q_rev = vec![b'I'; r1_rev.len()];
+
+        let mut r2_rev = b"ACGTACGTACGT".to_vec();
+        r2_rev.extend_from_slice(b"TG");
+        r2_rev.extend_from_slice(template);
+        let q2_rev = vec![b'I'; r2_rev.len()];
+
+        let rev_pair = match parse_read_pair(&r1_rev, &q_rev, &r2_rev, &q2_rev, &config_parser)
+            .expect("parse error")
+        {
+            ParseResult::Ok(p) => *p,
+            ParseResult::Dropped { reason, detail } => {
+                panic!("Dropped({reason:?}): {detail}");
+            }
+        };
+
+        let (molecules, stats) =
+            assemble_molecules(vec![fwd_pair, rev_pair], &AssemblerConfig::default());
+
+        assert_eq!(
+            molecules.len(),
+            1,
+            "both reads should form one duplex molecule"
+        );
+        assert_eq!(stats.n_duplex, 1);
+
+        let mol = &molecules[0];
+        assert_eq!(mol.umi_fwd.len(), 12, "umi_fwd should be 12 bp");
+        assert_eq!(mol.umi_rev.len(), 12, "umi_rev should be 12 bp");
+        assert_eq!(mol.umi_fwd, b"ACGTACGTACGT");
+        assert_eq!(mol.umi_rev, b"TGCATGCATGCA");
     }
 }

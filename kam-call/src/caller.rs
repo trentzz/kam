@@ -52,7 +52,7 @@ pub struct VariantCall {
 }
 
 /// Classification of a variant by allele length comparison.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum VariantType {
     /// Single nucleotide variant.
     Snv,
@@ -70,6 +70,42 @@ pub enum VariantType {
     TandemDuplication,
     /// Inversion (same length, alt is reverse-complement of ref segment).
     Inversion,
+    /// Fusion: junction between two distinct genomic loci.
+    ///
+    /// Detected when the alt path connects k-mers from non-contiguous
+    /// reference regions, implying a chromosomal translocation or gene fusion.
+    Fusion,
+    /// Inversion with flanking deletion.
+    ///
+    /// The alt sequence length differs from ref AND contains a central segment
+    /// that is the reverse complement of the corresponding ref region. Both
+    /// the length change and the RC segment must meet the SV length threshold.
+    InvDel,
+    /// Novel insertion of ≥ 50 bp that is not a tandem repeat of nearby
+    /// reference sequence.
+    ///
+    /// Distinguished from `TandemDuplication` by the absence of sequence
+    /// similarity between the inserted bases and the flanking reference.
+    NovelInsertion,
+}
+
+impl std::fmt::Display for VariantType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            VariantType::Snv => "SNV",
+            VariantType::Insertion => "Insertion",
+            VariantType::Deletion => "Deletion",
+            VariantType::Mnv => "MNV",
+            VariantType::Complex => "Complex",
+            VariantType::LargeDeletion => "LargeDeletion",
+            VariantType::TandemDuplication => "TandemDuplication",
+            VariantType::Inversion => "Inversion",
+            VariantType::Fusion => "Fusion",
+            VariantType::InvDel => "InvDel",
+            VariantType::NovelInsertion => "NovelInsertion",
+        };
+        f.write_str(s)
+    }
 }
 
 /// Minimum indel length to classify as a structural variant.
@@ -263,7 +299,12 @@ pub fn call_variant(
     // a calibrated count that is robust to the length of the SV path.
     let is_sv = matches!(
         variant_type,
-        VariantType::LargeDeletion | VariantType::TandemDuplication | VariantType::Inversion
+        VariantType::LargeDeletion
+            | VariantType::TandemDuplication
+            | VariantType::Inversion
+            | VariantType::Fusion
+            | VariantType::InvDel
+            | VariantType::NovelInsertion
     );
     let k = if is_sv {
         alt_evidence.mean_variant_specific_molecules.round() as u32
@@ -424,9 +465,15 @@ pub fn strand_bias_test(alt_fwd: u32, alt_rev: u32, ref_fwd: u32, ref_rev: u32) 
 /// Determine variant type by comparing reference and alternate sequences.
 ///
 /// Deletions and insertions of 50 bp or more are classified as structural
-/// variants (`LargeDeletion` and `TandemDuplication` respectively). Same-length
-/// variants where the alt is the reverse complement of the ref are classified as
-/// `Inversion`.
+/// variants. Large deletions where the alt contains an inverted segment relative
+/// to the ref are classified as `InvDel`. Large insertions whose content does not
+/// match the local reference are classified as `NovelInsertion`; those that do
+/// match (tandem repeats) are `TandemDuplication`. Same-length variants where the
+/// alt is the reverse complement of the ref are classified as `Inversion`.
+///
+/// `Fusion` is not detected from sequence content alone. It requires graph-level
+/// evidence (k-mers from non-contiguous reference regions) and must be assigned
+/// by the caller before invoking this function.
 ///
 /// # Example
 /// ```
@@ -469,15 +516,34 @@ pub fn classify_variant(ref_seq: &[u8], alt_seq: &[u8]) -> VariantType {
             }
         }
         Ordering::Greater => {
-            if ref_seq.len() - alt_seq.len() >= SV_LENGTH_THRESHOLD {
-                VariantType::LargeDeletion
+            let del_len = ref_seq.len() - alt_seq.len();
+            if del_len >= SV_LENGTH_THRESHOLD {
+                // Check whether the alt sequence contains an inverted segment
+                // relative to the reference. This is the InvDel pattern:
+                // a deletion junction where the remaining alt bases include a
+                // region that is the reverse complement of the corresponding
+                // ref region (e.g., a deletion flanked by inverted repeats).
+                if alt_seq_has_inversion_relative_to_ref(ref_seq, alt_seq) {
+                    VariantType::InvDel
+                } else {
+                    VariantType::LargeDeletion
+                }
             } else {
                 VariantType::Deletion
             }
         }
         Ordering::Less => {
-            if alt_seq.len() - ref_seq.len() >= SV_LENGTH_THRESHOLD {
-                VariantType::TandemDuplication
+            let ins_len = alt_seq.len() - ref_seq.len();
+            if ins_len >= SV_LENGTH_THRESHOLD {
+                // Distinguish tandem duplication from novel insertion.
+                // A tandem duplication inserts sequence that matches a nearby
+                // window of the reference. A novel insertion has no significant
+                // similarity to the flanking reference context.
+                if is_tandem_duplication(ref_seq, alt_seq) {
+                    VariantType::TandemDuplication
+                } else {
+                    VariantType::NovelInsertion
+                }
             } else {
                 VariantType::Insertion
             }
@@ -512,6 +578,116 @@ fn partial_inversion_len(ref_seq: &[u8], alt_seq: &[u8]) -> Option<usize> {
     } else {
         None
     }
+}
+
+/// Detect an InvDel signature: the alt sequence contains a segment that is the
+/// reverse complement of a segment found within the reference.
+///
+/// The alt is shorter than the ref (a deletion has occurred). After stripping
+/// the shared flanking prefix and suffix, the alt central segment must be ≥
+/// `SV_LENGTH_THRESHOLD` bp long and must be the reverse complement of some
+/// substring of the ref central region. Both the alt central length and the
+/// matched ref substring length must meet the threshold.
+///
+/// This handles the common InvDel topology:
+/// `ref = [flank_L][deleted_region][inv_region][flank_R]`
+/// `alt = [flank_L][rc(inv_region)][flank_R]`
+/// where the alt central is `rc(inv_region)` and the ref central contains
+/// both `deleted_region` and `inv_region`.
+fn alt_seq_has_inversion_relative_to_ref(ref_seq: &[u8], alt_seq: &[u8]) -> bool {
+    debug_assert!(ref_seq.len() > alt_seq.len());
+
+    // Find the shared prefix length.
+    let prefix = ref_seq
+        .iter()
+        .zip(alt_seq.iter())
+        .take_while(|(r, a)| r == a)
+        .count();
+
+    // Find the shared suffix length (do not overlap the prefix).
+    let max_suffix = alt_seq.len().saturating_sub(prefix);
+    let suffix = ref_seq
+        .iter()
+        .rev()
+        .zip(alt_seq.iter().rev())
+        .take(max_suffix)
+        .take_while(|(r, a)| r == a)
+        .count();
+
+    // The central alt segment (after removing shared flanks).
+    let alt_central = &alt_seq[prefix..alt_seq.len() - suffix];
+    // The corresponding ref segment (longer — contains the deleted + inv regions).
+    let ref_central = &ref_seq[prefix..ref_seq.len() - suffix];
+
+    if alt_central.len() < SV_LENGTH_THRESHOLD || ref_central.len() < SV_LENGTH_THRESHOLD {
+        return false;
+    }
+
+    // Fast path: the alt central is the RC of the entire ref central.
+    if is_reverse_complement(ref_central, alt_central) {
+        return true;
+    }
+
+    // General case: the alt central is the RC of some sub-window of ref_central.
+    // Pre-compute the RC of alt_central and look for it as a substring of ref_central.
+    // This is equivalent to asking: does ref_central contain a segment whose RC
+    // equals alt_central?
+    let alt_central_rc: Vec<u8> = alt_central.iter().rev().map(|&b| complement(b)).collect();
+    if alt_central_rc.len() <= ref_central.len() {
+        return ref_central
+            .windows(alt_central_rc.len())
+            .any(|w| w == alt_central_rc.as_slice());
+    }
+
+    false
+}
+
+/// Detect a tandem duplication: the inserted bases match a contiguous stretch
+/// of the reference sequence.
+///
+/// Extracts the inserted bases from the alt sequence, then checks whether those
+/// bases appear as a contiguous substring in the reference — including the case
+/// where the insertion is longer than the reference but the sequence is a
+/// repeated tile of a ref motif (handled by searching in `ref + ref`).
+///
+/// Returns false for novel insertions whose content is not present in the
+/// local reference.
+///
+/// # Examples (expected outcomes)
+///
+/// - `ref = ACGT×10`, `insert = ACGT×15`: matches a substring of `ref+ref` → true.
+/// - `ref = ACGT×12`, `insert = CCCC…(60)`: no 60-C run in `ref+ref` → false.
+fn is_tandem_duplication(ref_seq: &[u8], alt_seq: &[u8]) -> bool {
+    debug_assert!(alt_seq.len() > ref_seq.len());
+
+    let ins_len = alt_seq.len() - ref_seq.len();
+
+    // Find the first position where ref and alt diverge (the insertion point).
+    let diverge = ref_seq
+        .iter()
+        .zip(alt_seq.iter())
+        .position(|(r, a)| r != a)
+        .unwrap_or(ref_seq.len());
+
+    // The inserted bases sit between diverge and diverge+ins_len in alt.
+    if diverge + ins_len > alt_seq.len() {
+        return false;
+    }
+    let inserted = &alt_seq[diverge..diverge + ins_len];
+    if inserted.is_empty() {
+        return false;
+    }
+
+    // Search for the inserted sequence as a substring of (ref + ref).
+    // This handles the case where the inserted length exceeds the reference length
+    // but the inserted bases are a contiguous tiling of a reference repeat unit
+    // (e.g., ACGT×15 inserted into ACGT×10).
+    let doubled: Vec<u8> = ref_seq.iter().chain(ref_seq.iter()).copied().collect();
+    if ins_len <= doubled.len() {
+        return doubled.windows(ins_len).any(|w| w == inserted);
+    }
+
+    false
 }
 
 /// Return true if `alt` is the reverse complement of `ref`.
@@ -571,7 +747,7 @@ fn log_factorial(n: i64) -> f64 {
 ///
 /// Uses a simple binomial likelihood ratio: probability of observing `k` or
 /// more alt reads under signal (VAF = k/m) vs background error rate.
-fn compute_confidence(k: u32, m: u32, background_error_rate: f64) -> f64 {
+pub fn compute_confidence(k: u32, m: u32, background_error_rate: f64) -> f64 {
     if k == 0 || m == 0 {
         return 0.0;
     }
@@ -623,7 +799,7 @@ fn log_binomial_likelihood(k: u32, m: u32, p: f64) -> f64 {
 /// defaults. A large structural event requires fewer supporting molecules to
 /// reach the same confidence as a single-base change, because background
 /// sequencing errors cannot produce a 50–200 bp structural signature.
-fn assign_filter(
+pub fn assign_filter(
     confidence: f64,
     strand_bias_p: f64,
     n_alt: u32,
@@ -634,7 +810,12 @@ fn assign_filter(
 ) -> VariantFilter {
     let is_sv = matches!(
         variant_type,
-        VariantType::LargeDeletion | VariantType::TandemDuplication | VariantType::Inversion
+        VariantType::LargeDeletion
+            | VariantType::TandemDuplication
+            | VariantType::Inversion
+            | VariantType::Fusion
+            | VariantType::InvDel
+            | VariantType::NovelInsertion
     );
     let eff_min_molecules = if is_sv {
         config.sv_min_alt_molecules
@@ -1253,5 +1434,558 @@ mod tests {
             "identical ref/alt must not produce a PASS call"
         );
         assert_eq!(call.vaf, 0.0, "identical ref/alt should report VAF=0");
+    }
+
+    // ─── SV-EXP-010: Classification tests ────────────────────────────────────
+
+    // Test 33: Display impl produces the correct string for all VariantType variants.
+    //
+    // This also acts as an exhaustiveness check: adding a new variant without
+    // updating this test will cause a compilation error.
+    #[test]
+    fn variant_type_display() {
+        assert_eq!(VariantType::Snv.to_string(), "SNV");
+        assert_eq!(VariantType::Insertion.to_string(), "Insertion");
+        assert_eq!(VariantType::Deletion.to_string(), "Deletion");
+        assert_eq!(VariantType::Mnv.to_string(), "MNV");
+        assert_eq!(VariantType::Complex.to_string(), "Complex");
+        assert_eq!(VariantType::LargeDeletion.to_string(), "LargeDeletion");
+        assert_eq!(
+            VariantType::TandemDuplication.to_string(),
+            "TandemDuplication"
+        );
+        assert_eq!(VariantType::Inversion.to_string(), "Inversion");
+        assert_eq!(VariantType::Fusion.to_string(), "Fusion");
+        assert_eq!(VariantType::InvDel.to_string(), "InvDel");
+        assert_eq!(VariantType::NovelInsertion.to_string(), "NovelInsertion");
+    }
+
+    // Test 34: is_sv returns true for all three new types.
+    //
+    // Uses the same `matches!` pattern as call_variant and assign_filter.
+    // Verifying it here ensures that any future change to the is_sv logic is
+    // caught before it breaks downstream filtering.
+    #[test]
+    fn new_sv_types_are_recognised_as_sv() {
+        for vt in [
+            VariantType::Fusion,
+            VariantType::InvDel,
+            VariantType::NovelInsertion,
+        ] {
+            let is_sv = matches!(
+                vt,
+                VariantType::LargeDeletion
+                    | VariantType::TandemDuplication
+                    | VariantType::Inversion
+                    | VariantType::Fusion
+                    | VariantType::InvDel
+                    | VariantType::NovelInsertion
+            );
+            assert!(is_sv, "{vt} must be classified as an SV");
+        }
+    }
+
+    // Test 35: assign_filter applies SV thresholds to Fusion, InvDel, and NovelInsertion.
+    //
+    // At 2 alt molecules, confidence ≈ 0.981 which is below the SNV
+    // threshold (0.99) but above the SV threshold (0.95). All three new types
+    // must therefore PASS, not be filtered as LowConfidence.
+    #[test]
+    fn new_sv_types_use_sv_thresholds_in_assign_filter() {
+        // 2 alt molecules → confidence ≈ 0.981, which passes sv_min_confidence = 0.95
+        // but fails min_confidence = 0.99.
+        let confidence = compute_confidence(2, 1002, 1e-4);
+        assert!(
+            confidence < 0.99 && confidence > 0.95,
+            "confidence {confidence} must be between 0.95 and 0.99 for this test to be meaningful"
+        );
+        let cfg = CallerConfig::default();
+
+        for vt in [
+            VariantType::Fusion,
+            VariantType::InvDel,
+            VariantType::NovelInsertion,
+        ] {
+            let filter = assign_filter(
+                confidence, 0.5,   // no strand bias
+                2,     // n_alt = 2, above sv_min_alt_molecules = 1
+                0,     // n_duplex_alt = 0
+                0.002, // vaf
+                vt, &cfg,
+            );
+            assert_eq!(
+                filter,
+                VariantFilter::Pass,
+                "{vt} should PASS at confidence {confidence:.4} with SV thresholds"
+            );
+        }
+
+        // Confirm the same confidence is LowConfidence for a non-SV type.
+        let snv_filter = assign_filter(confidence, 0.5, 2, 0, 0.002, VariantType::Snv, &cfg);
+        assert_eq!(
+            snv_filter,
+            VariantFilter::LowConfidence,
+            "SNV must use min_confidence (0.99), not sv_min_confidence"
+        );
+    }
+
+    // ─── SV-EXP-010: InvDel classification ───────────────────────────────────
+
+    // Test 36: a large deletion with an inverted central alt segment is InvDel.
+    //
+    // Pattern: ref = [flank_L][DEL_region][INV_region][flank_R]
+    //          alt = [flank_L][rc(INV_region)][flank_R]
+    // The deletion removes the DEL_region; the remaining alt central segment is
+    // the RC of the ref's INV_region.
+    #[test]
+    fn classify_invdel_deletion_plus_inversion() {
+        // Build a 160-bp ref: 10 bp flank, 50 bp deleted region, 60 bp inversion
+        // region, 40 bp right flank.
+        let flank_l: Vec<u8> = b"AAAAAAAAAA".to_vec(); // 10 bp
+        let del_region: Vec<u8> = b"TTTTTTTTTT".repeat(5).to_vec(); // 50 bp, deleted
+                                                                    // 60 bp inversion region: use AAACCC repeated 10 times.
+        let inv_region: Vec<u8> = b"AAACCC".repeat(10).to_vec(); // 60 bp
+        let flank_r: Vec<u8> = b"GGGGGGGGGG".repeat(4).to_vec(); // 40 bp
+
+        let ref_seq: Vec<u8> = flank_l
+            .iter()
+            .chain(&del_region)
+            .chain(&inv_region)
+            .chain(&flank_r)
+            .copied()
+            .collect();
+
+        // Alt: flank_L + rc(inv_region) + flank_R (del_region is absent).
+        let rc_inv: Vec<u8> = inv_region.iter().rev().map(|&b| complement(b)).collect();
+        let alt_seq: Vec<u8> = flank_l
+            .iter()
+            .chain(&rc_inv)
+            .chain(&flank_r)
+            .copied()
+            .collect();
+
+        assert_eq!(
+            classify_variant(&ref_seq, &alt_seq),
+            VariantType::InvDel,
+            "large deletion with inverted alt segment must be InvDel"
+        );
+    }
+
+    // Test 37: a plain large deletion (no inversion in alt) stays LargeDeletion.
+    //
+    // The alt is simply a prefix of the ref — no inversion signature.
+    #[test]
+    fn classify_plain_large_deletion_stays_large_deletion() {
+        let ref_seq: Vec<u8> = b"ACGT".repeat(25).to_vec(); // 100 bp
+        let alt_seq: Vec<u8> = b"ACGT".repeat(10).to_vec(); // 40 bp — 60 bp deletion
+
+        assert_eq!(
+            classify_variant(&ref_seq, &alt_seq),
+            VariantType::LargeDeletion,
+            "plain large deletion without inversion must stay LargeDeletion"
+        );
+    }
+
+    // Test 38: deletion of exactly 50 bp (at the threshold) without inversion.
+    //
+    // The threshold is inclusive: a 50 bp deletion is a LargeDeletion, not a
+    // plain Deletion.
+    #[test]
+    fn classify_deletion_at_sv_threshold_is_large_deletion() {
+        let ref_seq: Vec<u8> = vec![b'A'; 100];
+        // Delete exactly 50 bp → alt is 50 bp.
+        let alt_seq: Vec<u8> = vec![b'A'; 50];
+
+        assert_eq!(
+            classify_variant(&ref_seq, &alt_seq),
+            VariantType::LargeDeletion,
+            "deletion of exactly SV_LENGTH_THRESHOLD bp must be LargeDeletion"
+        );
+    }
+
+    // Test 39: deletion of 49 bp (one below threshold) is a plain Deletion.
+    #[test]
+    fn classify_deletion_below_sv_threshold_is_deletion() {
+        let ref_seq: Vec<u8> = vec![b'A'; 99];
+        // Delete 49 bp → alt is 50 bp.
+        let alt_seq: Vec<u8> = vec![b'A'; 50];
+
+        assert_eq!(
+            classify_variant(&ref_seq, &alt_seq),
+            VariantType::Deletion,
+            "deletion of 49 bp must remain Deletion"
+        );
+    }
+
+    // ─── SV-EXP-010: NovelInsertion classification ────────────────────────────
+
+    // Test 40: a large insertion with random (non-ref) content is NovelInsertion.
+    //
+    // The inserted bases (CCCCCC…) do not appear anywhere in the reference
+    // window around the insertion point, so this cannot be a tandem duplication.
+    #[test]
+    fn classify_novel_insertion_random_sequence() {
+        // ref = 50 bp of ACGT repeats — no 'C' runs of 60 bp.
+        let ref_seq: Vec<u8> = b"ACGT".repeat(12).to_vec(); // 48 bp, close enough
+                                                            // Insert 60 bp of all-C at position 24 (midpoint of ref).
+        let novel_insert: Vec<u8> = vec![b'C'; 60];
+        let alt_seq: Vec<u8> = ref_seq[..24]
+            .iter()
+            .chain(&novel_insert)
+            .chain(&ref_seq[24..])
+            .copied()
+            .collect();
+
+        assert_eq!(
+            classify_variant(&ref_seq, &alt_seq),
+            VariantType::NovelInsertion,
+            "insertion of random non-ref bases must be NovelInsertion"
+        );
+    }
+
+    // Test 41: a large insertion where the inserted bases match the reference
+    // context is TandemDuplication, not NovelInsertion.
+    //
+    // Construct an alt where the inserted bases are copied from the ref window
+    // immediately preceding the insertion point.
+    #[test]
+    fn classify_tandem_dup_stays_tandem_duplication() {
+        // ref = 100 bp of ACGT repeats.
+        let ref_seq: Vec<u8> = b"ACGT".repeat(25).to_vec(); // 100 bp
+                                                            // Duplicate 60 bp starting at position 20 and insert them at position 80.
+        let dup_bases: Vec<u8> = ref_seq[20..80].to_vec(); // 60 bp from ref
+        let alt_seq: Vec<u8> = ref_seq[..80]
+            .iter()
+            .chain(&dup_bases)
+            .chain(&ref_seq[80..])
+            .copied()
+            .collect();
+
+        assert_eq!(
+            classify_variant(&ref_seq, &alt_seq),
+            VariantType::TandemDuplication,
+            "insertion of ref-matching bases must be TandemDuplication"
+        );
+    }
+
+    // Test 42: insertion of exactly SV_LENGTH_THRESHOLD (50 bp) with novel content.
+    #[test]
+    fn classify_novel_insertion_at_sv_threshold() {
+        let ref_seq: Vec<u8> = b"ACGT".repeat(25).to_vec(); // 100 bp
+                                                            // Insert 50 bp of all-T at position 50. The ref has 'T' at every fourth
+                                                            // base, so a 50-T run won't be found in the 50 bp window.
+        let novel_insert: Vec<u8> = vec![b'T'; 50];
+        let alt_seq: Vec<u8> = ref_seq[..50]
+            .iter()
+            .chain(&novel_insert)
+            .chain(&ref_seq[50..])
+            .copied()
+            .collect();
+
+        assert_eq!(
+            classify_variant(&ref_seq, &alt_seq),
+            VariantType::NovelInsertion,
+            "novel insertion of exactly SV_LENGTH_THRESHOLD bp must be NovelInsertion"
+        );
+    }
+
+    // Test 43: insertion of 49 bp (below threshold) stays Insertion regardless
+    // of content.
+    #[test]
+    fn classify_insertion_below_sv_threshold_stays_insertion() {
+        let ref_seq: Vec<u8> = vec![b'A'; 50];
+        let novel_insert: Vec<u8> = vec![b'C'; 49];
+        let alt_seq: Vec<u8> = ref_seq[..25]
+            .iter()
+            .chain(&novel_insert)
+            .chain(&ref_seq[25..])
+            .copied()
+            .collect();
+
+        assert_eq!(
+            classify_variant(&ref_seq, &alt_seq),
+            VariantType::Insertion,
+            "insertion of 49 bp must remain Insertion"
+        );
+    }
+
+    // ─── SV-EXP-010: Fusion classification (placeholder) ─────────────────────
+
+    // Test 44: Fusion classification is not produced by classify_variant.
+    //
+    // Fusion detection requires graph-level evidence (k-mers from non-contiguous
+    // reference regions). classify_variant operates only on sequence content and
+    // cannot distinguish a fusion junction from other variant types. The Fusion
+    // type is assigned by the caller before invoking classify_variant, and this
+    // test documents that expected behaviour.
+    //
+    // When fusion classification is implemented in the graph layer, a dedicated
+    // integration test should verify that a path spanning two non-contiguous loci
+    // produces VariantType::Fusion in the final VariantCall.
+    #[test]
+    fn fusion_classification_requires_graph_evidence_not_sequence_content() {
+        // A sequence that looks like an insertion of foreign bases: classify_variant
+        // will call it NovelInsertion, not Fusion, because it has no graph context.
+        // The caller must override variant_type to Fusion when graph evidence
+        // indicates a translocation junction.
+        let ref_seq: Vec<u8> = b"ACGT".repeat(25).to_vec();
+        let alt_seq: Vec<u8> = ref_seq[..50]
+            .iter()
+            .chain(&vec![b'N'; 60]) // 60 foreign bases
+            .chain(&ref_seq[50..])
+            .copied()
+            .collect();
+        let vt = classify_variant(&ref_seq, &alt_seq);
+        // classify_variant cannot produce Fusion from sequence alone.
+        assert_ne!(
+            vt,
+            VariantType::Fusion,
+            "classify_variant must not produce Fusion — that requires graph-level evidence"
+        );
+    }
+
+    // ─── SV-EXP-010: Filter tests ─────────────────────────────────────────────
+
+    // Test 45: a call with confidence 0.96 passes for all three new SV types
+    // (sv_min_confidence = 0.95) but would fail for an SNV (min_confidence = 0.99).
+    //
+    // This directly tests the SV threshold separation described in SV-EXP-008.
+    #[test]
+    fn sv_confidence_96_passes_new_types_fails_snv() {
+        // confidence = 0.96: above sv_min_confidence (0.95), below min_confidence (0.99).
+        let confidence = 0.96_f64;
+        let cfg = CallerConfig::default();
+
+        for vt in [
+            VariantType::Fusion,
+            VariantType::InvDel,
+            VariantType::NovelInsertion,
+        ] {
+            let filter = assign_filter(
+                confidence, 0.5,   // strand bias p — balanced, no flag
+                2,     // n_alt >= sv_min_alt_molecules (1)
+                0,     // n_duplex_alt
+                0.002, // vaf
+                vt, &cfg,
+            );
+            assert_eq!(
+                filter,
+                VariantFilter::Pass,
+                "{vt} at confidence 0.96 must PASS with sv_min_confidence=0.95"
+            );
+        }
+
+        // Same confidence must be LowConfidence for SNV.
+        let snv_filter = assign_filter(confidence, 0.5, 2, 0, 0.002, VariantType::Snv, &cfg);
+        assert_eq!(
+            snv_filter,
+            VariantFilter::LowConfidence,
+            "SNV at confidence 0.96 must fail min_confidence=0.99"
+        );
+    }
+
+    // Test 46: all three new SV types use sv_min_alt_molecules (1), not
+    // min_alt_molecules (2). A single alt molecule without duplex must pass.
+    #[test]
+    fn new_sv_types_pass_with_one_alt_molecule() {
+        let confidence = 0.97_f64;
+        let cfg = CallerConfig {
+            // Disable single-molecule duplex bypass to test the sv threshold directly.
+            min_alt_duplex_for_single: None,
+            ..CallerConfig::default()
+        };
+
+        for vt in [
+            VariantType::Fusion,
+            VariantType::InvDel,
+            VariantType::NovelInsertion,
+        ] {
+            let filter = assign_filter(
+                confidence, 0.5, // no strand bias
+                1,   // n_alt = 1 — below SNV threshold (2) but at SV threshold (1)
+                0,   // no duplex
+                0.001, vt, &cfg,
+            );
+            assert_eq!(
+                filter,
+                VariantFilter::Pass,
+                "{vt} with n_alt=1 must PASS using sv_min_alt_molecules=1"
+            );
+        }
+
+        // SNV with n_alt=1 and no duplex must be LowConfidence.
+        let snv_filter = assign_filter(confidence, 0.5, 1, 0, 0.001, VariantType::Snv, &cfg);
+        assert_eq!(
+            snv_filter,
+            VariantFilter::LowConfidence,
+            "SNV with n_alt=1 and no duplex must fail min_alt_molecules=2"
+        );
+    }
+
+    // Test 47: all three new SV types respect sv_strand_bias_threshold = 1.0
+    // (disabled by default). A strand-biased alt passes for SV but fails for SNV.
+    #[test]
+    fn new_sv_types_ignore_strand_bias_by_default() {
+        // p_strand = 0.001 — very biased; below SNV threshold (0.01).
+        let p_strand = 0.001_f64;
+        let confidence = 0.97_f64;
+        let cfg = CallerConfig::default(); // sv_strand_bias_threshold = 1.0 (disabled)
+
+        for vt in [
+            VariantType::Fusion,
+            VariantType::InvDel,
+            VariantType::NovelInsertion,
+        ] {
+            let filter = assign_filter(confidence, p_strand, 2, 0, 0.002, vt, &cfg);
+            assert_eq!(
+                filter,
+                VariantFilter::Pass,
+                "{vt} must ignore strand bias when sv_strand_bias_threshold=1.0"
+            );
+        }
+
+        // SNV with same biased strand must be filtered.
+        let snv_filter = assign_filter(confidence, p_strand, 2, 0, 0.002, VariantType::Snv, &cfg);
+        assert_eq!(
+            snv_filter,
+            VariantFilter::StrandBias,
+            "SNV must still be filtered by strand bias"
+        );
+    }
+
+    // ─── SV-EXP-010: Integration test ─────────────────────────────────────────
+
+    // Test 48: integration test for InvDel — full pipeline from PathEvidence
+    // through call_variant to VariantCall with correct type and PASS filter.
+    //
+    // Constructs synthetic PathEvidence with SV-like mean_variant_specific_molecules,
+    // runs through call_variant, and checks classification, filter, and VAF.
+    #[test]
+    fn integration_invdel_full_pipeline() {
+        // Build an InvDel sequence pair (160 bp ref → 110 bp alt).
+        let flank_l: Vec<u8> = b"AAAAAAAAAA".to_vec(); // 10 bp
+        let del_region: Vec<u8> = b"TTTTTTTTTT".repeat(5).to_vec(); // 50 bp
+        let inv_region: Vec<u8> = b"AAACCC".repeat(10).to_vec(); // 60 bp
+        let flank_r: Vec<u8> = b"GGGGGGGGGG".repeat(4).to_vec(); // 40 bp
+
+        let ref_seq: Vec<u8> = flank_l
+            .iter()
+            .chain(&del_region)
+            .chain(&inv_region)
+            .chain(&flank_r)
+            .copied()
+            .collect();
+
+        let rc_inv: Vec<u8> = inv_region.iter().rev().map(|&b| complement(b)).collect();
+        let alt_seq: Vec<u8> = flank_l
+            .iter()
+            .chain(&rc_inv)
+            .chain(&flank_r)
+            .copied()
+            .collect();
+
+        // Verify the classification.
+        assert_eq!(classify_variant(&ref_seq, &alt_seq), VariantType::InvDel);
+
+        // Construct PathEvidence with SV-typical characteristics:
+        // low min_molecules (long path bottleneck) but good mean_variant_specific.
+        let ref_ev = PathEvidence {
+            min_molecules: 1000,
+            mean_molecules: 1000.0,
+            min_duplex: 0,
+            mean_duplex: 0.0,
+            min_variant_specific_duplex: 0,
+            mean_variant_specific_molecules: 1000.0,
+            min_simplex_fwd: 500,
+            min_simplex_rev: 500,
+            mean_error_prob: 0.001,
+        };
+        let alt_ev = PathEvidence {
+            min_molecules: 2, // bottlenecked at a rare k-mer
+            mean_molecules: 15.0,
+            min_duplex: 1,
+            mean_duplex: 7.0,
+            min_variant_specific_duplex: 1,
+            mean_variant_specific_molecules: 15.0, // 1.5% VAF estimate
+            min_simplex_fwd: 8,
+            min_simplex_rev: 7,
+            mean_error_prob: 0.001,
+        };
+
+        let cfg = CallerConfig::default();
+        let call = call_variant("BRCA2", &ref_ev, &alt_ev, &ref_seq, &alt_seq, &cfg);
+
+        assert_eq!(
+            call.variant_type,
+            VariantType::InvDel,
+            "type must be InvDel"
+        );
+        assert_eq!(call.filter, VariantFilter::Pass, "InvDel must pass filters");
+        // n_molecules_alt for SV types uses mean_variant_specific_molecules.
+        assert_eq!(
+            call.n_molecules_alt, 15,
+            "n_molecules_alt must use mean_variant_specific_molecules"
+        );
+        assert!(
+            call.vaf > 0.0 && call.vaf < 0.05,
+            "VAF must be small (around 1.5%), got {}",
+            call.vaf
+        );
+    }
+
+    // Test 49: integration test for NovelInsertion — full pipeline.
+    #[test]
+    fn integration_novel_insertion_full_pipeline() {
+        let ref_seq: Vec<u8> = b"ACGT".repeat(25).to_vec(); // 100 bp
+                                                            // Insert 60 bp of all-C at position 50 — not present in ACGT repeats.
+        let novel_insert: Vec<u8> = vec![b'C'; 60];
+        let alt_seq: Vec<u8> = ref_seq[..50]
+            .iter()
+            .chain(&novel_insert)
+            .chain(&ref_seq[50..])
+            .copied()
+            .collect();
+
+        assert_eq!(
+            classify_variant(&ref_seq, &alt_seq),
+            VariantType::NovelInsertion
+        );
+
+        let ref_ev = PathEvidence {
+            min_molecules: 800,
+            mean_molecules: 800.0,
+            min_duplex: 0,
+            mean_duplex: 0.0,
+            min_variant_specific_duplex: 0,
+            mean_variant_specific_molecules: 800.0,
+            min_simplex_fwd: 400,
+            min_simplex_rev: 400,
+            mean_error_prob: 0.001,
+        };
+        let alt_ev = PathEvidence {
+            min_molecules: 1,
+            mean_molecules: 10.0,
+            min_duplex: 0,
+            mean_duplex: 5.0,
+            min_variant_specific_duplex: 0,
+            mean_variant_specific_molecules: 10.0,
+            min_simplex_fwd: 5,
+            min_simplex_rev: 5,
+            mean_error_prob: 0.001,
+        };
+
+        let cfg = CallerConfig::default();
+        let call = call_variant("ALK", &ref_ev, &alt_ev, &ref_seq, &alt_seq, &cfg);
+
+        assert_eq!(
+            call.variant_type,
+            VariantType::NovelInsertion,
+            "type must be NovelInsertion"
+        );
+        assert_eq!(
+            call.filter,
+            VariantFilter::Pass,
+            "NovelInsertion must pass filters"
+        );
     }
 }

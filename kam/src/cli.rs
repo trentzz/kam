@@ -269,7 +269,8 @@ impl CallerConfigArgs for RunArgs {
         self.sv_min_alt_molecules
     }
     fn sv_strand_bias_threshold(&self) -> f64 {
-        self.sv_strand_bias_threshold
+        // Default to 1.0 (disabled) when not explicitly set.
+        self.sv_strand_bias_threshold_override.unwrap_or(1.0)
     }
     fn max_vaf(&self) -> Option<f64> {
         self.max_vaf
@@ -277,43 +278,65 @@ impl CallerConfigArgs for RunArgs {
 }
 
 /// Arguments for the `run` subcommand (full pipeline).
+///
+/// All path inputs and most defaulted fields are `Option` so that a config
+/// file (`--config`) can supply them.  When `--config` is absent, `r1`, `r2`,
+/// `targets`, and `output_dir` are validated as required at runtime.
+///
+/// Priority: CLI flag > config file > built-in default.
 #[derive(Parser, Debug)]
 pub struct RunArgs {
+    /// Path to a TOML config file.
+    ///
+    /// When provided, pipeline parameters are loaded from the file first, then
+    /// any CLI flags override individual values.  When absent, all required
+    /// fields must be supplied directly on the command line.
+    #[arg(long)]
+    pub config: Option<PathBuf>,
+
     /// R1 input FASTQ file.
     #[arg(long)]
-    pub r1: PathBuf,
+    pub r1: Option<PathBuf>,
 
     /// R2 input FASTQ file.
     #[arg(long)]
-    pub r2: PathBuf,
+    pub r2: Option<PathBuf>,
 
     /// Target sequences FASTA file.
     #[arg(long)]
-    pub targets: PathBuf,
+    pub targets: Option<PathBuf>,
 
     /// Directory for all pipeline outputs.
     #[arg(long)]
-    pub output_dir: PathBuf,
+    pub output_dir: Option<PathBuf>,
 
     /// Chemistry preset.
-    #[arg(long, default_value = "twist-umi-duplex")]
-    pub chemistry: String,
+    ///
+    /// Overrides the config file value when set.
+    #[arg(long)]
+    pub chemistry_override: Option<String>,
 
     /// Minimum Phred quality threshold for UMI bases.
-    #[arg(long, default_value_t = 20u8)]
-    pub min_umi_quality: u8,
+    ///
+    /// Overrides the config file value when set.
+    #[arg(long)]
+    pub min_umi_quality_override: Option<u8>,
 
     /// Minimum number of reads per UMI family.
-    #[arg(long, default_value_t = 1u32)]
-    pub min_family_size: u32,
+    ///
+    /// Overrides the config file value when set.
+    #[arg(long)]
+    pub min_family_size_override: Option<u32>,
 
     /// Minimum template length (optional).
     #[arg(long)]
     pub min_template_length: Option<u32>,
 
     /// K-mer size for indexing.
-    #[arg(short = 'k', long, default_value_t = 31u32)]
-    pub kmer_size: u32,
+    ///
+    /// Overrides the config file value when set.
+    #[arg(short = 'k', long)]
+    pub kmer_size_override: Option<u32>,
 
     /// Minimum posterior probability for a variant call.
     #[arg(long)]
@@ -372,8 +395,8 @@ pub struct RunArgs {
     /// REF/ALT. Useful for large SVs where kam reports partial alleles that
     /// cannot match full SV truth alleles by exact REF/ALT. Default: 0
     /// (exact REF/ALT matching only).
-    #[arg(long, default_value_t = 0u32)]
-    pub ti_position_tolerance: u32,
+    #[arg(long)]
+    pub ti_position_tolerance_override: Option<u32>,
 
     /// Optional FASTA of SV junction sequences to augment the k-mer allowlist.
     ///
@@ -384,9 +407,23 @@ pub struct RunArgs {
     #[arg(long)]
     pub sv_junctions: Option<PathBuf>,
 
+    /// FASTA of synthetic fusion target sequences for fusion/translocation detection.
+    ///
+    /// Each entry must follow the format:
+    /// `{name}__{chromA}:{startA}-{endA}__{chromB}:{startB}-{endB}__fusion`
+    ///
+    /// K-mers from these sequences are added to the allowlist so that
+    /// fusion-spanning reads are captured. After normal target processing,
+    /// fusion targets are walked and called separately using partner depth as
+    /// the VAF denominator.
+    #[arg(long)]
+    pub fusion_targets: Option<PathBuf>,
+
     /// Output format(s), comma-separated (tsv, csv, json, vcf).
-    #[arg(long, default_value = "tsv")]
-    pub output_format: String,
+    ///
+    /// Overrides the config file value when set.
+    #[arg(long)]
+    pub output_format_override: Option<String>,
 
     /// QC JSON output file.
     #[arg(long)]
@@ -406,11 +443,12 @@ pub struct RunArgs {
 
     /// Fisher p-value threshold for strand bias filter on SV-type variants.
     ///
-    /// Defaults to 1.0 (disabled). Inversion junction reads are structurally
-    /// strand-biased and the standard threshold is inappropriate for SV paths.
+    /// Overrides the config file value when set. Defaults to 1.0 (disabled).
+    /// Inversion junction reads are structurally strand-biased and the standard
+    /// threshold is inappropriate for SV paths.
     /// Set to 0.0 to apply the same threshold as SNVs/indels.
-    #[arg(long, default_value_t = 1.0f64)]
-    pub sv_strand_bias_threshold: f64,
+    #[arg(long)]
+    pub sv_strand_bias_threshold_override: Option<f64>,
 }
 
 #[cfg(test)]
@@ -584,7 +622,7 @@ mod tests {
         assert_eq!(args.sv_strand_bias_threshold, 1.0);
     }
 
-    /// Verify the `run` subcommand parses required arguments.
+    /// Verify the `run` subcommand parses CLI path arguments.
     #[test]
     fn run_parses_required_args() {
         let cli = Cli::try_parse_from([
@@ -603,13 +641,13 @@ mod tests {
         let Commands::Run(args) = cli.command else {
             panic!("expected Run subcommand");
         };
-        assert_eq!(args.r1, PathBuf::from("r1.fq"));
-        assert_eq!(args.r2, PathBuf::from("r2.fq"));
-        assert_eq!(args.targets, PathBuf::from("targets.fa"));
-        assert_eq!(args.output_dir, PathBuf::from("outdir"));
+        assert_eq!(args.r1, Some(PathBuf::from("r1.fq")));
+        assert_eq!(args.r2, Some(PathBuf::from("r2.fq")));
+        assert_eq!(args.targets, Some(PathBuf::from("targets.fa")));
+        assert_eq!(args.output_dir, Some(PathBuf::from("outdir")));
     }
 
-    /// Verify `run` default values.
+    /// Verify `run` optional override fields are None by default.
     #[test]
     fn run_defaults() {
         let cli = Cli::try_parse_from([
@@ -628,13 +666,49 @@ mod tests {
         let Commands::Run(args) = cli.command else {
             panic!("expected Run subcommand");
         };
-        assert_eq!(args.chemistry, "twist-umi-duplex");
-        assert_eq!(args.min_umi_quality, 20);
-        assert_eq!(args.min_family_size, 1);
-        assert_eq!(args.kmer_size, 31);
-        assert_eq!(args.output_format, "tsv");
+        // Override fields are None when not explicitly provided.
+        assert!(args.chemistry_override.is_none());
+        assert!(args.min_umi_quality_override.is_none());
+        assert!(args.min_family_size_override.is_none());
+        assert!(args.kmer_size_override.is_none());
+        assert!(args.output_format_override.is_none());
         assert!(args.qc_output.is_none());
-        assert_eq!(args.sv_strand_bias_threshold, 1.0);
+        assert!(args.sv_strand_bias_threshold_override.is_none());
+    }
+
+    /// Verify `--config` flag is accepted.
+    #[test]
+    fn run_config_flag_accepted() {
+        let cli = Cli::try_parse_from(["kam", "run", "--config", "config.toml"])
+            .expect("run --config should parse");
+        let Commands::Run(args) = cli.command else {
+            panic!("expected Run subcommand");
+        };
+        assert_eq!(args.config, Some(PathBuf::from("config.toml")));
+    }
+
+    /// Verify override flags are captured when supplied.
+    #[test]
+    fn run_override_flags_captured() {
+        let cli = Cli::try_parse_from([
+            "kam",
+            "run",
+            "--r1",
+            "r1.fq",
+            "--chemistry-override",
+            "custom",
+            "--kmer-size-override",
+            "21",
+            "--output-format-override",
+            "vcf",
+        ])
+        .expect("run override flags should parse");
+        let Commands::Run(args) = cli.command else {
+            panic!("expected Run subcommand");
+        };
+        assert_eq!(args.chemistry_override, Some("custom".to_string()));
+        assert_eq!(args.kmer_size_override, Some(21u32));
+        assert_eq!(args.output_format_override, Some("vcf".to_string()));
     }
 
     /// Verify missing required arguments produce an error (not a panic).

@@ -5,6 +5,9 @@
 //! does **not** enforce a minimum template length by default.  Short templates
 //! are parsed successfully; downstream stages (e.g. k-mer extraction) decide
 //! whether to use them.
+//!
+//! The parser supports arbitrary UMI lengths — not just the 5 bp Twist default.
+//! All UMI fields in [`ParsedReadPair`] are `Vec<u8>`.
 
 use kam_core::chemistry::ReadStructure;
 use kam_core::molecule::{CanonicalUmiPair, Strand};
@@ -13,30 +16,37 @@ use kam_core::molecule::{CanonicalUmiPair, Strand};
 
 /// Errors returned by [`parse_read_pair`].
 ///
-/// Currently this enum is uninhabited: the parser stores UMI and skip bytes as
-/// `Vec<u8>`, so any `ReadStructure` length is accepted without error.  The
-/// type is preserved so that callers need not change their `Result` handling if
-/// future validation is added.
+/// Only skip-length coercions can fail now — UMI fields are `Vec<u8>` so any
+/// UMI length is accepted. A non-2 bp skip cannot be stored in the `[u8; 2]`
+/// field and returns this error.
 ///
 /// # Example
 /// ```
-/// use kam_assemble::parser::{ParserConfig, ParseResult, parse_read_pair};
+/// use kam_assemble::parser::{ParseError, ParserConfig, parse_read_pair};
 /// use kam_core::chemistry::ReadStructure;
 ///
-/// // Non-standard read structure with UMI length 8 — accepted without error.
-/// let config = ParserConfig {
-///     read_structure: ReadStructure { umi_length: 8, skip_length: 2 },
+/// // Non-standard skip length — will produce an error.
+/// let bad_config = ParserConfig {
+///     read_structure: ReadStructure { umi_length: 5, skip_length: 4 },
 ///     ..ParserConfig::default()
 /// };
-/// let r1_seq  = b"ACGTACGTATGNNNNNNNNNN";
-/// let r1_qual = b"IIIIIIIIIIIIIIIIIIIII";
-/// let r2_seq  = b"TGCATACGTAGNNNNNNNNNN";
-/// let r2_qual = b"IIIIIIIIIIIIIIIIIIIII";
-/// let result = parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &config);
-/// assert!(matches!(result, Ok(ParseResult::Ok(_))));
+/// let r1_seq  = b"ACGTATGNNNNNNNNNN";
+/// let r1_qual = b"IIIIIIIIIIIIIIIII";
+/// let r2_seq  = b"TGCATAGNNNNNNNNNN";
+/// let r2_qual = b"IIIIIIIIIIIIIIIII";
+/// let result = parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &bad_config);
+/// assert!(matches!(result, Err(ParseError::SkipLengthMismatch { actual: 4 })));
 /// ```
 #[derive(Debug, thiserror::Error)]
-pub enum ParseError {}
+pub enum ParseError {
+    /// The skip length in [`ReadStructure`] is not 2 bp, so the extracted
+    /// slice cannot be stored in `[u8; 2]`.
+    #[error("skip length {actual} does not match expected 2 bp")]
+    SkipLengthMismatch {
+        /// Actual `skip_length` from the [`ReadStructure`].
+        actual: usize,
+    },
+}
 
 // ── Configuration ────────────────────────────────────────────────────────────
 
@@ -102,9 +112,9 @@ pub struct ParsedReadPair {
     /// UMI bases from R2 (positions 0..umi_length).
     pub umi_r2: Vec<u8>,
     /// Skip bases from R1 (positions umi_length..template_start).
-    pub skip_r1: Vec<u8>,
+    pub skip_r1: [u8; 2],
     /// Skip bases from R2 (positions umi_length..template_start).
-    pub skip_r2: Vec<u8>,
+    pub skip_r2: [u8; 2],
     /// Template sequence from R1 (positions template_start..).
     pub template_r1: Vec<u8>,
     /// Template sequence from R2 (positions template_start..).
@@ -129,8 +139,7 @@ pub struct ParsedReadPair {
 /// all extracted fields, `Dropped` carries the machine-readable [`DropReason`]
 /// and a human-readable `detail` string.
 ///
-/// `ParsedReadPair` is boxed to keep the enum size small; `Dropped` is the
-/// hot-path rejection case and should remain unboxed.
+/// The `Ok` variant boxes its payload to keep the enum size small.
 #[derive(Debug)]
 pub enum ParseResult {
     /// The read pair was parsed successfully.
@@ -184,8 +193,8 @@ pub struct ParseStats {
 /// (`umi_length..template_start`), and the template (`template_start..`)
 /// from each read.  Quality arrays are split at the same positions.
 ///
-/// UMI and skip bytes are stored as `Vec<u8>`, so any `ReadStructure` length
-/// is accepted.
+/// The UMI may be any length — both the standard 5 bp Twist preset and
+/// non-standard lengths (e.g. 9 bp, 12 bp) are accepted.
 ///
 /// The parser applies filters in the following order:
 /// 1. **ReadTooShort** — R1 or R2 is shorter than `umi_length + skip_length`.
@@ -202,8 +211,9 @@ pub struct ParseStats {
 ///
 /// # Errors
 ///
-/// Returns `Err` only when a future validation is added to [`ParseError`].
-/// Currently this function is infallible (returns `Ok` for all valid inputs).
+/// Returns [`ParseError::SkipLengthMismatch`] when the [`ReadStructure`] in
+/// `config` specifies a skip length other than 2 bp.  With the standard Twist
+/// UMI duplex preset this error cannot occur.
 ///
 /// # Examples
 ///
@@ -244,14 +254,17 @@ pub fn parse_read_pair(
     }
 
     // ── 2. Extract UMI, skip, template ───────────────────────────────────
-    // The ReadTooShort guard above ensures both reads are at least `tmpl_start`
-    // bytes long, so all slice bounds are valid.  UMI and skip are stored as
-    // Vec<u8> to support arbitrary lengths.
+    // UMI is Vec<u8> so any length is accepted without coercion.
     let umi_r1 = r1_seq[..umi_len].to_vec();
     let umi_r2 = r2_seq[..umi_len].to_vec();
 
-    let skip_r1 = r1_seq[umi_len..tmpl_start].to_vec();
-    let skip_r2 = r2_seq[umi_len..tmpl_start].to_vec();
+    let skip_len = tmpl_start - umi_len;
+    let skip_r1: [u8; 2] = r1_seq[umi_len..tmpl_start]
+        .try_into()
+        .map_err(|_| ParseError::SkipLengthMismatch { actual: skip_len })?;
+    let skip_r2: [u8; 2] = r2_seq[umi_len..tmpl_start]
+        .try_into()
+        .map_err(|_| ParseError::SkipLengthMismatch { actual: skip_len })?;
 
     let template_r1 = r1_seq[tmpl_start..].to_vec();
     let template_r2 = r2_seq[tmpl_start..].to_vec();
@@ -328,6 +341,7 @@ pub fn parse_read_pair(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kam_core::chemistry::ReadStructure;
 
     // Helpers -----------------------------------------------------------------
 
@@ -336,7 +350,7 @@ mod tests {
     }
 
     /// Build a read of the form [UMI][skip][template] with uniform quality `q`.
-    fn make_read(umi: &[u8], skip: &[u8], template: &[u8]) -> (Vec<u8>, Vec<u8>) {
+    fn make_read(umi: &[u8], skip: &[u8; 2], template: &[u8]) -> (Vec<u8>, Vec<u8>) {
         let mut seq = Vec::new();
         seq.extend_from_slice(umi);
         seq.extend_from_slice(skip);
@@ -357,8 +371,8 @@ mod tests {
             ParseResult::Ok(p) => {
                 assert_eq!(p.umi_r1, b"ACGTA");
                 assert_eq!(p.umi_r2, b"TGCAT");
-                assert_eq!(p.skip_r1, b"TG");
-                assert_eq!(p.skip_r2, b"AC");
+                assert_eq!(p.skip_r1, *b"TG");
+                assert_eq!(p.skip_r2, *b"AC");
                 assert_eq!(p.template_r1.len(), 20);
                 assert_eq!(p.template_r2.len(), 20);
                 assert_eq!(p.qual_r1.len(), 20);
@@ -441,7 +455,7 @@ mod tests {
         let (r2_seq, r2_qual) = make_read(b"TGCAT", b"AC", b"NNNNNNNNNN");
         let result =
             parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config()).unwrap();
-        assert!(matches!(result, ParseResult::Ok(_)), "Expected Ok");
+        assert!(matches!(result, ParseResult::Ok(_)), "Expected Ok")
     }
 
     // Test 6: R1 and R2 of same length produce correct template lengths.
@@ -491,8 +505,8 @@ mod tests {
             parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config()).unwrap();
         match result {
             ParseResult::Ok(p) => {
-                assert_eq!(p.skip_r1, b"XY");
-                assert_eq!(p.skip_r2, b"ZW");
+                assert_eq!(&p.skip_r1, b"XY");
+                assert_eq!(&p.skip_r2, b"ZW");
             }
             ParseResult::Dropped { reason, detail } => {
                 panic!("Expected Ok, got Dropped({reason:?}): {detail}");
@@ -702,11 +716,10 @@ mod tests {
         }
     }
 
-    // Test 15: Non-standard ReadStructure with umi_length != 5 is now accepted
-    // — UMI is stored as Vec<u8>, so any length parses successfully.
+    // Test 15: Non-standard ReadStructure with umi_length != 5 parses
+    // successfully — arbitrary UMI lengths are now supported.
     #[test]
     fn non_standard_umi_length_parses_ok() {
-        use kam_core::chemistry::ReadStructure;
         let config = ParserConfig {
             read_structure: ReadStructure {
                 umi_length: 8,
@@ -714,16 +727,74 @@ mod tests {
             },
             ..ParserConfig::default()
         };
-        // 8 bp UMI + 2 bp skip + 11 bp template = 21 bp total.
+        // 8 bp UMI + 2 bp skip + 11 bp template = 21 bp total
         let r1_seq = b"ACGTACGTATGNNNNNNNNNN";
         let r1_qual = b"IIIIIIIIIIIIIIIIIIIII";
-        let r2_seq = b"TGCATACGTAGNNNNNNNNNN";
+        let r2_seq = b"TGCATGCAACGNNNNNNNNNN";
         let r2_qual = b"IIIIIIIIIIIIIIIIIIIII";
         let result = parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &config).unwrap();
         match result {
             ParseResult::Ok(p) => {
-                assert_eq!(p.umi_r1.len(), 8, "UMI should be 8 bp");
-                assert_eq!(p.skip_r1.len(), 2, "skip should be 2 bp");
+                assert_eq!(p.umi_r1.len(), 8);
+                assert_eq!(p.umi_r2.len(), 8);
+                assert_eq!(p.umi_r1, b"ACGTACGT");
+                assert_eq!(p.umi_r2, b"TGCATGCA");
+            }
+            ParseResult::Dropped { reason, detail } => {
+                panic!("Expected Ok, got Dropped({reason:?}): {detail}");
+            }
+        }
+    }
+
+    // Test 16: Non-standard skip length (not 2 bp) returns
+    // ParseError::SkipLengthMismatch instead of panicking.
+    #[test]
+    fn non_standard_skip_length_returns_error() {
+        let bad_config = ParserConfig {
+            read_structure: ReadStructure {
+                umi_length: 5,
+                skip_length: 4,
+            },
+            ..ParserConfig::default()
+        };
+        // Read is long enough to pass ReadTooShort (9 bp minimum for umi=5, skip=4),
+        // but skip_len=4 cannot be stored in [u8; 2].
+        let r1_seq = b"ACGTATGNNNNNNNNNN";
+        let r1_qual = b"IIIIIIIIIIIIIIIII";
+        let r2_seq = b"TGCATAGNNNNNNNNNN";
+        let r2_qual = b"IIIIIIIIIIIIIIIII";
+        let result = parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &bad_config);
+        assert!(
+            matches!(result, Err(ParseError::SkipLengthMismatch { actual: 4 })),
+            "Expected SkipLengthMismatch, got: {result:?}"
+        );
+    }
+
+    // Test 17: 12 bp UMI parses correctly end-to-end.
+    #[test]
+    fn twelve_bp_umi_parses_correctly() {
+        let config = ParserConfig {
+            read_structure: ReadStructure {
+                umi_length: 12,
+                skip_length: 2,
+            },
+            ..ParserConfig::default()
+        };
+        // 12 bp UMI + 2 bp skip + 10 bp template = 24 bp total
+        let r1_seq = b"ACGTACGTACGTTGNNNNNNNNNN";
+        let r1_qual = b"IIIIIIIIIIIIIIIIIIIIIIII";
+        let r2_seq = b"TGCATGCATGCAACNNNNNNNNNN";
+        let r2_qual = b"IIIIIIIIIIIIIIIIIIIIIIII";
+        let result = parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &config).unwrap();
+        match result {
+            ParseResult::Ok(p) => {
+                assert_eq!(p.umi_r1.len(), 12);
+                assert_eq!(p.umi_r2.len(), 12);
+                assert_eq!(p.umi_r1, b"ACGTACGTACGT");
+                assert_eq!(p.umi_r2, b"TGCATGCATGCA");
+                // "ACGTACGTACGT" < "TGCATGCATGCA" — forward strand
+                assert_eq!(p.strand, Strand::Forward);
+                assert_eq!(p.canonical_umi.umi_a, b"ACGTACGTACGT");
             }
             ParseResult::Dropped { reason, detail } => {
                 panic!("Expected Ok, got Dropped({reason:?}): {detail}");
@@ -740,5 +811,13 @@ mod tests {
         assert_eq!(stats.n_read_too_short, 0);
         assert_eq!(stats.n_template_too_short, 0);
         assert_eq!(stats.n_low_umi_quality, 0);
+    }
+
+    // Additional: default ParserConfig uses the Twist UMI duplex preset.
+    #[test]
+    fn default_config_has_twist_preset() {
+        let config = ParserConfig::default();
+        assert_eq!(config.read_structure.umi_length, 5);
+        assert_eq!(config.read_structure.skip_length, 2);
     }
 }

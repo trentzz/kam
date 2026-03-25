@@ -12,7 +12,8 @@ use kam_core::molecule::CanonicalUmiPair;
 ///
 /// Compares `umi_a` of `a` against `umi_a` of `b`, and `umi_b` of `a` against
 /// `umi_b` of `b`, then returns the total number of mismatching positions across
-/// both 5-mer arms (maximum possible value: 10).
+/// both arms. Positions beyond the shorter arm are not counted (zip stops at the
+/// shorter of the two). UMIs of any length are supported.
 ///
 /// # Example
 /// ```
@@ -273,5 +274,56 @@ mod tests {
         let groups = cluster_umi_pairs(&pairs, 1);
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0], vec![0]);
+    }
+
+    // Test 9: Hamming distance with 12 bp UMIs — identical pairs give distance 0.
+    #[test]
+    fn hamming_twelve_bp_umi_identical() {
+        let a = pair(b"ACGTACGTACGT", b"TGCATGCATGCA");
+        assert_eq!(umi_pair_hamming_distance(&a, &a), 0);
+    }
+
+    // Test 10: Hamming distance with 12 bp UMIs — two mismatches detected.
+    #[test]
+    fn hamming_twelve_bp_umi_two_mismatches() {
+        // "ACGTACGTACGT" vs "ACGTACGTACCC" — last 2 bases of umi_a differ (T→C, T→C = 2 mismatches).
+        // "TGCATGCA" < "TGCATGCATGCA" — using distinct long umis to ensure canonical ordering is stable.
+        let a = pair(b"ACGTACGTACGT", b"TGCATGCATGCA");
+        // Two mismatches in umi_a.
+        let b = pair(b"ACGTACGTACCC", b"TGCATGCATGCA");
+        assert_eq!(umi_pair_hamming_distance(&a, &b), 2);
+    }
+
+    // Test 11: Clustering with 12 bp UMIs — pairs within Hamming-1 merge.
+    #[test]
+    fn cluster_twelve_bp_umi_merges_within_distance_one() {
+        // Two pairs: last base of umi_a differs by 1 (T → A = 1 mismatch).
+        let pairs = vec![
+            (pair(b"ACGTACGTACGT", b"TGCATGCATGCA"), 10_u32),
+            (pair(b"ACGTACGTACGA", b"TGCATGCATGCA"), 2_u32), // 1 mismatch in umi_a
+        ];
+        let groups = cluster_umi_pairs(&pairs, 1);
+        assert_eq!(groups.len(), 1, "Hamming-1 12 bp UMI pairs should merge");
+        assert_eq!(groups[0].len(), 2);
+    }
+
+    // Test 12: Hamming distance with 9 bp UMIs — one mismatch detected.
+    #[test]
+    fn hamming_nine_bp_umi_one_mismatch() {
+        let a = pair(b"AAAAAAAAA", b"TTTTTTTTT");
+        // Last base of umi_a changes: A → C = 1 mismatch.
+        let b = pair(b"AAAAAAAAC", b"TTTTTTTTT");
+        assert_eq!(umi_pair_hamming_distance(&a, &b), 1);
+    }
+
+    // Test 13: Clustering with 9 bp UMIs — distant pairs stay separate.
+    #[test]
+    fn cluster_nine_bp_umi_distinct_pairs_stay_separate() {
+        let pairs = vec![
+            (pair(b"AAAAAAAAA", b"TTTTTTTTT"), 10_u32),
+            (pair(b"CCCCCCCCC", b"GGGGGGGGG"), 10_u32), // very distant
+        ];
+        let groups = cluster_umi_pairs(&pairs, 1);
+        assert_eq!(groups.len(), 2, "distant 9 bp UMI pairs must not be merged");
     }
 }

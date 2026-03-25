@@ -9,6 +9,7 @@ use serde_json::{json, Value};
 
 use crate::allele::extract_minimal_allele;
 use crate::caller::{VariantCall, VariantFilter, VariantType};
+use crate::fusion::FusionCall;
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
@@ -202,6 +203,22 @@ pub fn write_vcf(calls: &[VariantCall], writer: &mut dyn Write) -> io::Result<()
     writeln!(writer, "##ALT=<ID=DEL,Description=\"Deletion\">")?;
     writeln!(writer, "##ALT=<ID=DUP,Description=\"Tandem duplication\">")?;
     writeln!(writer, "##ALT=<ID=INV,Description=\"Inversion\">")?;
+    writeln!(
+        writer,
+        "##ALT=<ID=BND,Description=\"Breakend (fusion junction)\">"
+    )?;
+    writeln!(
+        writer,
+        "##ALT=<ID=INVDEL,Description=\"Inversion with flanking deletion\">"
+    )?;
+    writeln!(
+        writer,
+        "##ALT=<ID=INS,Description=\"Novel insertion (not a tandem duplication)\">"
+    )?;
+    writeln!(
+        writer,
+        "##INFO=<ID=MATEID,Number=1,Type=String,Description=\"ID of the mate breakend\">"
+    )?;
     writeln!(writer, "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO")?;
 
     for call in calls {
@@ -254,7 +271,12 @@ pub fn write_vcf(calls: &[VariantCall], writer: &mut dyn Write) -> io::Result<()
 fn is_sv_type(vt: VariantType) -> bool {
     matches!(
         vt,
-        VariantType::LargeDeletion | VariantType::TandemDuplication | VariantType::Inversion
+        VariantType::LargeDeletion
+            | VariantType::TandemDuplication
+            | VariantType::Inversion
+            | VariantType::Fusion
+            | VariantType::InvDel
+            | VariantType::NovelInsertion
     )
 }
 
@@ -273,18 +295,24 @@ fn write_sv_vcf_record(
         VariantType::LargeDeletion => ("<DEL>", "DEL"),
         VariantType::TandemDuplication => ("<DUP>", "DUP"),
         VariantType::Inversion => ("<INV>", "INV"),
+        VariantType::Fusion => ("<BND>", "BND"),
+        VariantType::InvDel => ("<INVDEL>", "INVDEL"),
+        VariantType::NovelInsertion => ("<INS>", "INS"),
         _ => unreachable!("write_sv_vcf_record called with non-SV type"),
     };
 
-    // SVLEN: negative for deletions, positive for duplications, 0 for inversions.
+    // SVLEN: negative for deletions, positive for insertions, 0 for inversions and fusions.
     let svlen: i64 = match call.variant_type {
         VariantType::LargeDeletion => {
             -((call.ref_sequence.len() as i64) - (call.alt_sequence.len() as i64))
         }
-        VariantType::TandemDuplication => {
+        VariantType::TandemDuplication | VariantType::NovelInsertion => {
             (call.alt_sequence.len() as i64) - (call.ref_sequence.len() as i64)
         }
-        VariantType::Inversion => 0,
+        VariantType::InvDel => {
+            -((call.ref_sequence.len() as i64) - (call.alt_sequence.len() as i64))
+        }
+        VariantType::Inversion | VariantType::Fusion => 0,
         _ => unreachable!(),
     };
 
@@ -313,6 +341,98 @@ fn write_sv_vcf_record(
             call.target_id, ref_anchor, sym_alt, filter_str, info
         )?;
     }
+    Ok(())
+}
+
+/// Write two paired VCF BND records for a fusion call.
+///
+/// Emits one record per partner breakpoint following VCF 4.3 BND notation.
+/// The two records are linked by `MATEID`. Assumes forward-forward orientation
+/// (bracket placement `t]p]` for record 1 and `]p]t` for record 2), which is
+/// the correct representation for a 5′→3′ fusion where partner A contributes
+/// the upstream sequence and partner B the downstream sequence.
+///
+/// The `writer` target must already contain a VCF header (use `write_vcf` for
+/// full-pipeline output, which writes the header automatically).
+///
+/// # Example
+/// ```
+/// use kam_call::output::write_fusion_bnd_records;
+/// use kam_call::fusion::{FusionCall, GenomicLocus};
+/// use kam_call::caller::VariantFilter;
+///
+/// let call = FusionCall {
+///     name: "BCR_ABL1".to_string(),
+///     locus_a: GenomicLocus { chrom: "chr22".to_string(), start: 23_632_500, end: 23_632_550 },
+///     locus_b: GenomicLocus { chrom: "chr9".to_string(), start: 130_854_000, end: 130_854_050 },
+///     vaf: 0.01,
+///     vaf_ci_low: 0.005,
+///     vaf_ci_high: 0.02,
+///     n_molecules: 10,
+///     n_duplex: 5,
+///     confidence: 0.999,
+///     filter: VariantFilter::Pass,
+/// };
+/// let mut buf = Vec::new();
+/// write_fusion_bnd_records(&call, &mut buf).unwrap();
+/// let text = String::from_utf8(buf).unwrap();
+/// assert!(text.contains("chr22"));
+/// assert!(text.contains("chr9"));
+/// assert!(text.contains("SVTYPE=BND"));
+/// assert!(text.contains("MATEID="));
+/// ```
+pub fn write_fusion_bnd_records(call: &FusionCall, writer: &mut dyn Write) -> io::Result<()> {
+    let filter_str = filter_to_str(call.filter);
+    let id_prefix = format!("bnd_{}", call.name);
+    let id_1 = format!("{id_prefix}_1");
+    let id_2 = format!("{id_prefix}_2");
+
+    // Use a placeholder anchor base N when no sequence is available.
+    let ref_a = "N";
+    let ref_b = "N";
+
+    let base_info = format!(
+        "VAF={:.6};VAF_LO={:.6};VAF_HI={:.6};NALT={};NDUPALT={};CONF={:.6};SVTYPE=BND",
+        call.vaf,
+        call.vaf_ci_low,
+        call.vaf_ci_high,
+        call.n_molecules,
+        call.n_duplex,
+        call.confidence,
+    );
+
+    // Record 1: partner A breakpoint. ALT = ref_base]chrom_b:pos_b]
+    // (forward-forward orientation: closing bracket on right).
+    writeln!(
+        writer,
+        "{chrom_a}\t{pos_a}\t{id1}\t{ref_a}\t{ref_a}]{chrom_b}:{pos_b}]\t.\t{filter}\t{info};MATEID={id2}",
+        chrom_a = call.locus_a.chrom,
+        pos_a = call.locus_a.start + 1, // convert 0-based to 1-based VCF POS
+        id1 = id_1,
+        ref_a = ref_a,
+        chrom_b = call.locus_b.chrom,
+        pos_b = call.locus_b.start + 1,
+        filter = filter_str,
+        info = base_info,
+        id2 = id_2,
+    )?;
+
+    // Record 2: partner B breakpoint. ALT = ]chrom_a:pos_a]ref_base
+    // (forward-forward orientation: closing bracket on left).
+    writeln!(
+        writer,
+        "{chrom_b}\t{pos_b}\t{id2}\t{ref_b}\t]{chrom_a}:{pos_a}]{ref_b}\t.\t{filter}\t{info};MATEID={id1}",
+        chrom_b = call.locus_b.chrom,
+        pos_b = call.locus_b.start + 1,
+        id2 = id_2,
+        ref_b = ref_b,
+        chrom_a = call.locus_a.chrom,
+        pos_a = call.locus_a.start + 1,
+        filter = filter_str,
+        info = base_info,
+        id1 = id_1,
+    )?;
+
     Ok(())
 }
 
@@ -380,6 +500,9 @@ fn variant_type_to_str(vt: VariantType) -> &'static str {
         VariantType::LargeDeletion => "LargeDeletion",
         VariantType::TandemDuplication => "TandemDuplication",
         VariantType::Inversion => "Inversion",
+        VariantType::Fusion => "Fusion",
+        VariantType::InvDel => "InvDel",
+        VariantType::NovelInsertion => "NovelInsertion",
     }
 }
 
@@ -579,6 +702,96 @@ mod tests {
         assert!(text.contains("SVLEN="), "expected SVLEN");
         // Must contain the ALT header definition.
         assert!(text.contains("##ALT=<ID=DEL"), "expected ##ALT=<ID=DEL");
+    }
+
+    // ─── SV-EXP-010: VCF/TSV output for new SV types ─────────────────────────
+
+    fn make_sv_call(vt: VariantType, ref_seq: &[u8], alt_seq: &[u8]) -> VariantCall {
+        let mut call = make_call("chrX:1000-2000", ref_seq, alt_seq);
+        call.variant_type = vt;
+        call
+    }
+
+    // Test 10a: VCF output for InvDel has SVTYPE=INVDEL and symbolic allele <INVDEL>.
+    #[test]
+    fn vcf_invdel_has_correct_svtype() {
+        let ref_seq: Vec<u8> = b"ACGT".repeat(40).to_vec(); // 160 bp
+        let alt_seq: Vec<u8> = b"ACGT".repeat(27).to_vec(); // 108 bp — 52 bp shorter
+        let call = make_sv_call(VariantType::InvDel, &ref_seq, &alt_seq);
+        let mut buf = Vec::new();
+        write_vcf(&[call], &mut buf).unwrap();
+        let text = String::from_utf8(buf).unwrap();
+        assert!(text.contains("<INVDEL>"), "expected <INVDEL> in VCF ALT");
+        assert!(
+            text.contains("SVTYPE=INVDEL"),
+            "expected SVTYPE=INVDEL in INFO"
+        );
+        assert!(text.contains("SVLEN="), "expected SVLEN in INFO");
+        assert!(
+            text.contains("##ALT=<ID=INVDEL"),
+            "expected INVDEL ALT header"
+        );
+    }
+
+    // Test 10b: VCF output for NovelInsertion has SVTYPE=INS and symbolic allele <INS>.
+    #[test]
+    fn vcf_novel_insertion_has_correct_svtype() {
+        let ref_seq: Vec<u8> = b"ACGT".repeat(25).to_vec(); // 100 bp
+                                                            // alt is longer by 60 bp — a novel insertion.
+        let mut alt_seq = ref_seq[..50].to_vec();
+        alt_seq.extend_from_slice(&vec![b'C'; 60]);
+        alt_seq.extend_from_slice(&ref_seq[50..]);
+        let call = make_sv_call(VariantType::NovelInsertion, &ref_seq, &alt_seq);
+        let mut buf = Vec::new();
+        write_vcf(&[call], &mut buf).unwrap();
+        let text = String::from_utf8(buf).unwrap();
+        assert!(text.contains("<INS>"), "expected <INS> in VCF ALT");
+        assert!(text.contains("SVTYPE=INS"), "expected SVTYPE=INS in INFO");
+        assert!(text.contains("##ALT=<ID=INS"), "expected INS ALT header");
+    }
+
+    // Test 10c: VCF output for Fusion has SVTYPE=BND and symbolic allele <BND>.
+    #[test]
+    fn vcf_fusion_has_correct_svtype() {
+        let ref_seq: Vec<u8> = b"NNNN".repeat(25).to_vec(); // 100 bp placeholder
+        let alt_seq: Vec<u8> = b"NNNN".repeat(25).to_vec(); // same length placeholder
+        let call = make_sv_call(VariantType::Fusion, &ref_seq, &alt_seq);
+        let mut buf = Vec::new();
+        write_vcf(&[call], &mut buf).unwrap();
+        let text = String::from_utf8(buf).unwrap();
+        assert!(text.contains("<BND>"), "expected <BND> in VCF ALT");
+        assert!(text.contains("SVTYPE=BND"), "expected SVTYPE=BND in INFO");
+        assert!(text.contains("##ALT=<ID=BND"), "expected BND ALT header");
+    }
+
+    // Test 10d: TSV output has correct variant_type strings for new SV types.
+    #[test]
+    fn tsv_new_sv_types_have_correct_type_strings() {
+        let ref_seq: Vec<u8> = b"ACGT".repeat(40).to_vec();
+        let alt_seq_del: Vec<u8> = b"ACGT".repeat(27).to_vec();
+
+        let calls = vec![
+            make_sv_call(VariantType::InvDel, &ref_seq, &alt_seq_del),
+            make_sv_call(VariantType::NovelInsertion, &ref_seq, &ref_seq), // same-length placeholder
+            make_sv_call(VariantType::Fusion, &ref_seq, &ref_seq),
+        ];
+
+        let mut buf = Vec::new();
+        write_tsv(&calls, &mut buf).unwrap();
+        let text = String::from_utf8(buf).unwrap();
+
+        assert!(
+            text.contains("InvDel"),
+            "TSV must contain 'InvDel' for InvDel variant"
+        );
+        assert!(
+            text.contains("NovelInsertion"),
+            "TSV must contain 'NovelInsertion' for NovelInsertion variant"
+        );
+        assert!(
+            text.contains("Fusion"),
+            "TSV must contain 'Fusion' for Fusion variant"
+        );
     }
 
     // Test 10: write_variants dispatches to the correct format.

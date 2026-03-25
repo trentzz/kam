@@ -1,18 +1,19 @@
 //! Implementation of the `kam run` full-pipeline subcommand.
 //!
 //! Runs all stages — assemble → index → pathfind → call — in a single process
-//! with zero-copy data passing between stages (no bincode serialization
+//! with zero-copy data passing between stages (no bincode serialisation
 //! between stages).
+//!
+//! Configuration priority: CLI flags > config file (`--config`) > built-in defaults.
 
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::BufWriter;
 
-use kam_assemble::assembler::{assemble_molecules, AssemblerConfig};
-use kam_assemble::consensus::ConsensusConfig;
+use kam_assemble::assembler::assemble_molecules;
 use kam_assemble::io::read_fastq_pairs;
-use kam_assemble::parser::ParserConfig;
 use kam_call::caller::{call_variant, VariantFilter};
+use kam_call::fusion::{call_fusion, parse_fusion_targets, FusionContext};
 use kam_call::output::write_variants;
 use kam_call::targeting::{
     apply_target_filter, apply_target_filter_with_tolerance, load_target_variants,
@@ -28,42 +29,46 @@ use kam_pathfind::graph::DeBruijnGraph;
 use kam_pathfind::score::{score_and_rank_paths, ScoredPath};
 use kam_pathfind::walk::{find_alt_paths_from_reference, walk_paths_biased, GraphPath, WalkConfig};
 
-use crate::caller_config::caller_config_from_args;
 use crate::cli::RunArgs;
 use crate::commands::index::{molecules_to_consensus_reads, read_fasta};
 use crate::commands::pathfind::parse_maxpath_from_id;
+use crate::config::KamConfig;
 use crate::output::{format_extension, parse_output_formats};
 
 /// Run the full pipeline end-to-end in memory (zero-copy hot path).
 ///
+/// When `args.config` is provided, pipeline parameters are loaded from the
+/// TOML file first, then any CLI flags override individual values. When
+/// `args.config` is absent, all parameters come directly from the CLI.
+///
 /// # Errors
 ///
-/// Returns an error if any file I/O step fails.
+/// Returns an error if any file I/O step fails or required parameters are absent.
 pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
-    fs::create_dir_all(&args.output_dir)?;
+    // Build the unified config: load from file if --config given, then merge CLI.
+    let cfg = build_config(&args)?;
 
-    let k = args.kmer_size as usize;
+    // Unwrap required paths — validate() already checked them.
+    let r1 = cfg.input.r1.as_ref().expect("r1 validated");
+    let r2 = cfg.input.r2.as_ref().expect("r2 validated");
+    let targets_path = cfg.input.targets.as_ref().expect("targets validated");
+    let output_dir = cfg
+        .output
+        .output_dir
+        .as_ref()
+        .expect("output_dir validated");
+
+    fs::create_dir_all(output_dir)?;
+
+    let k = cfg.kmer_size();
     let t_total = std::time::Instant::now();
 
     // ── Stage 1: Assemble ─────────────────────────────────────────────────────
     let t_assemble = std::time::Instant::now();
-    let parser_config = ParserConfig {
-        min_template_length: args.min_template_length.map(|v| v as usize),
-        min_umi_quality: if args.min_umi_quality == 0 {
-            None
-        } else {
-            Some(args.min_umi_quality)
-        },
-        ..ParserConfig::default()
-    };
+    let parser_config = cfg.to_parser_config();
+    let assembler_config = cfg.to_assembler_config();
 
-    let assembler_config = AssemblerConfig {
-        min_family_size: args.min_family_size as u8,
-        consensus: ConsensusConfig::default(),
-        ..AssemblerConfig::default()
-    };
-
-    let (read_pairs, parse_stats) = read_fastq_pairs(&args.r1, &args.r2, &parser_config)?;
+    let (read_pairs, parse_stats) = read_fastq_pairs(r1, r2, &parser_config)?;
     let (molecules, mut assembly_stats) = assemble_molecules(read_pairs, &assembler_config);
     assembly_stats.parse_stats = parse_stats;
 
@@ -95,7 +100,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
         n_dropped_reads: n_dropped,
         passed: true,
     };
-    write_qc(&args.output_dir.join("assembly_qc.json"), &assembly_qc)?;
+    write_qc(&output_dir.join("assembly_qc.json"), &assembly_qc)?;
     eprintln!(
         "[run/assemble] molecules={} duplex={} time_ms={}",
         n_molecules,
@@ -105,7 +110,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
 
     // ── Stage 2: Index ────────────────────────────────────────────────────────
     let t_index = std::time::Instant::now();
-    let targets = read_fasta(&args.targets)?;
+    let targets = read_fasta(targets_path)?;
     let target_slices: Vec<&[u8]> = targets.iter().map(|(_id, seq)| seq.as_slice()).collect();
     let mut allowlist = build_allowlist(&target_slices, k);
 
@@ -118,7 +123,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     let mut junction_canonical_kmers: std::collections::HashSet<u64> =
         std::collections::HashSet::new();
     let mut sv_junctions_data: Option<Vec<(String, Vec<u8>)>> = None;
-    if let Some(ref junctions_path) = args.sv_junctions {
+    if let Some(ref junctions_path) = cfg.input.sv_junctions {
         let junctions = read_fasta(junctions_path)?;
         let junction_slices: Vec<&[u8]> =
             junctions.iter().map(|(_id, seq)| seq.as_slice()).collect();
@@ -132,6 +137,27 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
         );
         sv_junctions_data = Some(junctions);
     }
+
+    // Augment allowlist with fusion target k-mers when provided.
+    // Fusion targets are synthetic sequences; their k-mers must be in the
+    // allowlist so that fusion-spanning reads are captured in the two-pass index.
+    // Normal targets and fusion targets are kept separate: fusion targets are
+    // processed after normal target calling so that partner depths are available.
+    let fusion_targets_data = if let Some(ref fusion_path) = cfg.input.fusion_targets {
+        let fts = parse_fusion_targets(fusion_path)?;
+        let fusion_slices: Vec<&[u8]> = fts.iter().map(|t| t.sequence.as_slice()).collect();
+        let fusion_allowlist = build_allowlist(&fusion_slices, k);
+        let n_fusion = fusion_allowlist.len();
+        allowlist.extend(fusion_allowlist);
+        eprintln!(
+            "[run/index] fusion_targets: loaded {} targets, added {n_fusion} k-mers ({} total)",
+            fts.len(),
+            allowlist.len()
+        );
+        fts
+    } else {
+        Vec::new()
+    };
 
     let n_target_kmers = allowlist.len() as u64;
 
@@ -207,7 +233,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
         mean_molecule_depth,
         passed: true,
     };
-    write_qc(&args.output_dir.join("index_qc.json"), &index_qc)?;
+    write_qc(&output_dir.join("index_qc.json"), &index_qc)?;
     eprintln!(
         "[run/index] target_kmers={} observed={} time_ms={}",
         n_target_kmers,
@@ -323,7 +349,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
         };
         let target_max_path = parse_maxpath_from_id(target_id).unwrap_or(default_max_path);
         // Alt path search allows 300 extra k-mers when sv-junctions are active.
-        let alt_max_path = if args.sv_junctions.is_some() {
+        let alt_max_path = if cfg.input.sv_junctions.is_some() {
             target_max_path + 250
         } else {
             target_max_path
@@ -479,7 +505,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
         n_anchors_non_unique,
         passed: true,
     };
-    write_qc(&args.output_dir.join("pathfind_qc.json"), &pathfind_qc)?;
+    write_qc(&output_dir.join("pathfind_qc.json"), &pathfind_qc)?;
     eprintln!(
         "[run/pathfind] targets={} with_variants={} no_paths={} ref_only={} alt_found={} start_missing={} end_missing={} soft_recovered={} time_ms={}",
         n_targets_queried,
@@ -495,7 +521,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
 
     // ── Stage 4: Call ─────────────────────────────────────────────────────────
     let t_call = std::time::Instant::now();
-    let caller_config = caller_config_from_args(&args);
+    let caller_config = cfg.to_caller_config();
 
     let mut all_calls = Vec::new();
     let mut n_pass: u64 = 0;
@@ -506,6 +532,19 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
         .iter()
         .map(|(id, seq)| (id.as_str(), seq.as_slice()))
         .collect();
+
+    // Collect per-target reference depths for the fusion VAF denominator.
+    // The reference path's mean_molecules is the best estimate of sequencing
+    // depth at each target locus.
+    let mut target_depths: HashMap<String, f64> = HashMap::new();
+    for (target_id, scored_paths) in &all_scored {
+        if let Some(ref_sp) = scored_paths.iter().find(|p| p.is_reference) {
+            target_depths.insert(
+                target_id.clone(),
+                ref_sp.aggregate_evidence.mean_molecules as f64,
+            );
+        }
+    }
 
     for (target_id, scored_paths) in &all_scored {
         let ref_path = scored_paths.iter().find(|p| p.is_reference);
@@ -526,10 +565,157 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Apply tumour-informed filter if --target-variants provided.
-    if let Some(ref vcf_path) = args.target_variants {
+    // ── Fusion target walking and calling ─────────────────────────────────────
+    // Fusion targets are processed after normal targets so that partner depths
+    // are available. For each fusion target: walk, score, then call using the
+    // partner locus depths as the VAF denominator.
+    if !fusion_targets_data.is_empty() {
+        eprintln!(
+            "[run/call] processing {} fusion targets",
+            fusion_targets_data.len()
+        );
+        for ft in &fusion_targets_data {
+            let fusion_seq = &ft.sequence;
+
+            // Walk the fusion target through the graph using the same soft-anchor
+            // and scoring logic as normal targets.
+            let (start_offset, start_raw) = match find_soft_anchor(fusion_seq, k, &graph, false, 10)
+            {
+                Some(v) => v,
+                None => {
+                    eprintln!("[run/fusion] {}: no start anchor in graph", ft.name);
+                    continue;
+                }
+            };
+            let (end_offset, end_raw) = match find_soft_anchor(fusion_seq, k, &graph, true, 10) {
+                Some(v) => v,
+                None => {
+                    eprintln!("[run/fusion] {}: no end anchor in graph", ft.name);
+                    continue;
+                }
+            };
+
+            if start_raw == end_raw {
+                eprintln!(
+                    "[run/fusion] {}: start and end anchors are identical, skipping",
+                    ft.name
+                );
+                continue;
+            }
+
+            let effective_len = fusion_seq.len() - start_offset - end_offset;
+            let max_path = if k > 1 {
+                effective_len.saturating_sub(k - 1) + 50
+            } else {
+                150
+            };
+            let walk_config = WalkConfig {
+                max_path_length: max_path,
+                ..Default::default()
+            };
+
+            let raw_paths = walk_paths_biased(&graph, start_raw, end_raw, &walk_config, |raw_km| {
+                index
+                    .get(canonical(raw_km, k))
+                    .map(|e| e.n_molecules)
+                    .unwrap_or(0)
+            });
+
+            if raw_paths.is_empty() {
+                eprintln!("[run/fusion] {}: no paths found (fusion absent)", ft.name);
+                continue;
+            }
+
+            // Pad paths with the soft-anchor prefix/suffix.
+            let prefix = &fusion_seq[..start_offset];
+            let suffix = &fusion_seq[fusion_seq.len() - end_offset..];
+            let paths: Vec<GraphPath> = if start_offset == 0 && end_offset == 0 {
+                raw_paths
+            } else {
+                raw_paths
+                    .into_iter()
+                    .map(|mut p| {
+                        let mut padded =
+                            Vec::with_capacity(prefix.len() + p.sequence.len() + suffix.len());
+                        padded.extend_from_slice(prefix);
+                        padded.extend_from_slice(&p.sequence);
+                        padded.extend_from_slice(suffix);
+                        p.sequence = padded;
+                        p
+                    })
+                    .collect()
+            };
+
+            // Score all paths. For fusion targets, the path that matches the
+            // fusion sequence is the fusion allele (flagged as is_reference by
+            // score_and_rank_paths because it matches the provided reference seq).
+            let scored = score_and_rank_paths(paths, &index, fusion_seq, k);
+
+            // Use the path closest to the fusion target sequence as the fusion
+            // evidence. If score_and_rank_paths flagged a reference match, use it;
+            // otherwise fall back to the highest-evidence path.
+            let fusion_path = scored
+                .iter()
+                .find(|p| p.is_reference)
+                .or_else(|| scored.first());
+
+            let Some(fp) = fusion_path else {
+                eprintln!("[run/fusion] {}: scored paths empty after scoring", ft.name);
+                continue;
+            };
+
+            // Look up partner depths by searching target IDs that contain the
+            // partner chromosome names from the fusion loci.
+            let partner_a_depth = find_partner_depth(&target_depths, &ft.locus_a.chrom);
+            let partner_b_depth = find_partner_depth(&target_depths, &ft.locus_b.chrom);
+
+            let context = FusionContext {
+                partner_a_depth,
+                partner_b_depth,
+            };
+
+            if let Some(fusion_call) =
+                call_fusion(&fp.aggregate_evidence, &context, ft, &caller_config)
+            {
+                eprintln!(
+                    "[run/fusion] {}: VAF={:.4} molecules={}",
+                    fusion_call.name, fusion_call.vaf, fusion_call.n_molecules
+                );
+                // Convert FusionCall to a VariantCall for unified output.
+                use kam_call::caller::{VariantCall, VariantType};
+                all_calls.push(VariantCall {
+                    target_id: format!(
+                        "{name}__{chrom_a}:{start_a}-{end_a}__{chrom_b}:{start_b}-{end_b}__fusion",
+                        name = fusion_call.name,
+                        chrom_a = fusion_call.locus_a.chrom,
+                        start_a = fusion_call.locus_a.start,
+                        end_a = fusion_call.locus_a.end,
+                        chrom_b = fusion_call.locus_b.chrom,
+                        start_b = fusion_call.locus_b.start,
+                        end_b = fusion_call.locus_b.end,
+                    ),
+                    variant_type: VariantType::Fusion,
+                    ref_sequence: fusion_seq.clone(),
+                    alt_sequence: fp.path.sequence.clone(),
+                    vaf: fusion_call.vaf,
+                    vaf_ci_low: fusion_call.vaf_ci_low,
+                    vaf_ci_high: fusion_call.vaf_ci_high,
+                    n_molecules_ref: 0, // no wild-type reference path for a fusion target
+                    n_molecules_alt: fusion_call.n_molecules,
+                    n_duplex_alt: fusion_call.n_duplex,
+                    n_simplex_alt: fusion_call.n_molecules.saturating_sub(fusion_call.n_duplex),
+                    confidence: fusion_call.confidence,
+                    strand_bias_p: 1.0,
+                    filter: fusion_call.filter,
+                });
+            }
+        }
+    }
+
+    // Apply tumour-informed filter if target_variants is configured.
+    if let Some(ref vcf_path) = cfg.input.target_variants {
         let target_set = load_target_variants(vcf_path)?;
-        let tol = args.ti_position_tolerance as i64;
+        let tol = cfg.ti_position_tolerance();
         if tol > 0 {
             apply_target_filter_with_tolerance(&mut all_calls, &target_set, tol);
         } else {
@@ -560,7 +746,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
         n_filtered,
         passed: true,
     };
-    write_qc(&args.output_dir.join("call_qc.json"), &call_qc)?;
+    write_qc(&output_dir.join("call_qc.json"), &call_qc)?;
     eprintln!(
         "[run/call] variants={} pass={} filtered={} time_ms={}",
         n_variants_called,
@@ -571,8 +757,8 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
 
     // ── Write final variant output ────────────────────────────────────────────
     let t_output = std::time::Instant::now();
-    let formats = parse_output_formats(&args.output_format)?;
-    let base_path = args.output_dir.join("variants");
+    let formats = parse_output_formats(cfg.output_format())?;
+    let base_path = output_dir.join("variants");
 
     if formats.len() == 1 {
         let ext = format_extension(formats[0]);
@@ -597,13 +783,74 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     );
     eprintln!(
         "[run] pipeline complete — output in {}",
-        args.output_dir.display()
+        output_dir.display()
     );
 
     Ok(())
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/// Build the unified [`KamConfig`] from CLI args.
+///
+/// When `--config` is provided, the TOML file is loaded first, then any CLI
+/// overrides are merged on top.  When `--config` is absent, the config is built
+/// entirely from the CLI args.
+///
+/// Returns an error if the config file cannot be read or required fields are
+/// absent after merging.
+fn build_config(args: &RunArgs) -> Result<KamConfig, Box<dyn std::error::Error>> {
+    let mut cfg = if let Some(ref config_path) = args.config {
+        let mut c = KamConfig::from_file(config_path)?;
+        c.merge_cli_overrides(args);
+        c
+    } else {
+        KamConfig::from_cli(args)
+    };
+
+    // Apply hard defaults for fields that have built-in fallbacks but were not
+    // supplied either by the config file or the CLI.  This ensures the config
+    // is always fully specified before the pipeline starts.
+    if cfg.chemistry.preset.is_none() {
+        cfg.chemistry.preset = Some("twist-umi-duplex".to_string());
+    }
+    if cfg.chemistry.min_umi_quality.is_none() {
+        cfg.chemistry.min_umi_quality = Some(20);
+    }
+    if cfg.assembly.min_family_size.is_none() {
+        cfg.assembly.min_family_size = Some(1);
+    }
+    if cfg.indexing.kmer_size.is_none() {
+        cfg.indexing.kmer_size = Some(31);
+    }
+    if cfg.output.output_format.is_none() {
+        cfg.output.output_format = Some("tsv".to_string());
+    }
+    if cfg.calling.ti_position_tolerance.is_none() {
+        cfg.calling.ti_position_tolerance = Some(0);
+    }
+
+    cfg.validate()
+        .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+    Ok(cfg)
+}
+
+/// Look up the mean molecule depth for a partner locus.
+///
+/// Searches `target_depths` for any entry whose key contains `chrom` as a
+/// substring (e.g. "chr22" in "chr22:23632500-23632550"). Returns the mean
+/// depth of the first match, or 0.0 if no matching target is found.
+///
+/// This is a best-effort heuristic: panels are usually designed so that each
+/// chromosome appears in at most one normal target entry. When multiple
+/// targets match, the first is used.
+fn find_partner_depth(target_depths: &HashMap<String, f64>, chrom: &str) -> f64 {
+    target_depths
+        .iter()
+        .find(|(id, _)| id.contains(chrom))
+        .map(|(_, &depth)| depth)
+        .unwrap_or(0.0)
+}
 
 /// Find the nearest in-graph anchor k-mer within `window` positions of the
 /// nominal anchor.
@@ -744,6 +991,47 @@ mod tests {
         }
     }
 
+    /// Build a minimal [`RunArgs`] for testing, given file paths.
+    ///
+    /// All override fields are `None` so defaults apply.  Supply `kmer_size`
+    /// via the override field when a non-default k is needed.
+    fn minimal_run_args(
+        r1: PathBuf,
+        r2: PathBuf,
+        targets: PathBuf,
+        output_dir: PathBuf,
+    ) -> RunArgs {
+        RunArgs {
+            config: None,
+            r1: Some(r1),
+            r2: Some(r2),
+            targets: Some(targets),
+            output_dir: Some(output_dir),
+            chemistry_override: None,
+            min_umi_quality_override: Some(0), // disable quality filter in tests
+            min_family_size_override: None,
+            min_template_length: None,
+            kmer_size_override: None,
+            min_confidence: None,
+            strand_bias_threshold: None,
+            min_alt_molecules: None,
+            min_alt_duplex: None,
+            sv_min_confidence: None,
+            sv_min_alt_molecules: None,
+            sv_strand_bias_threshold_override: None,
+            max_vaf: None,
+            sv_junctions: None,
+            fusion_targets: None,
+            target_variants: None,
+            ti_position_tolerance_override: None,
+            output_format_override: None,
+            qc_output: None,
+            log_dir: None,
+            log: vec![],
+            threads: None,
+        }
+    }
+
     /// Integration test: full pipeline with small synthetic data.
     #[test]
     fn run_pipeline_produces_output_files() {
@@ -765,33 +1053,9 @@ mod tests {
 
         let output_dir = dir.path().join("results");
 
-        let args = RunArgs {
-            r1: r1_path,
-            r2: r2_path,
-            targets: targets_path,
-            output_dir: output_dir.clone(),
-            chemistry: "twist-umi-duplex".to_string(),
-            min_umi_quality: 0,
-            min_family_size: 1,
-            min_template_length: None,
-            kmer_size: 8,
-            min_confidence: None,
-            strand_bias_threshold: None,
-            min_alt_molecules: None,
-            min_alt_duplex: None,
-            sv_min_confidence: None,
-            sv_min_alt_molecules: None,
-            sv_strand_bias_threshold: 1.0,
-            max_vaf: None,
-            sv_junctions: None,
-            target_variants: None,
-            ti_position_tolerance: 0,
-            output_format: "tsv".to_string(),
-            qc_output: None,
-            log_dir: None,
-            log: vec![],
-            threads: None,
-        };
+        let mut args = minimal_run_args(r1_path, r2_path, targets_path, output_dir.clone());
+        // Use a small k so the short synthetic reads are covered.
+        args.kmer_size_override = Some(8);
 
         run_pipeline(args).expect("run_pipeline should succeed");
 
@@ -836,33 +1100,8 @@ mod tests {
 
         let output_dir = dir.path().join("out");
 
-        let args = RunArgs {
-            r1: r1_path,
-            r2: r2_path,
-            targets: targets_path,
-            output_dir: output_dir.clone(),
-            chemistry: "twist-umi-duplex".to_string(),
-            min_umi_quality: 0,
-            min_family_size: 1,
-            min_template_length: None,
-            kmer_size: 4,
-            min_confidence: None,
-            strand_bias_threshold: None,
-            min_alt_molecules: None,
-            min_alt_duplex: None,
-            sv_min_confidence: None,
-            sv_min_alt_molecules: None,
-            sv_strand_bias_threshold: 1.0,
-            max_vaf: None,
-            sv_junctions: None,
-            target_variants: None,
-            ti_position_tolerance: 0,
-            output_format: "tsv".to_string(),
-            qc_output: None,
-            log_dir: None,
-            log: vec![],
-            threads: None,
-        };
+        let mut args = minimal_run_args(r1_path, r2_path, targets_path, output_dir.clone());
+        args.kmer_size_override = Some(4);
 
         run_pipeline(args).expect("run_pipeline with empty input should succeed");
         assert!(output_dir.join("assembly_qc.json").exists());
@@ -888,33 +1127,9 @@ mod tests {
 
         let output_dir = dir.path().join("results");
 
-        let args = RunArgs {
-            r1: r1_path,
-            r2: r2_path,
-            targets: targets_path,
-            output_dir: output_dir.clone(),
-            chemistry: "twist-umi-duplex".to_string(),
-            min_umi_quality: 0,
-            min_family_size: 1,
-            min_template_length: None,
-            kmer_size: 8,
-            min_confidence: None,
-            strand_bias_threshold: None,
-            min_alt_molecules: None,
-            min_alt_duplex: None,
-            sv_min_confidence: None,
-            sv_min_alt_molecules: None,
-            max_vaf: None,
-            sv_junctions: None,
-            target_variants: None,
-            ti_position_tolerance: 0,
-            sv_strand_bias_threshold: 1.0,
-            output_format: "tsv,vcf".to_string(),
-            qc_output: None,
-            log_dir: None,
-            log: vec![],
-            threads: None,
-        };
+        let mut args = minimal_run_args(r1_path, r2_path, targets_path, output_dir.clone());
+        args.kmer_size_override = Some(8);
+        args.output_format_override = Some("tsv,vcf".to_string());
 
         run_pipeline(args).expect("run_pipeline multi-format should succeed");
 
@@ -925,6 +1140,218 @@ mod tests {
         assert!(
             output_dir.join("variants.vcf").exists(),
             "variants.vcf should exist"
+        );
+    }
+
+    /// CLI-only mode works without a config file.
+    #[test]
+    fn cli_only_mode_no_config_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        let template = "ACGTACGTACGTACGTACGTACGT";
+        let r1_seq = format!("ACGTATG{template}");
+        let r2_seq = format!("TGCATAG{template}");
+        let qual = "I".repeat(r1_seq.len());
+
+        let r1_path = dir.path().join("R1.fq");
+        let r2_path = dir.path().join("R2.fq");
+        write_fastq(&r1_path, &[("read1", &r1_seq, &qual)]);
+        write_fastq(&r2_path, &[("read1", &r2_seq, &qual)]);
+
+        let targets_path = dir.path().join("targets.fa");
+        write_fasta(&targets_path, &[("target1", template)]);
+
+        let output_dir = dir.path().join("out_cli");
+
+        // config = None: pure CLI mode.
+        let mut args = minimal_run_args(r1_path, r2_path, targets_path, output_dir.clone());
+        args.kmer_size_override = Some(8);
+
+        run_pipeline(args).expect("CLI-only mode should succeed");
+        assert!(output_dir.join("variants.tsv").exists());
+    }
+
+    /// Config file values are used when CLI flags are absent.
+    #[test]
+    fn config_file_values_used() {
+        use std::io::Write as IoWrite2;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        let template = "ACGTACGTACGTACGTACGTACGT";
+        let r1_seq = format!("ACGTATG{template}");
+        let r2_seq = format!("TGCATAG{template}");
+        let qual = "I".repeat(r1_seq.len());
+
+        let r1_path = dir.path().join("R1.fq");
+        let r2_path = dir.path().join("R2.fq");
+        write_fastq(&r1_path, &[("read1", &r1_seq, &qual)]);
+        write_fastq(&r2_path, &[("read1", &r2_seq, &qual)]);
+
+        let targets_path = dir.path().join("targets.fa");
+        write_fasta(&targets_path, &[("target1", template)]);
+
+        let output_dir = dir.path().join("out_cfg");
+
+        // Write a config file supplying all required fields.
+        let config_path = dir.path().join("config.toml");
+        let config_content = format!(
+            r#"
+[input]
+r1 = "{r1}"
+r2 = "{r2}"
+targets = "{targets}"
+
+[output]
+output_dir = "{out}"
+
+[indexing]
+kmer_size = 8
+
+[chemistry]
+min_umi_quality = 0
+"#,
+            r1 = r1_path.display(),
+            r2 = r2_path.display(),
+            targets = targets_path.display(),
+            out = output_dir.display(),
+        );
+        {
+            let mut f = std::fs::File::create(&config_path).expect("create config");
+            f.write_all(config_content.as_bytes())
+                .expect("write config");
+        }
+
+        // No CLI path flags — everything comes from the config file.
+        let args = RunArgs {
+            config: Some(config_path),
+            r1: None,
+            r2: None,
+            targets: None,
+            output_dir: None,
+            chemistry_override: None,
+            min_umi_quality_override: None,
+            min_family_size_override: None,
+            min_template_length: None,
+            kmer_size_override: None,
+            min_confidence: None,
+            strand_bias_threshold: None,
+            min_alt_molecules: None,
+            min_alt_duplex: None,
+            sv_min_confidence: None,
+            sv_min_alt_molecules: None,
+            sv_strand_bias_threshold_override: None,
+            max_vaf: None,
+            sv_junctions: None,
+            fusion_targets: None,
+            target_variants: None,
+            ti_position_tolerance_override: None,
+            output_format_override: None,
+            qc_output: None,
+            log_dir: None,
+            log: vec![],
+            threads: None,
+        };
+
+        run_pipeline(args).expect("config file mode should succeed");
+        assert!(output_dir.join("variants.tsv").exists());
+    }
+
+    /// CLI flags override config file values.
+    #[test]
+    fn cli_flags_override_config_file() {
+        use std::io::Write as IoWrite2;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        let template = "ACGTACGTACGTACGTACGTACGT";
+        let r1_seq = format!("ACGTATG{template}");
+        let r2_seq = format!("TGCATAG{template}");
+        let qual = "I".repeat(r1_seq.len());
+
+        let r1_path = dir.path().join("R1.fq");
+        let r2_path = dir.path().join("R2.fq");
+        write_fastq(&r1_path, &[("read1", &r1_seq, &qual)]);
+        write_fastq(&r2_path, &[("read1", &r2_seq, &qual)]);
+
+        let targets_path = dir.path().join("targets.fa");
+        write_fasta(&targets_path, &[("target1", template)]);
+
+        // Config file points to a non-existent output dir (will be overridden).
+        let config_output_dir = dir.path().join("cfg_out");
+        // CLI overrides to a different output dir.
+        let cli_output_dir = dir.path().join("cli_out");
+
+        let config_path = dir.path().join("config.toml");
+        let config_content = format!(
+            r#"
+[input]
+r1 = "{r1}"
+r2 = "{r2}"
+targets = "{targets}"
+
+[output]
+output_dir = "{out}"
+output_format = "vcf"
+
+[indexing]
+kmer_size = 4
+
+[chemistry]
+min_umi_quality = 0
+"#,
+            r1 = r1_path.display(),
+            r2 = r2_path.display(),
+            targets = targets_path.display(),
+            out = config_output_dir.display(),
+        );
+        {
+            let mut f = std::fs::File::create(&config_path).expect("create config");
+            f.write_all(config_content.as_bytes())
+                .expect("write config");
+        }
+
+        let args = RunArgs {
+            config: Some(config_path),
+            r1: None,
+            r2: None,
+            targets: None,
+            // CLI overrides output_dir and output_format over config values.
+            output_dir: Some(cli_output_dir.clone()),
+            chemistry_override: None,
+            min_umi_quality_override: None,
+            min_family_size_override: None,
+            min_template_length: None,
+            kmer_size_override: Some(8),
+            min_confidence: None,
+            strand_bias_threshold: None,
+            min_alt_molecules: None,
+            min_alt_duplex: None,
+            sv_min_confidence: None,
+            sv_min_alt_molecules: None,
+            sv_strand_bias_threshold_override: None,
+            max_vaf: None,
+            sv_junctions: None,
+            fusion_targets: None,
+            target_variants: None,
+            ti_position_tolerance_override: None,
+            output_format_override: Some("tsv".to_string()),
+            qc_output: None,
+            log_dir: None,
+            log: vec![],
+            threads: None,
+        };
+
+        run_pipeline(args).expect("CLI override mode should succeed");
+
+        // Output should be in the CLI-specified dir, not the config dir.
+        assert!(
+            cli_output_dir.join("variants.tsv").exists(),
+            "output should be in CLI-specified dir"
+        );
+        assert!(
+            !config_output_dir.exists(),
+            "config-specified dir should not be created"
         );
     }
 }
