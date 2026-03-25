@@ -1,8 +1,13 @@
 [package]
 name = "kam-core"
-version = "0.1.0"
-edition = "2021"
-description = "Shared types and traits for the kam alignment-free variant detection pipeline"
+version.workspace = true
+edition.workspace = true
+description = "Core types and traits for alignment-free variant detection"
+license.workspace = true
+repository.workspace = true
+readme = "../README.md"
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 thiserror = { workspace = true }

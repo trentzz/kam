@@ -6,7 +6,7 @@
 
 use kam_call::caller::CallerConfig;
 
-/// Fields shared by [`CallArgs`] and [`RunArgs`] that control variant calling.
+/// Fields shared by `CallArgs` and `RunArgs` that control variant calling.
 ///
 /// Implement this trait for any args struct that carries caller configuration,
 /// then call [`caller_config_from_args`] to build the [`CallerConfig`].

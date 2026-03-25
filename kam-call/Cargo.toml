@@ -1,8 +1,13 @@
 [package]
 name = "kam-call"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 description = "Statistical variant calling with confidence intervals"
+license.workspace = true
+repository.workspace = true
+readme = "../README.md"
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 kam-core = { workspace = true }

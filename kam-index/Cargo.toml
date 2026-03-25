@@ -1,8 +1,13 @@
 [package]
 name = "kam-index"
-version = "0.1.0"
-edition = "2021"
-description = "Indexes k-mers with molecule-level evidence from consensus reads"
+version.workspace = true
+edition.workspace = true
+description = "K-mer indexing with molecule-level evidence tracking"
+license.workspace = true
+repository.workspace = true
+readme = "../README.md"
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 kam-core = { workspace = true }

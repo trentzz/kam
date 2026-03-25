@@ -909,8 +909,8 @@ fn find_soft_anchor(
 /// - `junction[0..half]`  = target[dup_end-half..dup_end]  → locates dup_end
 /// - `junction[half..2*half]` = target[dup_start..dup_start+half] → locates dup_start
 ///
-/// In the VCF representation, REF = target[dup_start] (anchor base) and
-/// ALT = target[dup_start] + D.  The copy is therefore inserted right after
+/// In the VCF representation, REF = `target[dup_start]` (anchor base) and
+/// ALT = `target[dup_start]` + D.  The copy is therefore inserted right after
 /// the anchor base, not at the end of D.  Alt sequence:
 ///   target[0..dup_start+1] + D + target[dup_start+1..]
 ///

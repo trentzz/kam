@@ -1,8 +1,8 @@
 //! K-mer extraction from consensus reads into a [`KmerIndex`].
 //!
-//! This module bridges [`kam-assemble`] output to [`kam-index`]: for each
+//! This module bridges `kam-assemble` output to `kam-index`: for each
 //! consensus read it extracts every k-mer, canonicalises it, and accumulates
-//! [`MoleculeEvidence`] in the provided index.
+//! `MoleculeEvidence` in the provided index.
 
 use kam_core::kmer::KmerIndex;
 use kam_core::molecule::FamilyType;
@@ -41,7 +41,7 @@ pub struct ConsensusReadInfo {
 ///
 /// For each k-mer position in `read.sequence`:
 /// 1. Encode and canonicalise the k-mer.
-/// 2. Retrieve or create a [`MoleculeEvidence`] entry in the index.
+/// 2. Retrieve or create a `MoleculeEvidence` entry in the index.
 /// 3. Increment `n_molecules`.
 /// 4. Increment the appropriate strand counter based on `read.family_type`.
 /// 5. Compute the mean error probability across the k bases of the window.

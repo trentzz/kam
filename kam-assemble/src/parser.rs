@@ -7,7 +7,7 @@
 //! whether to use them.
 //!
 //! The parser supports arbitrary UMI lengths — not just the 5 bp Twist default.
-//! All UMI fields in [`ParsedReadPair`] are `Vec<u8>`.
+//! All UMI fields in `ParsedReadPair` are `Vec<u8>`.
 
 use kam_core::chemistry::ReadStructure;
 use kam_core::molecule::{CanonicalUmiPair, Strand};

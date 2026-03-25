@@ -150,7 +150,7 @@ pub fn run_call(args: CallArgs) -> Result<(), Box<dyn std::error::Error>> {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/// Convert a [`ScoredPathRecord`] to a [`PathEvidence`] for the caller.
+/// Convert a [`ScoredPathRecord`] to a `PathEvidence` for the caller.
 fn record_to_path_evidence(rec: &ScoredPathRecord) -> kam_pathfind::score::PathEvidence {
     kam_pathfind::score::PathEvidence {
         min_molecules: rec.min_molecules,

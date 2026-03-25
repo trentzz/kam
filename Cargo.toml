@@ -9,6 +9,14 @@ members = [
 ]
 resolver = "2"
 
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/trentzz/kam"
+keywords = ["bioinformatics", "variant-calling", "umi", "sequencing"]
+categories = ["science", "command-line-utilities"]
+
 [workspace.dependencies]
 needletail = "0.6"
 thiserror = "2"
