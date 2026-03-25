@@ -1,0 +1,77 @@
+# kam run configuration — thorough mode
+#
+# Maximum-accuracy configuration for samples where runtime is not a constraint.
+# Every parameter is tuned for the highest possible calling accuracy:
+#   - Larger k-mer (39) for maximum specificity
+#   - High UMI quality filter
+#   - All output formats
+#   - Full logging suite for complete auditability
+#   - Strict template length filter
+#
+# Suitable for: validation cohorts, reference samples, paper result runs,
+# or any run where you need maximum confidence in every call.
+#
+# Usage:
+#   kam run --config examples/thorough-mode.toml \
+#           --r1 sample_R1.fq.gz \
+#           --r2 sample_R2.fq.gz \
+#           --targets panel.fa \
+#           --output-dir results/
+
+[input]
+r1      = "sample_R1.fq.gz"
+r2      = "sample_R2.fq.gz"
+targets = "panel.fa"
+
+[output]
+output_dir    = "results/"
+output_format = "tsv,vcf,json"
+qc_output     = "results/qc.json"
+
+[chemistry]
+umi_length      = 5
+skip_length     = 2
+duplex          = true
+# Strict UMI quality filter — only high-confidence UMI bases.
+min_umi_quality = 25
+# Drop reads with very short templates.
+min_template_length = 40
+
+[assembly]
+# Require at least 2 reads per family.
+min_family_size = 2
+
+[indexing]
+# Large k-mer for maximum specificity. Target sequences must be ≥ 100 bp.
+kmer_size = 39
+
+[calling]
+min_confidence        = 0.999
+strand_bias_threshold = 0.05
+min_alt_molecules     = 3
+# Require duplex confirmation on alt allele.
+min_alt_duplex        = 1
+
+# Block germline heterozygotes.
+max_vaf = 0.35
+
+sv_min_confidence        = 0.99
+sv_min_alt_molecules     = 2
+sv_strand_bias_threshold = 1.0
+
+ti_position_tolerance = 0
+
+[logging]
+log_dir = "results/logs/"
+# Full logging suite — documents every pipeline decision.
+log = [
+    "reads_dropped",
+    "umi_clustering",
+    "families",
+    "consensus_conflicts",
+    "kmers_skipped",
+    "variants_filtered",
+]
+
+[runtime]
+threads = 32

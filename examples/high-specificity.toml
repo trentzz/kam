@@ -1,0 +1,60 @@
+# kam run configuration — high specificity
+#
+# Strict thresholds designed to minimise false positives. Every PASS call
+# requires strong statistical support, duplex confirmation, and a clean
+# strand balance. Appropriate for clinical reporting or when a single FP
+# has significant consequences.
+#
+# Key restrictions:
+#   - min_confidence = 0.999 (very tight Bayesian posterior)
+#   - min_alt_molecules = 3 (three independent molecules required)
+#   - min_alt_duplex = 1 (at least one duplex molecule on the alt allele)
+#   - strand_bias_threshold = 0.05 (aggressively filters strand-biased calls)
+#   - max_vaf = 0.35 (blocks germline heterozygotes)
+#
+# Usage:
+#   kam run --config examples/high-specificity.toml
+
+[input]
+r1      = "sample_R1.fq.gz"
+r2      = "sample_R2.fq.gz"
+targets = "panel.fa"
+
+[output]
+output_dir    = "results/"
+output_format = "tsv,vcf"
+qc_output     = "results/qc.json"
+
+[chemistry]
+umi_length      = 5
+skip_length     = 2
+duplex          = true
+min_umi_quality = 25
+
+[assembly]
+# Require at least 2 reads per family — eliminates most PCR singletons.
+min_family_size = 2
+
+[indexing]
+kmer_size = 31
+
+[calling]
+# Very high confidence threshold.
+min_confidence        = 0.999
+# Strict strand balance required.
+strand_bias_threshold = 0.05
+# Require at least 3 independent alt-supporting molecules.
+min_alt_molecules = 3
+# Require duplex support on the alt allele.
+min_alt_duplex = 1
+
+# Block calls at germline-compatible VAF.
+max_vaf = 0.35
+
+# SVs: also require stricter support.
+sv_min_confidence        = 0.99
+sv_min_alt_molecules     = 2
+sv_strand_bias_threshold = 1.0
+
+[logging]
+log_dir = "results/logs/"

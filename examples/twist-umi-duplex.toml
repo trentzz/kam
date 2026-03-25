@@ -4,7 +4,7 @@
 # Read structure: 5bp UMI + 2bp skip + template (both R1 and R2).
 #
 # Usage:
-#   kam run --config twist-umi-duplex.toml \
+#   kam run --config examples/twist-umi-duplex.toml \
 #           --r1 sample_R1.fq.gz \
 #           --r2 sample_R2.fq.gz \
 #           --targets panel.fa \
@@ -12,49 +12,56 @@
 #
 # CLI flags always override values set here.
 
+[input]
+r1      = "sample_R1.fq.gz"
+r2      = "sample_R2.fq.gz"
+targets = "panel.fa"
+
+# Optional: provide SV junction sequences to enable SV detection.
+# sv_junctions = "sv_junctions.fa"
+
+# Optional: provide a tumour VCF to enable tumour-informed monitoring.
+# target_variants = "tumour_mutations.vcf"
+
+[output]
+output_dir    = "results/"
+# Output both TSV and VCF for downstream compatibility.
+output_format = "tsv,vcf"
+qc_output     = "results/qc.json"
+
 # ── Chemistry ─────────────────────────────────────────────────────────────────
 
 [chemistry]
-# Length of the random UMI region at the start of each read.
-# Twist Biosciences: 5 bp.
+# 5bp random UMI at the start of each read (Twist Biosciences design).
 umi_length = 5
 
-# Length of the monotemplate spacer/skip region after the UMI.
-# Twist Biosciences: 2 bp.
+# 2bp monotemplate spacer/skip region after the UMI.
 skip_length = 2
+
+# Duplex: R1 and R2 are complementary strands of the same molecule.
+duplex = true
+
+# Minimum Phred quality for UMI bases. Reads with any UMI base below this
+# are dropped before molecule grouping. Set to 0 to disable.
+min_umi_quality = 20
+
+# Minimum template length in bases after stripping UMI and skip.
+# Comment out to disable.
+# min_template_length = 30
 
 # ── Assembly ──────────────────────────────────────────────────────────────────
 
 [assembly]
-# Minimum Phred quality for UMI bases. Reads with any UMI base below this
-# threshold are dropped before molecule grouping. Set to 0 to disable.
-min_umi_quality = 20
-
-# Minimum reads in a UMI family to be included in consensus building.
-# Setting 2 requires at least one read on each strand for duplex assembly.
-# Setting 1 includes singleton families (single-strand molecules).
+# Minimum reads per UMI family before consensus building.
+# 1 accepts singletons. 2 ensures at least one read per strand.
 min_family_size = 1
-
-# Minimum template length in bases. Reads shorter than this after stripping
-# the UMI and skip region are dropped. Comment out to disable.
-# min_template_length = 30
-
-# Maximum Hamming distance between canonical UMI pairs for merging into the
-# same molecule cluster. 1 corrects single-base UMI errors.
-max_hamming_distance = 1
 
 # ── Indexing ──────────────────────────────────────────────────────────────────
 
 [indexing]
-# K-mer size. Larger values increase specificity; 31 is recommended for panels
-# with targets ≥ 100 bp and sequencing depth ≥ 1 M read pairs.
+# K-mer size. 31 is recommended for panels with targets ≥ 100 bp and
+# sequencing depth ≥ 1 M read pairs.
 kmer_size = 31
-
-# Optional FASTA of SV junction sequences to augment the k-mer allowlist.
-# Required to detect deletions, tandem duplications, and inversions whose
-# breakpoint k-mers are not present in the reference target sequences.
-# Comment out for standard SNV/indel calling.
-# sv_junctions = "sv_junctions.fa"
 
 # ── Calling ───────────────────────────────────────────────────────────────────
 
@@ -74,41 +81,30 @@ strand_bias_threshold = 0.01
 min_alt_molecules = 2
 
 # Minimum variant-specific duplex molecules for a PASS call.
-# Counts only duplex molecules whose k-mers overlap the alt path.
 # Set to 1 to require duplex confirmation on the alt allele.
 # 0 disables the filter (recommended at lower duplex rates, e.g. < 15%).
 min_alt_duplex = 0
 
-# Minimum posterior probability for structural variant types
+# Minimum posterior probability for SV-type calls
 # (LargeDeletion, TandemDuplication, Inversion).
-# SVs with even 2 supporting molecules are strong evidence; 0.95 is
-# appropriate.
 sv_min_confidence = 0.95
 
-# Minimum alt molecule count for structural variant types.
+# Minimum alt molecule count for SV-type calls.
 sv_min_alt_molecules = 1
 
 # Fisher p-value threshold for strand bias on SV-type calls.
-# 1.0 disables the filter (recommended: inversion reads are structurally
-# strand-biased and cannot pass a standard threshold).
+# 1.0 disables the filter — inversion reads are structurally strand-biased
+# and cannot pass a standard threshold.
 sv_strand_bias_threshold = 1.0
 
-# Maximum VAF for a PASS call. Calls above this are labelled HighVaf.
-# Uncomment to exclude germline heterozygous variants (VAF ≈ 0.5).
+# Maximum VAF for a PASS call. Uncomment to exclude germline heterozygotes.
 # max_vaf = 0.35
-
-# VCF of expected somatic variants for tumour-informed monitoring mode.
-# When set, only calls matching this truth set are marked PASS.
-# target_variants = "tumour_truth.vcf"
 
 # Position tolerance (bp) for tumour-informed matching.
 # 0 requires exact REF/ALT matching. Use > 0 for large SVs.
 ti_position_tolerance = 0
 
-# ── Output ────────────────────────────────────────────────────────────────────
+# ── Logging ───────────────────────────────────────────────────────────────────
 
-[output]
-# Output format(s). Comma-separated list.
-# Supported values: tsv, csv, json, vcf.
-# Both TSV and VCF are recommended for downstream analysis.
-format = "tsv,vcf"
+[logging]
+log_dir = "results/logs/"

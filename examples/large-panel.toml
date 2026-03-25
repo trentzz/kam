@@ -1,0 +1,58 @@
+# kam run configuration — large gene panel
+#
+# Optimised for panels covering hundreds of genes (> 500 kb target space).
+# Large panels require more memory for k-mer indexing and benefit from a
+# higher thread count and a slightly larger k-mer size to maintain specificity
+# across many target regions.
+#
+# The k-mer size is raised to 35 to reduce off-target hits across the wider
+# target space. Confidence and molecule thresholds are standard.
+#
+# Usage:
+#   kam run --config examples/large-panel.toml \
+#           --r1 sample_R1.fq.gz \
+#           --r2 sample_R2.fq.gz \
+#           --targets large_panel.fa \
+#           --output-dir results/
+
+[input]
+r1      = "sample_R1.fq.gz"
+r2      = "sample_R2.fq.gz"
+targets = "large_panel.fa"
+
+[output]
+output_dir    = "results/"
+output_format = "tsv,vcf"
+qc_output     = "results/qc.json"
+
+[chemistry]
+umi_length      = 5
+skip_length     = 2
+duplex          = true
+min_umi_quality = 20
+
+[assembly]
+min_family_size = 1
+
+[indexing]
+# Larger k-mer maintains specificity across a wide target space.
+kmer_size = 35
+
+[calling]
+min_confidence        = 0.99
+strand_bias_threshold = 0.01
+min_alt_molecules     = 2
+min_alt_duplex        = 0
+
+sv_min_confidence        = 0.95
+sv_min_alt_molecules     = 1
+sv_strand_bias_threshold = 1.0
+
+ti_position_tolerance = 0
+
+[logging]
+log_dir = "results/logs/"
+
+[runtime]
+# More threads to handle the larger indexing and calling workload.
+threads = 16

@@ -66,6 +66,9 @@ The binary is at `target/release/kam`.
 
 ## Usage
 
+For detailed documentation, guides, and examples, see the
+[User Manual](docs/manual/README.md).
+
 ### End-to-end run (recommended)
 
 ```sh
@@ -124,9 +127,18 @@ kam call --paths paths.bin --targets targets.fa --output calls.vcf
 
 ## Chemistry
 
-Designed for Twist UMI duplex chemistry (`5M2S+T` read structure on both R1
-and R2). The 5 bp random UMI, 2 bp skip, and template are extracted and used
-to group read families and identify duplex pairs.
+kam supports configurable UMI chemistries via `config.toml`. Presets are
+available for common protocols:
+
+| Preset | UMI | Skip | Duplex |
+|--------|-----|------|--------|
+| `twist-umi-duplex` | 5 bp | 2 bp | Yes |
+| `simplex-12bp` | 12 bp | 0 bp | No |
+| `simplex-9bp` | 9 bp | 0 bp | No |
+| `simplex-8bp` | 8 bp | 0 bp | No |
+
+See [examples/](examples/) for config files covering each chemistry, and the
+[Configuration Reference](docs/manual/configuration.md) for all options.
 
 ---
 

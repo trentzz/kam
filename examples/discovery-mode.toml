@@ -1,0 +1,48 @@
+# kam run configuration — standard discovery mode
+#
+# Detects SNVs, indels, and SVs across a target panel without prior knowledge
+# of expected variants. Sensible defaults for most ctDNA panel applications.
+#
+# Chemistry: Twist UMI duplex (5bp UMI, 2bp skip).
+# Thresholds: moderate confidence with duplex confirmation disabled so that
+# samples with low duplex rates still produce calls.
+#
+# Usage:
+#   kam run --config examples/discovery-mode.toml
+
+[input]
+r1      = "sample_R1.fq.gz"
+r2      = "sample_R2.fq.gz"
+targets = "panel.fa"
+
+[output]
+output_dir    = "results/"
+output_format = "tsv,vcf"
+qc_output     = "results/qc.json"
+
+[chemistry]
+umi_length = 5
+skip_length = 2
+duplex = true
+min_umi_quality = 20
+
+[assembly]
+min_family_size = 1
+
+[indexing]
+kmer_size = 31
+
+[calling]
+min_confidence      = 0.99
+strand_bias_threshold = 0.01
+min_alt_molecules   = 2
+min_alt_duplex      = 0
+
+# SV thresholds — relaxed relative to SNVs because SV k-mers are rare
+# even in high-depth samples.
+sv_min_confidence    = 0.95
+sv_min_alt_molecules = 1
+sv_strand_bias_threshold = 1.0
+
+[logging]
+log_dir = "results/logs/"

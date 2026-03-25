@@ -1,0 +1,56 @@
+# kam run configuration — fast mode
+#
+# Speed-optimised configuration for quick turnaround on routine samples.
+# Trades a small amount of accuracy for significantly reduced runtime:
+#   - Smaller k-mer (25) reduces index memory and lookup time
+#   - Fewer threads specified (adjust to your machine)
+#   - Minimal output (TSV only, no QC JSON)
+#   - No logging overhead
+#
+# Suitable for: CI integration tests, rapid QC checks, or preliminary
+# screening before a full-accuracy run.
+#
+# Usage:
+#   kam run --config examples/fast-mode.toml \
+#           --r1 sample_R1.fq.gz \
+#           --r2 sample_R2.fq.gz \
+#           --targets panel.fa \
+#           --output-dir results/
+
+[input]
+r1      = "sample_R1.fq.gz"
+r2      = "sample_R2.fq.gz"
+targets = "panel.fa"
+
+[output]
+output_dir    = "results/"
+# TSV only — skip VCF and JSON serialisation.
+output_format = "tsv"
+
+[chemistry]
+umi_length  = 5
+skip_length = 2
+duplex      = true
+min_umi_quality = 20
+
+[assembly]
+min_family_size = 1
+
+[indexing]
+# Smaller k-mer: faster indexing and calling, slightly lower specificity.
+kmer_size = 25
+
+[calling]
+min_confidence        = 0.99
+strand_bias_threshold = 0.01
+min_alt_molecules     = 2
+min_alt_duplex        = 0
+
+sv_min_confidence        = 0.95
+sv_min_alt_molecules     = 1
+sv_strand_bias_threshold = 1.0
+
+# No logging in fast mode — avoids IO overhead on the hot path.
+
+[runtime]
+threads = 4
