@@ -44,6 +44,16 @@ Runtime: 16--22 s per sample. Peak RSS: 1.8--2.0 GB.
 
 ## Installation
 
+### From crates.io
+
+```sh
+cargo install kam-bio
+```
+
+This installs the `kam` binary.
+
+### From source
+
 Requires Rust 1.75 or later.
 
 ```sh
