@@ -1,5 +1,5 @@
 [package]
-name = "kam"
+name = "kam-bio"
 version.workspace = true
 edition.workspace = true
 description = "Alignment-free variant detection for duplex UMI sequencing"

@@ -308,7 +308,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "kam"
+name = "kam-assemble"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "kam-core",
+ "log",
+ "needletail",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
+name = "kam-bio"
 version = "0.1.0"
 dependencies = [
  "clap",
@@ -323,18 +335,6 @@ dependencies = [
  "serde_json",
  "tempfile",
  "toml",
-]
-
-[[package]]
-name = "kam-assemble"
-version = "0.1.0"
-dependencies = [
- "flate2",
- "kam-core",
- "log",
- "needletail",
- "serde",
- "thiserror",
 ]
 
 [[package]]
