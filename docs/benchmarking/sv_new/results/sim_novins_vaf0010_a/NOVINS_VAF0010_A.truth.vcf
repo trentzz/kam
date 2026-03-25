@@ -1,0 +1,10 @@
+##fileformat=VCFv4.3
+##source=VarForge
+##INFO=<ID=EXPECTED_VAF,Number=1,Type=Float,Description="Expected variant allele frequency">
+##INFO=<ID=CLONE,Number=1,Type=String,Description="Clone assignment">
+##INFO=<ID=VARTYPE,Number=1,Type=String,Description="Variant type: SNV, INDEL, MNV, SV, CNV">
+##INFO=<ID=CCF,Number=1,Type=Float,Description="Cancer cell fraction of assigned clone">
+##contig=<ID=chr1,length=2000>
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	NOVINS_VAF0010_A
+chr1	400	.	T	TCCGGCGTCACCCGATGATCAGGTGCCTAGAATCAAGCGTAAGGGCTCGTCGTCACATGTGATAATCTTCCGTGTCCAGCC	.	PASS	EXPECTED_VAF=0.001000;CLONE=founder;VARTYPE=INDEL;CCF=0.001000	GT	0/1
