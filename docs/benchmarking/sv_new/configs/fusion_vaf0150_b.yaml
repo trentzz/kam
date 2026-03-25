@@ -1,0 +1,45 @@
+# varforge config: FUSION_VAF0150_B — VAF 1.500%
+# Fusion simulation using the fused reference approach.
+# All reads from this simulation cross the BCR_ABL1 breakpoint (chr1:200|900).
+# Mix with wild-type reads (from the normal ref) at ratio purity:98.5 to achieve
+# the target fusion VAF. See docs/benchmarking/sv_new/README.md for mixing steps.
+reference: docs/benchmarking/sv_new/data/fusion_ref.fa
+
+output:
+  directory: docs/benchmarking/sv_new/results/sim_fusion_vaf0150_b
+  fastq: true
+  bam: false
+  truth_vcf: true
+  manifest: true
+
+sample:
+  name: FUSION_VAF0150_B
+  read_length: 150
+  coverage: 75.0
+  platform: illumina
+
+fragment:
+  model: normal
+  mean: 167.0
+  sd: 30.0
+
+quality:
+  mean_quality: 37
+  tail_decay: 0.002
+
+tumour:
+  purity: 1.0
+  ploidy: 2
+
+umi:
+  length: 5
+  duplex: true
+  pcr_cycles: 8
+  family_size_mean: 4.0
+  family_size_sd: 1.5
+  inline: true
+
+chromosomes:
+  - chr1
+
+seed: 131150

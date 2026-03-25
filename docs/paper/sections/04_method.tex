@@ -429,11 +429,133 @@ Junction sequences span each SV breakpoint: for a deletion, the sequence joining
 SV classification is applied when the reconstructed reference and alternate paths have a length difference $\ge 50$\,bp or when same-length paths carry a partial inversion. Specifically:
 
 \begin{itemize}
-  \item $|R| - |A| \ge 50$: \textit{LargeDeletion}.
-  \item $|A| - |R| \ge 50$: \textit{TandemDuplication}.
+  \item $|R| - |A| \ge 50$, no inverted content: \textit{LargeDeletion}.
+  \item $|R| - |A| \ge 50$, and the retained alt sequence contains a segment that is the reverse complement of the corresponding reference region: \textit{InvDel} (deletion with inverted flanking repeats).
+  \item $|A| - |R| \ge 50$, and the inserted sequence matches a nearby window of the reference: \textit{TandemDuplication}.
+  \item $|A| - |R| \ge 50$, and the inserted sequence has no significant similarity to the flanking reference: \textit{NovelInsertion}.
   \item $|R| = |A|$ and a contiguous central segment $[l, r]$ satisfies $\text{RC}(R[l..r]) = A[l..r]$ with $r - l + 1 \ge 50$: \textit{Inversion}.
 \end{itemize}
 
 The inversion classifier finds the leftmost and rightmost positions where the reference and alternate paths differ. If the subsequence spanning those positions is the reverse complement of the corresponding reference subsequence, the variant is classified as an inversion. This partial-inversion check is required because real inversions only invert a central segment of the reference window; the full-path reverse complement check always fails.
 
-SV calls use type-specific thresholds. The default confidence threshold for SNVs and indels is 0.99; for SV types the threshold is 0.95 (\texttt{--sv-min-confidence}), and the minimum alt molecule count is 1 (\texttt{--sv-min-alt-molecules}). A large structural event with even 2 supporting molecules carries qualitatively stronger signal than 2 molecules of a single-base substitution: background sequencing errors cannot produce a 50--200\,bp structural signature. The duplex requirement is relaxed by default for SV benchmarking (\texttt{--min-duplex-alt-molecules 0}), as synthetic SV simulations may produce only simplex molecule evidence. In monitoring mode (\texttt{--target-variants}), the SV allele representation in the target VCF must match the key extracted by the pipeline; a Python helper (\texttt{make\_monitoring\_vcf.py}) generates monitoring VCFs directly from discovery results to guarantee exact key matching.
+SV calls use type-specific thresholds. The default confidence threshold for SNVs and indels is 0.99; for SV types the threshold is 0.95 (\texttt{--sv-min-confidence}), and the minimum alt molecule count is 1 (\texttt{--sv-min-alt-molecules}). A large structural event with even 2 supporting molecules carries qualitatively stronger signal than 2 molecules of a single-base substitution: background sequencing errors cannot produce a 50--200\,bp structural signature. The duplex requirement is relaxed by default for SV benchmarking (\texttt{--min-duplex-alt-molecules 0}), as synthetic SV simulations may produce only simplex molecule evidence.
+
+\subsection{Fusion and Translocation Detection}
+\label{sec:method:fusion}
+
+Fusions and translocations are detected via synthetic junction targets. The user provides a FASTA of synthetic sequences (\texttt{fusion\_targets}) where each entry concatenates the breakpoint-adjacent segment from partner locus A with the corresponding segment from partner locus B. The FASTA header encodes both partners' genomic coordinates using the format:
+
+\begin{center}
+\texttt{\{name\}\_\_\{chromA\}:\{startA\}-\{endA\}\_\_\{chromB\}:\{startB\}-\{endB\}\_\_fusion}
+\end{center}
+
+K-mers from these synthetic sequences are added to the allowlist during indexing, alongside normal target k-mers. Fusion-spanning reads produce k-mers that match the synthetic junction, and the graph walker finds paths through it just as it would through a normal target.
+
+Calling fusions requires a different VAF denominator. Wild-type molecules do not span both partner loci, so the fusion target carries no wild-type depth. Instead, the mean molecule depth at the two partner loci provides the denominator:
+
+\begin{equation}
+  \label{eq:fusion-vaf}
+  \hat{f}_\text{fusion} = \frac{n_\text{fusion}}{\bar{d}_\text{partner} + n_\text{fusion}}
+  \quad \text{where} \quad
+  \bar{d}_\text{partner} = \frac{d_A + d_B}{2}
+\end{equation}
+
+\noindent and $d_A$, $d_B$ are the mean molecule depths at the partner A and partner B target regions respectively. Strand bias filtering is disabled for fusions because the chimeric structure of the fusion sequence is inherently asymmetric with respect to strand.
+
+Fusion calls are emitted as BND records in VCF output, with the partner loci encoded in the standard \texttt{ALT} field format.
+
+\subsection{Tumour-Informed Monitoring Mode}
+\label{sec:method:monitoring}
+
+In monitoring mode, the user provides a VCF of expected somatic variants (\texttt{target\_variants}). The pipeline runs the full statistical calling procedure on all targets and then applies a post-call filter: any variant that passes statistical filters but whose allele does not match an entry in the target VCF receives the \texttt{NotTargeted} filter label. Only variants with alleles matching the expected somatic set receive \texttt{PASS}.
+
+Matching is performed on the normalised (left-aligned, trimmed) allele key. For SNVs and indels, the key is \texttt{CHROM:POS:REF:ALT}. For SVs, the key is \texttt{CHROM:POS:TYPE} with a configurable position tolerance (\texttt{--ti-position-tolerance}, default: 0\,bp).
+
+This two-step approach (call everywhere, then filter to expected variants) means the sensitivity loss from monitoring mode is minimal. The caller evaluates all target loci and reports the full statistical picture; the monitoring filter is applied last, leaving the evidence record intact for both PASS and NotTargeted calls.
+
+The practical effect is near-zero false positives. A background sequencing artefact that coincidentally passes all statistical filters is almost certainly not one of the pre-specified somatic variants, and is removed at the monitoring filter step. In our benchmarks, this mode achieves precision 1.0 on all titration samples.
+
+\subsection{Benchmarking Methodology}
+\label{sec:method:benchmarking}
+
+\subsubsection{Titration Dataset}
+
+The primary benchmark uses the Twist cfDNA Pan-Cancer Reference Standard v2, a commercial mixture of tumour cfDNA and normal cfDNA at precisely controlled concentrations.
+The dataset comprises 24 samples: 3 input amounts (5\,ng, 15\,ng, 30\,ng) each at 8 VAF levels (0\%, 0.001\%, 0.01\%, 0.1\%, 0.25\%, 0.5\%, 1\%, 2\%).
+The truth variant set contains 375 variants: 205 SNVs and 170 indels.
+These are high-confidence variants that pass a QC filter applied during panel design.
+
+The alignment-based baseline is the HUMID v2 deduplication plus RASCALL v3 calling pipeline, run on the same samples as part of a prior thesis investigation~\autocite{ZengThesis}.
+Per-variant detection results from that pipeline provide the direct comparison at matched VAF levels and input amounts.
+
+\subsubsection{Synthetic SV Benchmark}
+
+Structural variant sensitivity is evaluated using reads simulated with varforge~\autocite{varforge} from a 2000\,bp synthetic reference.
+The benchmark covers six SV types: large deletion, tandem duplication, inversion, InvDel (deletion with inverted flanking repeats), novel insertion, and gene fusion.
+For each type, 25 VAF levels spanning 0.05\% to 10\% are tested with 2 independent replicates each, giving 50 simulated samples per SV type.
+
+Gene fusions require a distinct simulation strategy because varforge cannot generate fusion-spanning reads from a BND variant record directly.
+Instead, a fused reference is constructed by concatenating the upstream partner locus (chr1:0--200) with the downstream partner locus (chr1:900--2000), placing the breakpoint at position 200.
+varforge simulates fusion reads from this fused reference at fractional coverage $5000 \times v$ and wild-type background reads from the original reference at $5000 \times (1 - v)$.
+Concatenating the two FASTQ sets produces the final mixed sample at VAF $v$.
+A 100\,bp synthetic fusion target sequence, spanning the breakpoint junction, is passed to kam via \texttt{--fusion-targets}.
+The other five SV types use a single varforge run with a mutation VCF specifying the structural event.
+
+\subsubsection{Public Datasets}
+
+Three publicly available datasets extend the evaluation beyond the titration set.
+
+\textbf{UMI Clustering Benchmark (SRR6794144).}
+A cfDNA panel FASTQ with 12\,bp simplex UMIs, used as the template dataset in a 2025 Scientific Reports benchmarking study~\autocite{Calib25umi}.
+This dataset validates kam's molecule assembly on real cfDNA reads.
+Because it does not carry a per-variant truth set, it is used for assembly quality-control only (family size distributions, collision rates) rather than sensitivity evaluation.
+
+\textbf{SEQC2 HCC1395 Somatic Mutation Benchmark (SRP162370).}
+A multi-centre benchmark using the HCC1395 breast cancer cell line~\autocite{Xiao21seqc2}.
+The truth set was constructed by majority-vote consensus across 63 tumour-normal pairs.
+This dataset validates kam's variant calling component on a community-standard truth set, independent of UMI chemistry.
+
+\textbf{COLO829 Somatic SV Truth Set (PRJEB27698).}
+An Illumina HiSeq WGS benchmark for the COLO829 melanoma cell line, with 68 somatic SVs confirmed across five sequencing technologies~\autocite{vanDijk22colo829}.
+The truth set covers 38 deletions, 13 translocations, 7 duplications, 7 inversions, and 3 insertions.
+This dataset validates SV detection against experimentally confirmed ground truth spanning all major SV classes.
+
+\subsubsection{Evaluation Metrics}
+
+A variant call is classified as a true positive (TP) if its normalised allele key matches a truth variant within the same sample.
+Sensitivity, precision, and F1 are computed at each VAF level:
+
+\begin{equation}
+  \label{eq:sensitivity}
+  \text{Sensitivity} = \frac{\text{TP}}{\text{TP} + \text{FN}}
+  \qquad
+  \text{Precision} = \frac{\text{TP}}{\text{TP} + \text{FP}}
+  \qquad
+  F_1 = \frac{2 \times \text{Sensitivity} \times \text{Precision}}{\text{Sensitivity} + \text{Precision}}
+\end{equation}
+
+The detection threshold is $n_a \ge 2$ supporting molecules for SNVs and indels (the default \texttt{--min-alt-molecules} setting).
+SV calls use $n_a \ge 1$ with the confidence threshold relaxed to 0.95, as described in Section~\ref{sec:sv-detection}.
+
+Per-variant concordance analysis records, for each variant in the truth set, whether it was detected by kam, by the alignment-based baseline, by both, or by neither.
+This identifies variants where the two approaches systematically disagree and provides the evidence for any claimed sensitivity advantage.
+
+Runtime is measured as wall-clock time for the full kam pipeline (parse through output) on a single machine.
+
+\subsubsection{Comparison Strategy}
+
+The primary comparison is kam in tumour-informed mode versus the alignment-based baseline (HUMID\,+\,RASCALL) on the titration dataset.
+Both pipelines receive identical input FASTQ files and the same truth variant list.
+Sensitivity and precision are computed at each of the 8 VAF levels and 3 input amounts.
+Discovery mode (no target variant list) is evaluated separately on the same samples and reported as a secondary result.
+
+For the public datasets, alignment-based comparisons use published results from the original benchmark papers where available, rather than re-running additional pipelines.
+
+\subsection{Configuration}
+\label{sec:method:config}
+
+All pipeline parameters are controlled via a TOML configuration file (\texttt{config.toml}). CLI flags take precedence over config file values, which take precedence over hard-coded defaults. This three-layer precedence allows a common per-project config file while permitting per-run overrides.
+
+The configuration is divided into sections: \texttt{[input]} (file paths including R1, R2, targets, SV junctions, fusion targets, and a monitoring VCF), \texttt{[output]} (output directory and format), \texttt{[chemistry]} (UMI length, skip length, duplex flag, and quality thresholds), \texttt{[assembly]} (minimum family size), \texttt{[indexing]} (k-mer size, default $k = 31$), \texttt{[calling]} (confidence thresholds, strand bias threshold, molecule count requirements, SV-specific thresholds, and monitoring position tolerance), \texttt{[logging]}, and \texttt{[runtime]} (thread count).
+
+Chemistry presets cover Twist duplex (default), and the \texttt{[chemistry]} section accepts arbitrary UMI and skip lengths for other chemistries. The pipeline is not hard-coded to any specific adapter design.

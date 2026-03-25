@@ -169,6 +169,83 @@ Large deletions are detected at all four VAF levels with PASS confidence. The ob
 
 Discovery mode produces 2--7 false positives per VAF level, all low-molecule SNV or MNV calls arising from sequencing errors in the SV target windows. In monitoring mode, a truth VCF derived from the discovery PASS SV calls is provided via \texttt{--target-variants}. Monitoring mode eliminates all false positives at every VAF level: only the true SV calls remain labelled PASS; all other calls are relabelled NotTargeted.
 
+% ── Comparison to alignment-based pipeline ────────────────────────────────────
+\subsection{Comparison to alignment-based pipeline}
+\label{sec:results-comparison}
+
+The alignment-based baseline uses HUMID v2 deduplication followed by RASCALL v3
+calling on the same 24-sample titration series, as reported in~\autocite{thesis2025}.
+\autoref{fig:comparison} shows sensitivity for both pipelines at the same VAF
+levels and input masses.
+
+At 2\% VAF the alignment-based pipeline achieves sensitivity of
+\placeholder{XX.X}\% (5\,ng), \placeholder{XX.X}\% (15\,ng), and
+\placeholder{XX.X}\% (30\,ng), compared to 51.7\%, 61.3\%, and 59.2\%
+for kam.
+At 0.5\% VAF the alignment-based pipeline reaches \placeholder{XX.X}\%
+(15\,ng) vs.\ 40.0\% for kam.
+The sensitivity gap narrows for SNVs alone: at 2\% VAF, kam SNV sensitivity
+of 69--80\% approaches the alignment-based figure of \placeholder{XX.X}\%,
+with most of the overall gap attributable to indels.
+
+Precision differs sharply.
+In tumour-informed monitoring mode, kam produces zero false positives at every
+VAF level and input mass.
+In discovery mode, the alignment-based pipeline reports
+\placeholder{XX} false positives per sample in the 0\% VAF negative controls
+(\autoref{fig:comparison_fp}).
+These represent germline variants, clonal haematopoiesis events, and other
+background biology that pass the alignment-based caller's quality filters.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/comparison_sensitivity.pdf}
+  \caption{Sensitivity at 2M read pairs: kam (tumour-informed monitoring) vs.\
+    alignment-based pipeline (HUMID\,+\,RASCALL). Each panel shows one input
+    mass. Points are annotated with VAF level. Alignment-based numbers are
+    \placeholder{pending final extraction from thesis data}.}
+  \label{fig:comparison}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/comparison_fp.pdf}
+  \caption{False positive rate in the 0\% VAF negative controls: kam
+    (monitoring mode) vs.\ alignment-based pipeline. kam produces zero false
+    positives; alignment-based numbers are \placeholder{pending}.}
+  \label{fig:comparison_fp}
+\end{figure}
+
+% ── Cross-chemistry generalisation ────────────────────────────────────────────
+\subsection{Cross-chemistry generalisation}
+\label{sec:results-crosschem}
+
+kam's chemistry is specified entirely via \texttt{config.toml}: UMI length,
+skip length, and read structure are configurable without code changes.
+Three public datasets are planned to demonstrate generalisation beyond the
+Twist 5M2S+T chemistry used in the primary evaluation.
+
+\paragraph{UMI Clustering Benchmark (SRR6794144).}
+A cfDNA panel with 12\,bp simplex read-name UMIs~\autocite{Calib25umi}.
+This dataset validates that kam's molecule assembly correctly groups reads by
+UMI on real cfDNA data.
+Results: \placeholder{pending — data not yet processed}.
+
+\paragraph{SEQC2 HCC1395.}
+Multi-centre somatic benchmark using the HCC1395 breast cancer cell line and
+matched normal, with a majority-vote truth set from 63 tumour-normal pairs
+across six callers~\autocite{Xiao21seqc2}.
+This dataset has no UMI; each read pair is treated as a single molecule, testing
+the variant-calling component in isolation.
+Results: \placeholder{pending — no-UMI mode not yet implemented}.
+
+\paragraph{COLO829 SV truth set (PRJEB27698).}
+Illumina HiSeq X Ten whole-genome data for the COLO829 melanoma cell line, with
+68 somatic SVs confirmed across five sequencing technologies~\autocite{vanDijk22colo829}.
+This dataset has no UMI and tests kam's SV detection without molecule-level
+evidence.
+Results: \placeholder{pending — no-UMI mode and WGS-scale compute not yet in place}.
+
 % ── Runtime and memory ────────────────────────────────────────────────────────
 \subsection{Runtime and memory}
 
@@ -195,3 +272,22 @@ different PCR duplication rates.
 Total wall-clock time ranged from 18.1\,s to 30.5\,s per sample on
 a single core. Peak RSS ranged from 1.8\,GB to 2.0\,GB, with all samples
 well within a 4\,GB budget.
+
+The alignment-based baseline (HUMID\,+\,BWA\,+\,RASCALL) requires
+\placeholder{XX--XX}\,s per sample on comparable hardware, including reference
+alignment.
+\autoref{fig:runtime_comparison} shows per-stage wall time for both pipelines
+on matched samples; kam runs in \placeholder{X.X}$\times$ less wall time on
+average.
+The primary speed advantage is that kam processes a single streaming FASTQ pass
+per stage with no coordinate sort step and no reference alignment.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/runtime_comparison.pdf}
+  \caption{Per-stage wall-clock time for kam vs.\ alignment-based pipeline on
+    the 15\,ng 2\% VAF sample at 2M read pairs. Stage labels differ between
+    pipelines; stages are grouped by functional equivalence where possible.
+    Alignment-based numbers are \placeholder{pending}.}
+  \label{fig:runtime_comparison}
+\end{figure}

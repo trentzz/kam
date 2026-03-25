@@ -1,0 +1,8 @@
+##fileformat=VCFv4.2
+##contig=<ID=chr1,length=2000>
+##INFO=<ID=SVTYPE,Number=1,Type=String,Description="SV type">
+##INFO=<ID=SVLEN,Number=1,Type=Integer,Description="SV length (positive=insertion)">
+##INFO=<ID=SEQ,Number=1,Type=String,Description="Inserted sequence">
+##INFO=<ID=VAF,Number=1,Type=Float,Description="Variant allele frequency">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	400	.	T	TCCGGCGTCACCCGATGATCAGGTGCCTAGAATCAAGCGTAAGGGCTCGTCGTCACATGTGATAATCTTCCGTGTCCAGCC	.	PASS	SVTYPE=INS;SVLEN=80;SEQ=CCGGCGTCACCCGATGATCAGGTGCCTAGAATCAAGCGTAAGGGCTCGTCGTCACATGTGATAATCTTCCGTGTCCAGCC;VAF=0.004

@@ -1,0 +1,5 @@
+# Canonical novel insertion sequence for NovelInsertion benchmarking.
+# Length: 80 bp. Seed: 202503251 (Python random).
+# Verified: no 20-mer appears in the 2000 bp synthetic reference
+# (docs/benchmarking/sv/data/ref.fa) or its reverse complement.
+CCGGCGTCACCCGATGATCAGGTGCCTAGAATCAAGCGTAAGGGCTCGTCGTCACATGTGATAATCTTCCGTGTCCAGCC
