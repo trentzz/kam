@@ -672,10 +672,15 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
                 continue;
             };
 
-            // Look up partner depths by searching target IDs that contain the
-            // partner chromosome names from the fusion loci.
-            let partner_a_depth = find_partner_depth(&target_depths, &ft.locus_a.chrom);
-            let partner_b_depth = find_partner_depth(&target_depths, &ft.locus_b.chrom);
+            // Look up partner depths by chromosome and locus midpoint.
+            // Using the midpoint disambiguates when both partners are on the
+            // same chromosome (e.g. both on chr1 in a synthetic benchmark).
+            let a_mid = (ft.locus_a.start + ft.locus_a.end) / 2;
+            let b_mid = (ft.locus_b.start + ft.locus_b.end) / 2;
+            let partner_a_depth =
+                find_partner_depth(&target_depths, &ft.locus_a.chrom, a_mid);
+            let partner_b_depth =
+                find_partner_depth(&target_depths, &ft.locus_b.chrom, b_mid);
 
             let context = FusionContext {
                 partner_a_depth,
@@ -847,15 +852,43 @@ fn build_config(args: &RunArgs) -> Result<KamConfig, Box<dyn std::error::Error>>
 ///
 /// Searches `target_depths` for any entry whose key contains `chrom` as a
 /// substring (e.g. "chr22" in "chr22:23632500-23632550"). Returns the mean
-/// depth of the first match, or 0.0 if no matching target is found.
+/// depth of the closest matching target, or 0.0 if no matching target is found.
 ///
-/// This is a best-effort heuristic: panels are usually designed so that each
-/// chromosome appears in at most one normal target entry. When multiple
-/// targets match, the first is used.
-fn find_partner_depth(target_depths: &HashMap<String, f64>, chrom: &str) -> f64 {
+/// Filters by chromosome name and, when multiple targets share the same
+/// chromosome (e.g. both fusion partners on chr1), picks the one whose
+/// encoded coordinate range midpoint is nearest to `locus_midpoint`.
+///
+/// Target IDs are expected to contain a `chrom:start-end` substring
+/// (e.g. `fusion_partner_A__chr1:100-300`).  When no positional suffix is
+/// parseable the function falls back to the first chromosome match.
+fn find_partner_depth(
+    target_depths: &HashMap<String, f64>,
+    chrom: &str,
+    locus_midpoint: u64,
+) -> f64 {
+    // Parse a `start-end` range from the `chrom:start-end` substring of `id`.
+    let parse_midpoint = |id: &str| -> Option<i64> {
+        // Find the last occurrence of `chrom:` in the id.
+        let prefix = format!("{chrom}:");
+        let pos = id.rfind(&prefix)?;
+        let rest = &id[pos + prefix.len()..];
+        // rest is now "start-end" possibly followed by other chars.
+        let range_str = rest.split(|c: char| !c.is_ascii_digit() && c != '-').next()?;
+        let mut parts = range_str.splitn(2, '-');
+        let start: i64 = parts.next()?.parse().ok()?;
+        let end: i64 = parts.next()?.parse().ok()?;
+        Some((start + end) / 2)
+    };
+
+    let lm = locus_midpoint as i64;
     target_depths
         .iter()
-        .find(|(id, _)| id.contains(chrom))
+        .filter(|(id, _)| id.contains(chrom))
+        .min_by_key(|(id, _)| {
+            parse_midpoint(id)
+                .map(|m| (m - lm).abs())
+                .unwrap_or(i64::MAX)
+        })
         .map(|(_, &depth)| depth)
         .unwrap_or(0.0)
 }
