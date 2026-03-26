@@ -1,6 +1,6 @@
 # SV-EXPAND: New SV Types (Fusion, InvDel, NovelInsertion)
 
-**Status**: todo
+**Status**: done
 **Priority**: high
 **Branch**: epic/SV-EXPAND
 
@@ -64,16 +64,16 @@ Apply SV-specific thresholds (`sv_min_confidence`, `sv_min_alt_molecules`,
 
 | ID | File | Status |
 |----|------|--------|
-| SV-EXP-001 | todo/sv_exp_001_new_variant_types.md | todo |
-| SV-EXP-002 | todo/sv_exp_002_invdel_classification.md | todo |
-| SV-EXP-003 | todo/sv_exp_003_novel_insertion.md | todo |
-| SV-EXP-004 | todo/sv_exp_004_fusion_design.md | todo |
-| SV-EXP-005 | todo/sv_exp_005_fusion_junctions.md | todo |
-| SV-EXP-006 | todo/sv_exp_006_fusion_classify.md | todo |
-| SV-EXP-007 | todo/sv_exp_007_multi_coord_allele.md | todo |
-| SV-EXP-008 | todo/sv_exp_008_sv_thresholds.md | todo |
-| SV-EXP-009 | todo/sv_exp_009_vcf_new_sv.md | todo |
-| SV-EXP-010 | todo/sv_exp_010_sv_tests.md | todo |
+| SV-EXP-001 | done/sv_exp_001_new_variant_types.md | done |
+| SV-EXP-002 | done/sv_exp_002_invdel_classification.md | done |
+| SV-EXP-003 | done/sv_exp_003_novel_insertion.md | done |
+| SV-EXP-004 | done/sv_exp_004_fusion_design.md | done |
+| SV-EXP-005 | done/sv_exp_005_fusion_junctions.md | done |
+| SV-EXP-006 | done/sv_exp_006_fusion_classify.md | done |
+| SV-EXP-007 | done/sv_exp_007_multi_coord_allele.md | done |
+| SV-EXP-008 | done/sv_exp_008_sv_thresholds.md | done |
+| SV-EXP-009 | done/sv_exp_009_vcf_new_sv.md | done |
+| SV-EXP-010 | done/sv_exp_010_sv_tests.md | done |
 
 ## Scope
 

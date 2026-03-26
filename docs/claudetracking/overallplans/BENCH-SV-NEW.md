@@ -1,6 +1,6 @@
 # BENCH-SV-NEW: Varforge Benchmark Suite for New SV Types
 
-**Status**: todo
+**Status**: done
 **Priority**: high
 **Branch**: epic/BENCH-SV-NEW
 
@@ -53,11 +53,11 @@ key VAFs (0.25%, 0.5%, 1%, 2%, 5%) for each mode.
 
 | ID | File | Status |
 |----|------|--------|
-| BENCH-SVN-001 | todo/bench_svn_001_invdel_configs.md | todo |
-| BENCH-SVN-002 | todo/bench_svn_002_novel_ins_configs.md | todo |
-| BENCH-SVN-003 | todo/bench_svn_003_fusion_configs.md | todo |
-| BENCH-SVN-004 | todo/bench_svn_004_run_score.md | todo |
-| BENCH-SVN-005 | todo/bench_svn_005_sv_figures.md | todo |
+| BENCH-SVN-001 | done/bench_svn_001_invdel_configs.md | done |
+| BENCH-SVN-002 | done/bench_svn_002_novel_ins_configs.md | done |
+| BENCH-SVN-003 | done/bench_svn_003_fusion_configs.md | done |
+| BENCH-SVN-004 | done/bench_svn_004_run_score.md | done |
+| BENCH-SVN-005 | done/bench_svn_005_sv_figures.md | done |
 
 ## Dependencies
 
