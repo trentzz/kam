@@ -517,17 +517,17 @@ pub fn classify_variant(ref_seq: &[u8], alt_seq: &[u8]) -> VariantType {
         }
         Ordering::Greater => {
             let del_len = ref_seq.len() - alt_seq.len();
-            if del_len >= SV_LENGTH_THRESHOLD {
-                // Check whether the alt sequence contains an inverted segment
-                // relative to the reference. This is the InvDel pattern:
-                // a deletion junction where the remaining alt bases include a
-                // region that is the reverse complement of the corresponding
-                // ref region (e.g., a deletion flanked by inverted repeats).
-                if alt_seq_has_inversion_relative_to_ref(ref_seq, alt_seq) {
-                    VariantType::InvDel
-                } else {
-                    VariantType::LargeDeletion
-                }
+            // Check for InvDel before the net-length threshold.
+            // An InvDel can have a small net deletion (deleted bp minus
+            // inverted-inserted bp) even though the gross rearrangement is
+            // large. alt_seq_has_inversion_relative_to_ref internally requires
+            // both the ref central and alt central segments to be at least
+            // SV_LENGTH_THRESHOLD bp, so short deletions with no inversion
+            // are not affected.
+            if alt_seq_has_inversion_relative_to_ref(ref_seq, alt_seq) {
+                VariantType::InvDel
+            } else if del_len >= SV_LENGTH_THRESHOLD {
+                VariantType::LargeDeletion
             } else {
                 VariantType::Deletion
             }
