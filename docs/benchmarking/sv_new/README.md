@@ -106,13 +106,22 @@ cat results/sim_fusion_vaf0100_a/sample_R2.fastq.gz \
 
 Pass the fusion targets file via `--fusion-targets`:
 
+Use `fusion_partner_targets.fa` (two 200 bp windows around each breakpoint)
+as the primary `--targets` FASTA. Do NOT use `ref.fa` (2000 bp) — processing
+the full reference causes each run to take 30+ minutes rather than ~20 seconds.
+
+`fusion_partner_targets.fa` is pre-generated in `data/` and contains:
+- `fusion_partner_A__chr1:100-300` (200 bp around gene A breakpoint)
+- `fusion_partner_B__chr1:800-1000` (200 bp around gene B breakpoint)
+
 ```bash
 kam run \
   --r1 results/sim_fusion_vaf0100_a_mixed/sample_R1.fastq.gz \
   --r2 results/sim_fusion_vaf0100_a_mixed/sample_R2.fastq.gz \
-  --targets docs/benchmarking/sv/data/ref.fa \
+  --targets docs/benchmarking/sv_new/data/fusion_partner_targets.fa \
   --fusion-targets docs/benchmarking/sv_new/data/fusion_targets.fa \
-  --output results/kam_fusion_vaf0100_a/
+  --output-dir results/kam_fusion_vaf0100_a/ \
+  --output-format-override vcf,tsv
 ```
 
 ### Truth evaluation

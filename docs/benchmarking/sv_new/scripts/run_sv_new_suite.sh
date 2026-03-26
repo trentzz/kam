@@ -35,9 +35,11 @@ SV_DATADIR="${REPO}/docs/benchmarking/sv/data"
 
 INVDEL_TARGETS="${SV_DATADIR}/invdel_targets.fa"
 NOVINS_TARGETS="${SV_DATADIR}/ins_targets.fa"
-# Fusion uses the standard ref as primary targets and adds the fusion target
-# via --fusion-targets.
-FUSION_TARGETS="${SV_DATADIR}/ref.fa"
+# Fusion uses a small partner-region FASTA (two 200 bp windows around each
+# breakpoint) as primary targets, not the full ref. Using ref.fa causes kam to
+# process all reads from the 2000 bp reference, which is too slow (~30 min per
+# run). The partner FASTA limits processing to reads near the breakpoints only.
+FUSION_TARGETS="${DATADIR}/fusion_partner_targets.fa"
 FUSION_JUNCTION_TARGETS="${DATADIR}/fusion_targets.fa"
 
 FORCE=false
