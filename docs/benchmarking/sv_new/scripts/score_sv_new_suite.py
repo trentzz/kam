@@ -92,6 +92,59 @@ def load_vcf_pass_positions(path: Path) -> List[int]:
     return positions
 
 
+def count_pass_bnd_calls(path: Path) -> int:
+    """Return the number of PASS BND records in a VCF.
+
+    Fusion calls use the target FASTA header as CHROM and POS=1, so
+    position-based matching against truth VCF coordinates (chr1:200, chr1:900)
+    is not meaningful. Instead, we treat a PASS BND call as evidence that the
+    fusion was detected. The truth always has exactly one fusion event per
+    dataset (two BND records for the two breakends), so we cap the TP count at
+    the number of truth events (1).
+    """
+    count = 0
+    if not path.exists():
+        return count
+    with open(path) as fh:
+        for line in fh:
+            if line.startswith("#") or not line.strip():
+                continue
+            fields = line.split("\t")
+            if len(fields) < 8:
+                continue
+            filt = fields[6].strip()
+            info = fields[7] if len(fields) > 7 else ""
+            if filt == "PASS" and "SVTYPE=BND" in info:
+                count += 1
+    return count
+
+
+def score_fusion(n_truth_events: int, n_pass_bnd: int) -> Dict:
+    """Score fusion detection.
+
+    One truth fusion event (two BND records) is a TP if any PASS BND call
+    exists. FPs are PASS BND calls beyond the number of truth events.
+    """
+    tp = min(n_truth_events, n_pass_bnd)
+    fp = max(0, n_pass_bnd - n_truth_events)
+    fn = max(0, n_truth_events - n_pass_bnd)
+    sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+    f1 = (
+        2 * precision * sensitivity / (precision + sensitivity)
+        if (precision + sensitivity) > 0
+        else 0.0
+    )
+    return {
+        "tp": tp,
+        "fp": fp,
+        "fn": fn,
+        "sensitivity": sensitivity,
+        "precision": precision,
+        "f1": f1,
+    }
+
+
 def score_positions(
     truth_positions: List[int],
     called_positions: List[int],
@@ -179,14 +232,26 @@ def main() -> None:
 
                 truth_positions = load_vcf_truth_positions(truth_vcf)
 
+                # Fusion truth VCFs have two BND records per fusion event.
+                # We treat each unique fusion as one truth event.
+                n_truth_events = (
+                    len(truth_positions) // 2 if sv_type == "fusion" else 0
+                )
+
                 # Fusion mixed results are in sim_fusion_..._mixed; kam results
                 # are in kam_fusion_... (same naming convention as other types).
                 kam_dir = ROOT / "results" / f"kam_{sv_type}_vaf{t}_{rep}"
 
                 for mode in ["discovery", "tumour_informed"]:
                     called_vcf = kam_dir / f"calls_{mode}.vcf"
-                    called_positions = load_vcf_pass_positions(called_vcf)
-                    m = score_positions(truth_positions, called_positions)
+                    if sv_type == "fusion":
+                        # Fusion calls use target FASTA name as CHROM; match
+                        # by presence of PASS BND records, not by position.
+                        n_pass_bnd = count_pass_bnd_calls(called_vcf)
+                        m = score_fusion(n_truth_events, n_pass_bnd)
+                    else:
+                        called_positions = load_vcf_pass_positions(called_vcf)
+                        m = score_positions(truth_positions, called_positions)
                     per_ds_rows.append(
                         {
                             "type": sv_type,
