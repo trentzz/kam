@@ -73,7 +73,8 @@ pub struct PathEvidence {
     /// duplex count at the actual variant site rather than the inflated
     /// `mean_duplex` computed across all ~70 path k-mers.
     ///
-    /// Set to 0 for the reference path itself.  Computed by
+    /// Set to 0 for paths where all k-mers are shared with the reference
+    /// (including the reference path itself).  Computed by
     /// [`score_and_rank_paths`] after the reference path is identified; not
     /// available from [`score_path`] alone.
     pub min_variant_specific_duplex: u32,
@@ -84,7 +85,10 @@ pub struct PathEvidence {
     /// `min_molecules` because the minimum over 70–150 k-mer positions
     /// bottlenecks at 1–3 even at moderate VAF.
     ///
-    /// Set to 0.0 for the reference path. Computed by [`score_and_rank_paths`].
+    /// For paths where all k-mers are shared with the reference (including the
+    /// reference path itself and fusion junction paths that match the fusion
+    /// target sequence), this falls back to `mean_molecules`. Computed by
+    /// [`score_and_rank_paths`].
     pub mean_variant_specific_molecules: f32,
     /// Minimum `n_simplex_fwd` across all k-mers in the path.
     ///
@@ -314,14 +318,13 @@ pub fn score_and_rank_paths(
         })
         .unwrap_or_default();
 
-    // For each alt path, compute the minimum duplex count and mean molecule count
+    // For each path, compute the minimum duplex count and mean molecule count
     // across variant-specific k-mers (those not shared with the reference path).
     // This gives calibrated evidence at the actual variant site.
+    // For the reference path (and fusion junction paths that match the reference),
+    // all k-mers are in ref_kmer_set, so vs_evidences is empty and the fallback
+    // sets mean_variant_specific_molecules = mean_molecules.
     for sp in &mut scored {
-        if sp.is_reference {
-            continue;
-        }
-
         let vs_evidences: Vec<MoleculeEvidence> = sp
             .path
             .kmers
@@ -615,9 +618,15 @@ mod tests {
         assert_eq!(alt.aggregate_evidence.min_molecules, 10);
     }
 
-    // Test 9: reference path has mean_variant_specific_molecules == 0.0.
+    // Test 9: reference path falls back to mean_molecules for
+    // mean_variant_specific_molecules because all its k-mers are in ref_kmer_set
+    // (vs_evidences is empty).
+    //
+    // This is correct behaviour for fusion calling: the fusion junction path IS
+    // the reference path, so it must get a non-zero mean_variant_specific_molecules
+    // for VAF computation in call_fusion.
     #[test]
-    fn reference_path_mean_vs_molecules_is_zero() {
+    fn reference_path_mean_vs_molecules_falls_back_to_mean_molecules() {
         let k = 4;
         let raw_ref = enc(b"AAAC");
 
@@ -629,6 +638,12 @@ mod tests {
         let ranked = score_and_rank_paths(vec![ref_path], &index, ref_seq, k);
 
         let refp = ranked.iter().find(|p| p.is_reference).unwrap();
-        assert_eq!(refp.aggregate_evidence.mean_variant_specific_molecules, 0.0);
+        // vs_evidences is empty (the sole k-mer is in ref_kmer_set), so the
+        // fallback sets mean_variant_specific_molecules = mean_molecules = 50.0.
+        assert!(
+            (refp.aggregate_evidence.mean_variant_specific_molecules - 50.0).abs() < 1e-5,
+            "expected 50.0, got {}",
+            refp.aggregate_evidence.mean_variant_specific_molecules
+        );
     }
 }

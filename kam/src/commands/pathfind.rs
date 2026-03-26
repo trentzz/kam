@@ -306,7 +306,6 @@ mod tests {
         assert_eq!(parse_maxpath_from_id("chr1:0-100_MAXPATH150"), Some(150));
     }
 
-    use super::*;
     use std::io::Write as IoWrite;
     use std::path::PathBuf;
 
@@ -348,7 +347,7 @@ mod tests {
 
         let targets_path = dir.join("targets.fa");
         write_fasta(
-            &targets_path.to_path_buf().clone().into(),
+            &targets_path.to_path_buf().clone(),
             &[("t1", target_seq)],
         );
 

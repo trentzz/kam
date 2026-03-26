@@ -490,7 +490,7 @@ mod tests {
     fn apply_target_filter_marks_not_targeted() {
         use crate::caller::{VariantCall, VariantFilter, VariantType};
 
-        let mut call = VariantCall {
+        let call = VariantCall {
             target_id: "chr1:100-108".to_string(),
             variant_type: VariantType::Snv,
             ref_sequence: b"ACGTACGT".to_vec(),
@@ -522,7 +522,7 @@ mod tests {
     fn apply_target_filter_passes_match() {
         use crate::caller::{VariantCall, VariantFilter, VariantType};
 
-        let mut call = VariantCall {
+        let call = VariantCall {
             target_id: "chr1:100-108".to_string(),
             variant_type: VariantType::Snv,
             ref_sequence: b"ACGTACGT".to_vec(),
@@ -584,7 +584,7 @@ mod tests {
         // Target: (chr1, 500, "C", "CDUP").
         // Called key for chr1:490-600, ref=b"ACGT", alt=b"ACCT":
         //   diff at offset 2 → SNV pos = 490 + 2 + 1 = 493.
-        let mut call = VariantCall {
+        let call = VariantCall {
             target_id: "chr1:490-600".to_string(),
             variant_type: VariantType::Snv,
             ref_sequence: b"ACGT".to_vec(),

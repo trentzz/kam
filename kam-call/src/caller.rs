@@ -1075,7 +1075,6 @@ mod tests {
         // ref = AAATTT, rc = AAATTT — this is a palindrome, would be Inversion.
         // Use a non-palindrome: ref = ACGT, rc = ACGT — also palindrome.
         // Use ref = AACC, rc = GGTT — these differ.
-        let ref_seq = b"AACCGGTT";
         // rc of AACCGGTT: complement T→A T→A G→C G→C C→G C→G A→T A→T = TTGGCCAA reversed
         // Actually let me compute manually:
         // AACCGGTT → complement: TTGGCCAA → reverse: AACCGGTT
@@ -1416,8 +1415,8 @@ mod tests {
         // Clamped: k becomes 3, vaf = 3/3 = 1.0.
         assert!((vaf - 1.0).abs() < 1e-9, "expected VAF=1.0, got {vaf}");
         // CI must still be valid floats in [0,1].
-        assert!(lo >= 0.0 && lo <= 1.0, "CI lower out of range: {lo}");
-        assert!(hi >= 0.0 && hi <= 1.0, "CI upper out of range: {hi}");
+        assert!((0.0..=1.0).contains(&lo), "CI lower out of range: {lo}");
+        assert!((0.0..=1.0).contains(&hi), "CI upper out of range: {hi}");
     }
 
     // Test 32 (FIX-004): call_variant with identical ref and alt must return a

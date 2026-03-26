@@ -1480,20 +1480,6 @@ min_umi_quality = 0
 
     // ── synthesize_invdel_alt_path unit tests ─────────────────────────────────
 
-    /// Helper: compute the reverse complement of a byte slice.
-    fn rc(seq: &[u8]) -> Vec<u8> {
-        seq.iter()
-            .rev()
-            .map(|&b| match b {
-                b'A' => b'T',
-                b'T' => b'A',
-                b'C' => b'G',
-                b'G' => b'C',
-                _ => b'N',
-            })
-            .collect()
-    }
-
     /// Inversion fully within the target: inv_start and inv_end both found.
     ///
     /// Layout:

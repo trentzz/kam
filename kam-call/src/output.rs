@@ -739,7 +739,7 @@ mod tests {
         let ref_seq: Vec<u8> = b"ACGT".repeat(25).to_vec(); // 100 bp
                                                             // alt is longer by 60 bp — a novel insertion.
         let mut alt_seq = ref_seq[..50].to_vec();
-        alt_seq.extend_from_slice(&vec![b'C'; 60]);
+        alt_seq.extend_from_slice(&[b'C'; 60]);
         alt_seq.extend_from_slice(&ref_seq[50..]);
         let call = make_sv_call(VariantType::NovelInsertion, &ref_seq, &alt_seq);
         let mut buf = Vec::new();
