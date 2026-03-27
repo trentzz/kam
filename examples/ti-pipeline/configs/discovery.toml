@@ -1,0 +1,62 @@
+# kam run configuration — discovery mode
+#
+# Finds all variants across the panel with no tumour-informed filtering.
+# Use this as the first step for a new sample to identify candidate somatic
+# mutations before running tumour-informed monitoring.
+#
+# Targets are generated from panel.bed using multiseqex:
+#   multiseqex hg38.fa \
+#       --bed inputs/panel.bed \
+#       --name-template "{chr}:{start}-{end}" \
+#       -o targets.fa
+#
+# Paths for r1, r2, targets, and output_dir are passed via CLI and override
+# the placeholder values below:
+#   kam run --config configs/discovery.toml \
+#           --r1 plasma_R1.fq.gz \
+#           --r2 plasma_R2.fq.gz \
+#           --targets targets.fa \
+#           --output-dir results/discovery/
+
+[input]
+r1      = "placeholder_R1.fq.gz"
+r2      = "placeholder_R2.fq.gz"
+targets = "targets.fa"
+# target_variants is intentionally absent in discovery mode.
+# Without it, all variants passing quality thresholds are marked PASS.
+# Add target_variants = "..." to switch to tumour-informed mode.
+
+[output]
+output_dir    = "results/discovery/"
+output_format = "tsv,vcf"
+qc_output     = "results/discovery/qc.json"
+
+[chemistry]
+umi_length      = 5
+skip_length     = 2
+duplex          = true
+min_umi_quality = 20
+
+[assembly]
+min_family_size = 1
+
+[indexing]
+kmer_size = 31
+
+[calling]
+min_confidence        = 0.99
+strand_bias_threshold = 0.01
+min_alt_molecules     = 2
+min_alt_duplex        = 0
+
+# Exclude germline heterozygotes from PASS calls.
+max_vaf = 0.35
+
+# SV thresholds: relaxed relative to SNV thresholds because breakpoint
+# k-mers are inherently less abundant than SNV-spanning k-mers.
+sv_min_confidence        = 0.95
+sv_min_alt_molecules     = 1
+sv_strand_bias_threshold = 1.0
+
+[logging]
+log_dir = "results/discovery/logs/"

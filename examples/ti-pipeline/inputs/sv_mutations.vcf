@@ -1,0 +1,14 @@
+##fileformat=VCFv4.2
+##fileDate=20260327
+##source=matched-biopsy-tumour
+##INFO=<ID=AF,Number=A,Type=Float,Description="Allele frequency from matched tissue biopsy">
+##INFO=<ID=SVTYPE,Number=1,Type=String,Description="Type of structural variant">
+##INFO=<ID=SVLEN,Number=.,Type=Integer,Description="Difference in length between REF and ALT alleles">
+##FILTER=<ID=PASS,Description="All filters passed">
+## This file contains SV mutations from the matched tumour biopsy for alt-seq mode.
+## REF alleles are real nucleotide sequences (not N) because multiseqex --alt-seq
+## needs the actual REF bases to substitute the ALT junction sequence.
+## IDs are "." so that multiseqex generates clean "chr:start-end" FASTA headers.
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr13	32337671	.	TATGCCTGACATGTTAAGCAGTGGCTACGATCAGTTAGCATGCTATGCGAT	T	.	PASS	SVTYPE=DEL;SVLEN=-50;AF=0.27
+chr17	41276045	.	ATGCTAGCATGCATGCTAGCATGCATGCTAGCATGCATGCTAGCATGCATGCTAGCATGCATGCTAGCATGCATGC	ATGCTAGCATGCATGCTCGATACG	.	PASS	SVTYPE=INVDEL;SVLEN=-60;AF=0.18

@@ -1,0 +1,10 @@
+# Panel target regions for discovery mode.
+# BED format: CHROM  START  END  NAME (0-based half-open coordinates, tab-separated).
+# Regions are wider windows (~500-1000bp) around the hotspot sites.
+chr7	55181100	55181700	EGFR_exon20
+chr17	7674000	7674700	TP53_exon7
+chr12	25398000	25398800	KRAS_exon2
+chr3	178951700	178952500	PIK3CA_exon9
+chr1	115256200	115257000	NRAS_exon3
+chr13	32337400	32338100	BRCA2_exon11_sv
+chr17	41275700	41276800	BRCA1_exon10_sv

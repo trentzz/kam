@@ -1,0 +1,14 @@
+##fileformat=VCFv4.2
+##fileDate=20260327
+##source=matched-biopsy-tumour
+##INFO=<ID=AF,Number=A,Type=Float,Description="Allele frequency from matched tissue biopsy">
+##FILTER=<ID=PASS,Description="All filters passed">
+## This file contains somatic mutations identified in the matched tumour biopsy.
+## It is used in tumour-informed mode to restrict PASS calls to the known mutation set.
+## IDs are "." so that multiseqex generates clean "chr:start-end" FASTA headers.
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr7	55181378	.	T	A	.	PASS	AF=0.42
+chr17	7674220	.	C	T	.	PASS	AF=0.38
+chr12	25398284	.	C	A	.	PASS	AF=0.61
+chr3	178952085	.	A	G	.	PASS	AF=0.29
+chr1	115256530	.	GGAATTT	G	.	PASS	AF=0.33
