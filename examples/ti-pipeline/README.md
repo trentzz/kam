@@ -116,7 +116,7 @@ Bruijn graph to find alt paths, then calls variants where alt k-mers are support
 by enough molecules. Without `--target-variants`, every variant passing quality
 thresholds is marked PASS.
 
-### Tumour-informed mode
+### Tumour-informed mode (normal)
 
 multiseqex reads `mutations.vcf` and extracts one 401 bp window per variant (±200 bp
 around the mutation site).
@@ -146,6 +146,41 @@ label the FASTA header start. kam treats the header start as 0-based, producing 
 systematic 1 bp offset: a variant at VCF POS 55181378 is called at position 55181379
 in kam's output. Setting `ti_position_tolerance = 1` absorbs this offset. Do not use
 0 when targets are generated from a VCF.
+
+### Tumour-informed mode (alt-seq k-mer boost)
+
+An optional second multiseqex run generates sequences where the REF allele at each
+tracked site is replaced by the ALT allele. kam loads these as `--sv-junctions`,
+adding the alt k-mers explicitly to the allowlist.
+
+```bash
+multiseqex hg38.fa \
+    --vcf inputs/mutations.vcf \
+    --alt-seq \
+    -o alt_seqs.fa
+```
+
+The alt k-mers are then guaranteed to be in the allowlist even when the variant is so
+rare that alt-supporting reads would otherwise be below the allowlist frequency
+threshold. This gives a small but real sensitivity gain at VAF < 0.1%. At VAF >= 0.5%
+the effect is negligible. The headers in `alt_seqs.fa` are ignored by kam; only the
+sequences matter.
+
+**`--alt-seq-both`** is a single-run alternative that outputs both the reference and
+alternate sequence for each variant in one FASTA file:
+
+```bash
+multiseqex hg38.fa \
+    --vcf inputs/mutations.vcf \
+    --alt-seq-both \
+    --name-template "{chr}:{start}-{end}" \
+    -o targets_and_alt.fa
+```
+
+The combined file contains two entries per variant — one reference sequence and one
+alt sequence. You can split on the FASTA header to separate them, but running two
+passes (the two-command approach above) keeps the files cleanly separated for kam's
+`--targets` and `--sv-junctions` arguments.
 
 ### Alt-seq mode
 
@@ -204,7 +239,7 @@ kam run \
     --output-dir results/discovery/
 ```
 
-### Tumour-informed
+### Tumour-informed (normal)
 
 ```bash
 # 1. Extract per-mutation target windows
@@ -222,6 +257,33 @@ kam run \
     --targets results/targets.fa \
     --target-variants inputs/mutations.vcf \
     --output-dir results/tumour-informed/
+```
+
+### Tumour-informed (alt-seq k-mer boost)
+
+```bash
+# 1. Extract per-mutation target windows (same as normal)
+multiseqex hg38.fa \
+    --vcf inputs/mutations.vcf \
+    --flank 200 \
+    --name-template "{chr}:{start}-{end}" \
+    -o results/targets.fa
+
+# 2. Generate alt allele sequences for the k-mer allowlist
+multiseqex hg38.fa \
+    --vcf inputs/mutations.vcf \
+    --alt-seq \
+    -o results/alt_seqs.fa
+
+# 3. Run kam with alt-seq boost
+kam run \
+    --config configs/tumour-informed-altseq.toml \
+    --r1 plasma_R1.fq.gz \
+    --r2 plasma_R2.fq.gz \
+    --targets results/targets.fa \
+    --sv-junctions results/alt_seqs.fa \
+    --target-variants inputs/mutations.vcf \
+    --output-dir results/tumour-informed-altseq/
 ```
 
 ### Alt-seq
@@ -256,13 +318,19 @@ Expected output structure:
 
 ```
 results/
-├── targets.fa                  # intermediate: target sequences for discovery/TI
+├── targets.fa                  # intermediate: target sequences (TI modes)
+├── alt_seqs.fa                 # intermediate: alt sequences (alt-seq boost)
 ├── discovery/
 │   ├── variants.tsv
 │   ├── variants.vcf
 │   ├── qc.json
 │   └── logs/
 ├── tumour-informed/
+│   ├── variants.tsv
+│   ├── variants.vcf
+│   ├── qc.json
+│   └── logs/
+├── tumour-informed-altseq/
 │   ├── variants.tsv
 │   ├── variants.vcf
 │   ├── qc.json
@@ -284,10 +352,13 @@ results/
 # Discovery
 ./run.sh plasma_R1.fq.gz plasma_R2.fq.gz hg38.fa results/ discovery
 
-# Tumour-informed
+# Tumour-informed (normal)
 ./run.sh plasma_R1.fq.gz plasma_R2.fq.gz hg38.fa results/ tumour-informed
 
-# Alt-seq (SV detection)
+# Tumour-informed (alt-seq k-mer boost, for very low VAF)
+./run.sh plasma_R1.fq.gz plasma_R2.fq.gz hg38.fa results/ tumour-informed-altseq
+
+# Alt-seq (large SV detection)
 ./run.sh plasma_R1.fq.gz plasma_R2.fq.gz hg38.fa results/ alt-seq
 ```
 

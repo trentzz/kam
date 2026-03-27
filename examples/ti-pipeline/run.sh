@@ -8,11 +8,12 @@
 #   R2          Path to plasma R2 FASTQ (may be .gz)
 #   REFERENCE   Path to reference FASTA (hg38.fa or similar; .fai built automatically)
 #   OUTPUT_DIR  Directory to write kam results
-#   MODE        One of: discovery | tumour-informed | alt-seq
+#   MODE        One of: discovery | tumour-informed | tumour-informed-altseq | alt-seq
 #
 # Examples:
 #   ./run.sh plasma_R1.fq.gz plasma_R2.fq.gz hg38.fa results/ discovery
 #   ./run.sh plasma_R1.fq.gz plasma_R2.fq.gz hg38.fa results/ tumour-informed
+#   ./run.sh plasma_R1.fq.gz plasma_R2.fq.gz hg38.fa results/ tumour-informed-altseq
 #   ./run.sh plasma_R1.fq.gz plasma_R2.fq.gz hg38.fa results/ alt-seq
 #
 # Override tool paths by setting KAM or MULTISEQEX before running:
@@ -32,7 +33,7 @@ INPUTS="${SCRIPT_DIR}/inputs"
 
 if [[ $# -ne 5 ]]; then
     echo "Usage: $0 R1 R2 REFERENCE OUTPUT_DIR MODE"
-    echo "MODE: discovery | tumour-informed | alt-seq"
+    echo "MODE: discovery | tumour-informed | tumour-informed-altseq | alt-seq"
     exit 1
 fi
 
@@ -67,7 +68,7 @@ case "${MODE}" in
         ;;
 
     tumour-informed)
-        echo "=== Tumour-informed mode ==="
+        echo "=== Tumour-informed mode (normal) ==="
 
         echo "[1/2] Extracting per-mutation target windows from VCF..."
         "${MULTISEQEX}" "${REFERENCE}" \
@@ -82,6 +83,35 @@ case "${MODE}" in
             --r1 "${R1}" \
             --r2 "${R2}" \
             --targets "${OUTPUT_DIR}/targets.fa" \
+            --target-variants "${INPUTS}/mutations.vcf" \
+            --output-dir "${OUTPUT_DIR}"
+
+        echo "Done. Results in ${OUTPUT_DIR}/"
+        ;;
+
+    tumour-informed-altseq)
+        echo "=== Tumour-informed mode (alt-seq k-mer boost) ==="
+
+        echo "[1/3] Extracting per-mutation target windows from VCF..."
+        "${MULTISEQEX}" "${REFERENCE}" \
+            --vcf "${INPUTS}/mutations.vcf" \
+            --flank 200 \
+            --name-template "{chr}:{start}-{end}" \
+            -o "${OUTPUT_DIR}/targets.fa"
+
+        echo "[2/3] Generating alt allele sequences for k-mer allowlist..."
+        "${MULTISEQEX}" "${REFERENCE}" \
+            --vcf "${INPUTS}/mutations.vcf" \
+            --alt-seq \
+            -o "${OUTPUT_DIR}/alt_seqs.fa"
+
+        echo "[3/3] Running kam (tumour-informed, alt-seq boost)..."
+        "${KAM}" run \
+            --config "${CONFIGS}/tumour-informed-altseq.toml" \
+            --r1 "${R1}" \
+            --r2 "${R2}" \
+            --targets "${OUTPUT_DIR}/targets.fa" \
+            --sv-junctions "${OUTPUT_DIR}/alt_seqs.fa" \
             --target-variants "${INPUTS}/mutations.vcf" \
             --output-dir "${OUTPUT_DIR}"
 
@@ -120,7 +150,7 @@ case "${MODE}" in
 
     *)
         echo "Unknown mode: ${MODE}"
-        echo "MODE must be one of: discovery | tumour-informed | alt-seq"
+        echo "MODE must be one of: discovery | tumour-informed | tumour-informed-altseq | alt-seq"
         exit 1
         ;;
 esac

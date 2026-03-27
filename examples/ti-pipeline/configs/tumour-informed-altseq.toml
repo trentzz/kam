@@ -1,0 +1,86 @@
+# kam run configuration — tumour-informed mode with alt-seq k-mer boost
+#
+# Same as tumour-informed.toml but adds alternate allele sequences to the
+# k-mer allowlist via --sv-junctions. This ensures that alt k-mers for every
+# tracked mutation are captured during indexing even when the variant is
+# present at very low VAF and alt k-mers are borderline in the observed reads.
+#
+# When to use this over tumour-informed.toml:
+#   Use this config when tracking mutations at VAF < 0.1% or when you want
+#   maximum sensitivity at the cost of a small extra multiseqex step.
+#   At VAF >= 0.5%, the normal config is sufficient and the alt-seq step
+#   adds no meaningful benefit.
+#
+# Two multiseqex runs are required:
+#
+# Step 1 — reference windows (used for k-mer indexing and depth measurement):
+#   multiseqex hg38.fa \
+#       --vcf inputs/mutations.vcf \
+#       --flank 200 \
+#       --name-template "{chr}:{start}-{end}" \
+#       -o targets.fa
+#
+# Step 2 — alt allele sequences (k-mers added to allowlist; headers ignored):
+#   multiseqex hg38.fa \
+#       --vcf inputs/mutations.vcf \
+#       --alt-seq \
+#       -o alt_seqs.fa
+#
+# Alternatively, use --alt-seq-both in a single run to get a combined FASTA
+# containing both ref and alt sequences for each variant:
+#   multiseqex hg38.fa \
+#       --vcf inputs/mutations.vcf \
+#       --alt-seq-both \
+#       --name-template "{chr}:{start}-{end}" \
+#       -o targets_and_alt.fa
+# Then split on header to separate ref entries (use as --targets) from alt
+# entries (use as --sv-junctions). The two-run approach above is simpler.
+#
+# Paths for r1, r2, targets, sv_junctions, and output_dir are passed via CLI:
+#   kam run --config configs/tumour-informed-altseq.toml \
+#           --r1 plasma_R1.fq.gz \
+#           --r2 plasma_R2.fq.gz \
+#           --targets targets.fa \
+#           --sv-junctions alt_seqs.fa \
+#           --output-dir results/tumour-informed-altseq/
+
+[input]
+r1      = "placeholder_R1.fq.gz"
+r2      = "placeholder_R2.fq.gz"
+targets = "targets.fa"
+# Alt allele sequences from multiseqex --alt-seq. kam adds their k-mers to the
+# allowlist alongside the reference target k-mers. Headers are ignored by kam.
+sv_junctions    = "alt_seqs.fa"
+# Restricts PASS calls to variants matching positions in this VCF.
+target_variants = "inputs/mutations.vcf"
+
+[output]
+output_dir    = "results/tumour-informed-altseq/"
+output_format = "tsv,vcf"
+qc_output     = "results/tumour-informed-altseq/qc.json"
+
+[chemistry]
+umi_length      = 5
+skip_length     = 2
+duplex          = true
+min_umi_quality = 20
+
+[assembly]
+min_family_size = 2
+
+[indexing]
+kmer_size = 31
+
+[calling]
+min_confidence        = 0.99
+strand_bias_threshold = 0.01
+min_alt_molecules     = 2
+min_alt_duplex        = 0
+
+max_vaf = 0.35
+
+# 1 bp tolerance for the VCF coordinate offset (see tumour-informed.toml).
+ti_position_tolerance = 1
+
+[logging]
+log_dir = "results/tumour-informed-altseq/logs/"
