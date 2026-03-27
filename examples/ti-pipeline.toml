@@ -1,0 +1,82 @@
+# kam run configuration — tumour-informed pipeline with multiseqex targets
+#
+# This config is the second step of a two-step pipeline:
+#
+#   Step 1: multiseqex extracts target windows from the reference FASTA using
+#           the tumour mutation VCF as the region source.
+#
+#   Step 2: kam runs in tumour-informed mode against those windows, restricting
+#           PASS calls to the known mutation set.
+#
+# Full pipeline usage (see also ti-pipeline.sh):
+#
+#   # Build targets FASTA from mutation VCF (requires multiseqex >= 0.2.1)
+#   multiseqex reference.fa \
+#       --vcf tumour_mutations.vcf \
+#       --flank 200 \
+#       --name-template "{chr}:{start}-{end}" \
+#       -o targets.fa
+#
+#   # Run kam (paths can also be passed via CLI, overriding the TOML values)
+#   kam run --config examples/ti-pipeline.toml
+
+# ── Input files ────────────────────────────────────────────────────────────────
+[input]
+# Target windows extracted by multiseqex. Each entry spans 401 bp (200 bp
+# either side of each variant position) with a header in chr:start-end format.
+r1              = "plasma_R1.fq.gz"
+r2              = "plasma_R2.fq.gz"
+targets         = "targets.fa"
+
+# The same tumour mutation VCF used to generate targets.fa. kam uses this to
+# restrict PASS calls to the known mutation positions.
+target_variants = "tumour_mutations.vcf"
+
+# ── Output ─────────────────────────────────────────────────────────────────────
+[output]
+output_dir    = "results/"
+output_format = "tsv,vcf"
+qc_output     = "results/qc.json"
+
+# ── Chemistry — Twist UMI duplex ───────────────────────────────────────────────
+[chemistry]
+umi_length      = 5
+skip_length     = 2
+duplex          = true
+min_umi_quality = 20
+# Drop very short templates — likely adapter dimers.
+min_template_length = 30
+
+# ── Assembly ───────────────────────────────────────────────────────────────────
+[assembly]
+# Require at least 2 reads per family for clinical-grade monitoring.
+min_family_size = 2
+
+# ── Indexing ───────────────────────────────────────────────────────────────────
+[indexing]
+kmer_size = 31
+
+# ── Calling ────────────────────────────────────────────────────────────────────
+[calling]
+min_confidence        = 0.99
+strand_bias_threshold = 0.01
+min_alt_molecules     = 2
+min_alt_duplex        = 0
+
+# Exclude calls compatible with germline heterozygotes.
+max_vaf = 0.35
+
+sv_min_confidence        = 0.95
+sv_min_alt_molecules     = 1
+sv_strand_bias_threshold = 1.0
+
+# Allow 1 bp position tolerance. multiseqex uses VCF 1-based coordinates in
+# the FASTA header; kam's coordinate arithmetic treats the header start as
+# 0-based, producing a 1 bp systematic offset. Setting tolerance = 1 ensures
+# exact-allele matching still works for SNVs and short indels.
+# Increase to 10 for large SV truth variants.
+ti_position_tolerance = 1
+
+# ── Logging ────────────────────────────────────────────────────────────────────
+[logging]
+log_dir = "results/logs/"
