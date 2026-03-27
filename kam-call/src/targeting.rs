@@ -14,7 +14,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
-use crate::caller::{VariantCall, VariantFilter};
+use crate::caller::{VariantCall, VariantFilter, VariantType};
 
 /// A set of expected somatic variant keys: (chrom, pos, ref_allele, alt_allele).
 ///
@@ -30,6 +30,13 @@ pub type TargetVariantSet = HashSet<(String, i64, String, String)>;
 /// is non-zero.  A call passes if its (chrom, pos) is within the tolerance of any
 /// entry in this set, regardless of REF/ALT.
 pub type TargetPositionSet = HashSet<(String, i64)>;
+
+/// Return true if any target entry is a BND record (ALT contains `]` or `[`).
+fn targets_has_bnd(targets: &TargetVariantSet) -> bool {
+    targets
+        .iter()
+        .any(|(_, _, _, alt)| alt.contains(']') || alt.contains('['))
+}
 
 /// Load expected variants from a VCF file.
 ///
@@ -205,8 +212,15 @@ pub fn extract_variant_key(
 /// apply_target_filter(&mut [call], &targets);
 /// ```
 pub fn apply_target_filter(calls: &mut [VariantCall], targets: &TargetVariantSet) {
+    let has_bnd_targets = targets_has_bnd(targets);
     for call in calls.iter_mut() {
         if call.filter != VariantFilter::Pass {
+            continue;
+        }
+        // Fusion calls use junction FASTA headers as target_id; these cannot be
+        // parsed as chrN:start-end coordinates. When the target VCF contains BND
+        // records, treat all Fusion calls as targeted (pass through).
+        if call.variant_type == VariantType::Fusion && has_bnd_targets {
             continue;
         }
         let key = extract_variant_key(&call.target_id, &call.ref_sequence, &call.alt_sequence);
@@ -266,6 +280,7 @@ pub fn apply_target_filter_with_tolerance(
     targets: &TargetVariantSet,
     tolerance: i64,
 ) {
+    let has_bnd_targets = targets_has_bnd(targets);
     // Build a (chrom, pos) position set from the target VCF for fast proximity checks.
     let positions: TargetPositionSet = targets
         .iter()
@@ -274,6 +289,10 @@ pub fn apply_target_filter_with_tolerance(
 
     for call in calls.iter_mut() {
         if call.filter != VariantFilter::Pass {
+            continue;
+        }
+        // Fusion calls: pass through when BND targets exist.
+        if call.variant_type == VariantType::Fusion && has_bnd_targets {
             continue;
         }
 
@@ -645,6 +664,75 @@ mod tests {
         let mut calls = vec![call];
         apply_target_filter_with_tolerance(&mut calls, &targets, 0);
         assert_eq!(calls[0].filter, VariantFilter::Pass);
+    }
+
+    // Test 10: Fusion calls pass through when BND targets exist.
+    #[test]
+    fn apply_target_filter_passes_fusion_with_bnd_targets() {
+        use crate::caller::{VariantCall, VariantFilter, VariantType};
+
+        let call = VariantCall {
+            target_id: "BCR_ABL1__chr1:150-200__chr1:900-950__fusion".to_string(),
+            variant_type: VariantType::Fusion,
+            ref_sequence: b"ACGT".to_vec(),
+            alt_sequence: b"ACGT".to_vec(),
+            vaf: 0.40,
+            vaf_ci_low: 0.38,
+            vaf_ci_high: 0.42,
+            n_molecules_ref: 600,
+            n_molecules_alt: 400,
+            n_duplex_alt: 0,
+            n_simplex_alt: 400,
+            confidence: 0.99,
+            strand_bias_p: 0.5,
+            filter: VariantFilter::Pass,
+        };
+
+        // Target VCF has BND record (ALT contains ']').
+        let mut targets = TargetVariantSet::new();
+        targets.insert((
+            "chr1".to_string(),
+            200,
+            "A".to_string(),
+            "A]chr1:900]".to_string(),
+        ));
+
+        let mut calls = vec![call];
+        apply_target_filter(&mut calls, &targets);
+        // Fusion call should remain Pass when BND targets exist.
+        assert_eq!(calls[0].filter, VariantFilter::Pass);
+    }
+
+    // Test 11: Fusion calls still get NotTargeted when no BND targets exist.
+    #[test]
+    fn apply_target_filter_not_targeted_fusion_without_bnd_targets() {
+        use crate::caller::{VariantCall, VariantFilter, VariantType};
+
+        let call = VariantCall {
+            target_id: "BCR_ABL1__chr1:150-200__chr1:900-950__fusion".to_string(),
+            variant_type: VariantType::Fusion,
+            ref_sequence: b"ACGT".to_vec(),
+            alt_sequence: b"ACGT".to_vec(),
+            vaf: 0.40,
+            vaf_ci_low: 0.38,
+            vaf_ci_high: 0.42,
+            n_molecules_ref: 600,
+            n_molecules_alt: 400,
+            n_duplex_alt: 0,
+            n_simplex_alt: 400,
+            confidence: 0.99,
+            strand_bias_p: 0.5,
+            filter: VariantFilter::Pass,
+        };
+
+        // Target VCF has only SNV records (no BND).
+        let mut targets = TargetVariantSet::new();
+        targets.insert(("chr1".to_string(), 103, "G".to_string(), "T".to_string()));
+
+        let mut calls = vec![call];
+        apply_target_filter(&mut calls, &targets);
+        // No BND targets → fusion call should be NotTargeted.
+        assert_eq!(calls[0].filter, VariantFilter::NotTargeted);
     }
 
     // Test 7: load_target_variants parses a minimal VCF string.

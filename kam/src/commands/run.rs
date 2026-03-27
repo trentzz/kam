@@ -677,10 +677,8 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             // same chromosome (e.g. both on chr1 in a synthetic benchmark).
             let a_mid = (ft.locus_a.start + ft.locus_a.end) / 2;
             let b_mid = (ft.locus_b.start + ft.locus_b.end) / 2;
-            let partner_a_depth =
-                find_partner_depth(&target_depths, &ft.locus_a.chrom, a_mid);
-            let partner_b_depth =
-                find_partner_depth(&target_depths, &ft.locus_b.chrom, b_mid);
+            let partner_a_depth = find_partner_depth(&target_depths, &ft.locus_a.chrom, a_mid);
+            let partner_b_depth = find_partner_depth(&target_depths, &ft.locus_b.chrom, b_mid);
 
             let context = FusionContext {
                 partner_a_depth,
@@ -873,7 +871,9 @@ fn find_partner_depth(
         let pos = id.rfind(&prefix)?;
         let rest = &id[pos + prefix.len()..];
         // rest is now "start-end" possibly followed by other chars.
-        let range_str = rest.split(|c: char| !c.is_ascii_digit() && c != '-').next()?;
+        let range_str = rest
+            .split(|c: char| !c.is_ascii_digit() && c != '-')
+            .next()?;
         let mut parts = range_str.splitn(2, '-');
         let start: i64 = parts.next()?.parse().ok()?;
         let end: i64 = parts.next()?.parse().ok()?;

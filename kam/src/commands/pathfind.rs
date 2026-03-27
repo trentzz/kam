@@ -346,10 +346,7 @@ mod tests {
         write_bincode(&molecules_path, FileType::Molecules, &molecules).expect("write molecules");
 
         let targets_path = dir.join("targets.fa");
-        write_fasta(
-            &targets_path.to_path_buf().clone(),
-            &[("t1", target_seq)],
-        );
+        write_fasta(&targets_path.to_path_buf().clone(), &[("t1", target_seq)]);
 
         let index_path = dir.join("index.bin");
         let idx_args = IndexArgs {
