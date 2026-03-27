@@ -1,0 +1,7 @@
+type	mode	sens_0010	sens_0025	sens_0050	sens_0100	sens_0200	sens_0500
+invdel	discovery	0.0	1.0	1.0	1.0	1.0	1.0
+invdel	tumour_informed	0.0	1.0	1.0	1.0	1.0	1.0
+novins	discovery	0.0	1.0	1.0	1.0	1.0	1.0
+novins	tumour_informed	0.0	1.0	1.0	1.0	1.0	1.0
+fusion	discovery	1.0	1.0	1.0	1.0	1.0	1.0
+fusion	tumour_informed	1.0	1.0	1.0	1.0	1.0	1.0
