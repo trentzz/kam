@@ -6,3 +6,7 @@ docs/benchmarking/sv/results/sim_*/
 docs/benchmarking/sv/results/kam_*/
 docs/benchmarking/snvindel/results/sim_*/
 docs/benchmarking/snvindel/results/kam_*/
+docs/benchmarking/ml/training_data*.csv
+docs/benchmarking/ml/results/sim_*/
+docs/benchmarking/ml/results/kam_*/
+scripts/ml/__pycache__/
