@@ -93,8 +93,8 @@ def derive_features(df: pd.DataFrame) -> pd.DataFrame:
     df["duplex_frac"] = ndupalt.where(nalt > 0, 0.0) / nalt.where(nalt > 0, 1.0)
     df["has_duplex"] = (ndupalt > 0).astype(int)
     df["ci_width"] = df["vaf_hi"] - df["vaf_lo"]
-    df["ref_len"] = df["ref"].str.len()
-    df["alt_len"] = df["alt"].str.len()
+    df["ref_len"] = df["ref"].fillna("").astype(str).str.len()
+    df["alt_len"] = df["alt"].fillna("").astype(str).str.len()
     df["alt_depth"] = nalt + nref
 
     ref_len = df["ref_len"].astype(float)
