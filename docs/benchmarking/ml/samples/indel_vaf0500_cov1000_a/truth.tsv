@@ -1,0 +1,6 @@
+chrom	pos	ref	alt	vaf	type
+chr1	99	TTTG	T	0.05	INDEL
+chr1	299	A	AGACGT	0.05	INDEL
+chr1	549	GTGA	G	0.05	INDEL
+chr1	749	T	TGCTAG	0.05	INDEL
+chr1	999	TACA	T	0.05	INDEL

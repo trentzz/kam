@@ -1,0 +1,43 @@
+# varforge config: INDEL_ML2_VAF0004_0592 — VAF 0.0500%
+reference: docs/benchmarking/snvindel/data/ref.fa
+
+output:
+  directory: docs/benchmarking/ml/results/sim_indel_ml2_vaf0004_0592
+  fastq: true
+  bam: false
+  truth_vcf: true
+  manifest: true
+
+sample:
+  name: INDEL_ML2_VAF0004_0592
+  read_length: 150
+  coverage: 940.9
+  platform: illumina
+
+fragment:
+  model: normal
+  mean: 146.3
+  sd: 41.8
+
+quality:
+  mean_quality: 32
+  tail_decay: 0.0016
+
+tumour:
+  purity: 0.000746
+  ploidy: 2
+
+mutations:
+  vcf: docs/benchmarking/snvindel/data/truth_indels_vaf0005_a.vcf
+
+umi:
+  length: 5
+  duplex: true
+  pcr_cycles: 10
+  family_size_mean: 2.09
+  family_size_sd: 1.12
+
+chromosomes:
+  - chr1
+
+seed: 267065

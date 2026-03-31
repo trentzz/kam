@@ -1,0 +1,43 @@
+# varforge config: INVDEL_ML2_VAF0003_0251 — VAF 0.0500%
+reference: docs/benchmarking/sv/data/ref.fa
+
+output:
+  directory: docs/benchmarking/ml/results/sim_invdel_ml2_vaf0003_0251
+  fastq: true
+  bam: false
+  truth_vcf: true
+  manifest: true
+
+sample:
+  name: INVDEL_ML2_VAF0003_0251
+  read_length: 150
+  coverage: 19803.3
+  platform: illumina
+
+fragment:
+  model: normal
+  mean: 275.2
+  sd: 35.0
+
+quality:
+  mean_quality: 39
+  tail_decay: 0.0012
+
+tumour:
+  purity: 0.000602
+  ploidy: 2
+
+mutations:
+  vcf: docs/benchmarking/sv/data/truth_invdel_vaf0005_a.vcf
+
+umi:
+  length: 5
+  duplex: true
+  pcr_cycles: 9
+  family_size_mean: 4.42
+  family_size_sd: 2.46
+
+chromosomes:
+  - chr1
+
+seed: 253995

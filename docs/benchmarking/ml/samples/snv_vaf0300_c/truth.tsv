@@ -1,0 +1,6 @@
+chrom	pos	ref	alt	vaf	type
+chr1	149	C	A	0.03	SNV
+chr1	349	G	A	0.03	SNV
+chr1	599	A	C	0.03	SNV
+chr1	849	G	A	0.03	SNV
+chr1	1099	G	A	0.03	SNV

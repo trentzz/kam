@@ -1,0 +1,43 @@
+# varforge config: SNV_ML2_VAF0824_0548 — VAF 8.0000%
+reference: docs/benchmarking/snvindel/data/ref.fa
+
+output:
+  directory: docs/benchmarking/ml/results/sim_snv_ml2_vaf0824_0548
+  fastq: true
+  bam: false
+  truth_vcf: true
+  manifest: true
+
+sample:
+  name: SNV_ML2_VAF0824_0548
+  read_length: 150
+  coverage: 4798.4
+  platform: illumina
+
+fragment:
+  model: normal
+  mean: 206.9
+  sd: 31.4
+
+quality:
+  mean_quality: 37
+  tail_decay: 0.0027
+
+tumour:
+  purity: 0.164779
+  ploidy: 2
+
+mutations:
+  vcf: docs/benchmarking/snvindel/data/truth_snvs_vaf0800_b.vcf
+
+umi:
+  length: 5
+  duplex: true
+  pcr_cycles: 11
+  family_size_mean: 4.14
+  family_size_sd: 0.85
+
+chromosomes:
+  - chr1
+
+seed: 252961

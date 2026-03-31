@@ -1,0 +1,11 @@
+{
+  "coverage": 1872.29,
+  "family_size_mean": 4.642,
+  "pcr_cycles": 8,
+  "fragment_mean": 143.84,
+  "variant_type": "ins",
+  "vaf": 0.012962,
+  "param_variant": "ml2",
+  "replicate": "a",
+  "vaf_tag": 125
+}

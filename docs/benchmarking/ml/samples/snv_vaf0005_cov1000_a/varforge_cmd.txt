@@ -1,0 +1,2 @@
+# Run from the repository root.
+varforge simulate --config docs/benchmarking/ml/configs/snv_vaf0005_cov1000_a.yaml

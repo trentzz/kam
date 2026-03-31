@@ -1,0 +1,43 @@
+# varforge config: SV_ML2_VAF0036_0220 — VAF 0.3500%
+reference: docs/benchmarking/sv/data/ref.fa
+
+output:
+  directory: docs/benchmarking/ml/results/sim_sv_ml2_vaf0036_0220
+  fastq: true
+  bam: false
+  truth_vcf: true
+  manifest: true
+
+sample:
+  name: SV_ML2_VAF0036_0220
+  read_length: 150
+  coverage: 774.0
+  platform: illumina
+
+fragment:
+  model: normal
+  mean: 193.6
+  sd: 43.8
+
+quality:
+  mean_quality: 32
+  tail_decay: 0.0016
+
+tumour:
+  purity: 0.007272
+  ploidy: 2
+
+mutations:
+  vcf: docs/benchmarking/sv/data/truth_svs_vaf0035_b.vcf
+
+umi:
+  length: 5
+  duplex: true
+  pcr_cycles: 12
+  family_size_mean: 2.71
+  family_size_sd: 1.35
+
+chromosomes:
+  - chr1
+
+seed: 202200
