@@ -1,0 +1,43 @@
+# varforge config: SNV_ML3_TRAIN_VAF0650_1151 — VAF 7.0000%
+reference: docs/benchmarking/snvindel/data/ref.fa
+
+output:
+  directory: docs/benchmarking/ml/results/train/sim_snv_ml3_train_vaf0650_1151
+  fastq: true
+  bam: false
+  truth_vcf: true
+  manifest: true
+
+sample:
+  name: SNV_ML3_TRAIN_VAF0650_1151
+  read_length: 150
+  coverage: 3503.6
+  platform: illumina
+
+fragment:
+  model: normal
+  mean: 196.1
+  sd: 41.4
+
+quality:
+  mean_quality: 36
+  tail_decay: 0.0010
+
+tumour:
+  purity: 0.130017
+  ploidy: 2
+
+mutations:
+  vcf: docs/benchmarking/snvindel/data/truth_snvs_vaf0700_b.vcf
+
+umi:
+  length: 5
+  duplex: true
+  pcr_cycles: 8
+  family_size_mean: 4.66
+  family_size_sd: 2.50
+
+chromosomes:
+  - chr1
+
+seed: 453011

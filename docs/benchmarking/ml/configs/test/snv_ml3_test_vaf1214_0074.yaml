@@ -1,0 +1,43 @@
+# varforge config: SNV_ML3_TEST_VAF1214_0074 — VAF 10.0000%
+reference: docs/benchmarking/snvindel/data/ref.fa
+
+output:
+  directory: docs/benchmarking/ml/results/test/sim_snv_ml3_test_vaf1214_0074
+  fastq: true
+  bam: false
+  truth_vcf: true
+  manifest: true
+
+sample:
+  name: SNV_ML3_TEST_VAF1214_0074
+  read_length: 150
+  coverage: 806.0
+  platform: illumina
+
+fragment:
+  model: normal
+  mean: 221.3
+  sd: 32.8
+
+quality:
+  mean_quality: 32
+  tail_decay: 0.0039
+
+tumour:
+  purity: 0.242728
+  ploidy: 2
+
+mutations:
+  vcf: docs/benchmarking/snvindel/data/truth_snvs_vaf1000_a.vcf
+
+umi:
+  length: 5
+  duplex: true
+  pcr_cycles: 8
+  family_size_mean: 1.84
+  family_size_sd: 0.76
+
+chromosomes:
+  - chr1
+
+seed: 476893

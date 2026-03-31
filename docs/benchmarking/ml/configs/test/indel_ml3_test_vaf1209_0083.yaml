@@ -1,0 +1,43 @@
+# varforge config: INDEL_ML3_TEST_VAF1209_0083 — VAF 10.0000%
+reference: docs/benchmarking/snvindel/data/ref.fa
+
+output:
+  directory: docs/benchmarking/ml/results/test/sim_indel_ml3_test_vaf1209_0083
+  fastq: true
+  bam: false
+  truth_vcf: true
+  manifest: true
+
+sample:
+  name: INDEL_ML3_TEST_VAF1209_0083
+  read_length: 150
+  coverage: 702.4
+  platform: illumina
+
+fragment:
+  model: normal
+  mean: 217.1
+  sd: 44.7
+
+quality:
+  mean_quality: 40
+  tail_decay: 0.0031
+
+tumour:
+  purity: 0.241871
+  ploidy: 2
+
+mutations:
+  vcf: docs/benchmarking/snvindel/data/truth_indels_vaf1000_b.vcf
+
+umi:
+  length: 5
+  duplex: true
+  pcr_cycles: 11
+  family_size_mean: 4.17
+  family_size_sd: 1.27
+
+chromosomes:
+  - chr1
+
+seed: 425852

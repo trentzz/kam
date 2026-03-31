@@ -1,0 +1,43 @@
+# varforge config: INS_ML3_TRAIN_VAF0086_1996 — VAF 0.7500%
+reference: docs/benchmarking/sv/data/ref.fa
+
+output:
+  directory: docs/benchmarking/ml/results/train/sim_ins_ml3_train_vaf0086_1996
+  fastq: true
+  bam: false
+  truth_vcf: true
+  manifest: true
+
+sample:
+  name: INS_ML3_TRAIN_VAF0086_1996
+  read_length: 150
+  coverage: 5610.2
+  platform: illumina
+
+fragment:
+  model: normal
+  mean: 140.3
+  sd: 42.5
+
+quality:
+  mean_quality: 33
+  tail_decay: 0.0030
+
+tumour:
+  purity: 0.017144
+  ploidy: 2
+
+mutations:
+  vcf: docs/benchmarking/sv/data/truth_ins_vaf0075_a.vcf
+
+umi:
+  length: 5
+  duplex: true
+  pcr_cycles: 7
+  family_size_mean: 4.54
+  family_size_sd: 2.41
+
+chromosomes:
+  - chr1
+
+seed: 401287

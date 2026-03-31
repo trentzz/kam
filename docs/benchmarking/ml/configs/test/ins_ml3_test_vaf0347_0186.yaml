@@ -1,0 +1,43 @@
+# varforge config: INS_ML3_TEST_VAF0347_0186 — VAF 3.5000%
+reference: docs/benchmarking/sv/data/ref.fa
+
+output:
+  directory: docs/benchmarking/ml/results/test/sim_ins_ml3_test_vaf0347_0186
+  fastq: true
+  bam: false
+  truth_vcf: true
+  manifest: true
+
+sample:
+  name: INS_ML3_TEST_VAF0347_0186
+  read_length: 150
+  coverage: 843.6
+  platform: illumina
+
+fragment:
+  model: normal
+  mean: 204.6
+  sd: 42.2
+
+quality:
+  mean_quality: 32
+  tail_decay: 0.0018
+
+tumour:
+  purity: 0.069305
+  ploidy: 2
+
+mutations:
+  vcf: docs/benchmarking/sv/data/truth_ins_vaf0350_b.vcf
+
+umi:
+  length: 5
+  duplex: true
+  pcr_cycles: 9
+  family_size_mean: 2.51
+  family_size_sd: 0.76
+
+chromosomes:
+  - chr1
+
+seed: 436254

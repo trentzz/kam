@@ -1,0 +1,43 @@
+# varforge config: SV_ML3_TRAIN_VAF0604_0887 — VAF 6.0000%
+reference: docs/benchmarking/sv/data/ref.fa
+
+output:
+  directory: docs/benchmarking/ml/results/train/sim_sv_ml3_train_vaf0604_0887
+  fastq: true
+  bam: false
+  truth_vcf: true
+  manifest: true
+
+sample:
+  name: SV_ML3_TRAIN_VAF0604_0887
+  read_length: 150
+  coverage: 12741.0
+  platform: illumina
+
+fragment:
+  model: normal
+  mean: 244.4
+  sd: 18.4
+
+quality:
+  mean_quality: 38
+  tail_decay: 0.0039
+
+tumour:
+  purity: 0.120858
+  ploidy: 2
+
+mutations:
+  vcf: docs/benchmarking/sv/data/truth_svs_vaf0600_a.vcf
+
+umi:
+  length: 5
+  duplex: true
+  pcr_cycles: 4
+  family_size_mean: 2.24
+  family_size_sd: 0.95
+
+chromosomes:
+  - chr1
+
+seed: 419510

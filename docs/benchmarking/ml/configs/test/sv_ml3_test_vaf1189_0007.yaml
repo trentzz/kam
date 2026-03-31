@@ -1,0 +1,43 @@
+# varforge config: SV_ML3_TEST_VAF1189_0007 — VAF 10.0000%
+reference: docs/benchmarking/sv/data/ref.fa
+
+output:
+  directory: docs/benchmarking/ml/results/test/sim_sv_ml3_test_vaf1189_0007
+  fastq: true
+  bam: false
+  truth_vcf: true
+  manifest: true
+
+sample:
+  name: SV_ML3_TEST_VAF1189_0007
+  read_length: 150
+  coverage: 999.2
+  platform: illumina
+
+fragment:
+  model: normal
+  mean: 165.3
+  sd: 34.2
+
+quality:
+  mean_quality: 32
+  tail_decay: 0.0038
+
+tumour:
+  purity: 0.237813
+  ploidy: 2
+
+mutations:
+  vcf: docs/benchmarking/sv/data/truth_svs_vaf1000_b.vcf
+
+umi:
+  length: 5
+  duplex: true
+  pcr_cycles: 4
+  family_size_mean: 3.85
+  family_size_sd: 1.53
+
+chromosomes:
+  - chr1
+
+seed: 479175

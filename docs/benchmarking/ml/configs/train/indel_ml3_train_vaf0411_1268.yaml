@@ -1,0 +1,43 @@
+# varforge config: INDEL_ML3_TRAIN_VAF0411_1268 — VAF 4.0000%
+reference: docs/benchmarking/snvindel/data/ref.fa
+
+output:
+  directory: docs/benchmarking/ml/results/train/sim_indel_ml3_train_vaf0411_1268
+  fastq: true
+  bam: false
+  truth_vcf: true
+  manifest: true
+
+sample:
+  name: INDEL_ML3_TRAIN_VAF0411_1268
+  read_length: 150
+  coverage: 3907.0
+  platform: illumina
+
+fragment:
+  model: normal
+  mean: 263.9
+  sd: 22.2
+
+quality:
+  mean_quality: 38
+  tail_decay: 0.0033
+
+tumour:
+  purity: 0.082195
+  ploidy: 2
+
+mutations:
+  vcf: docs/benchmarking/snvindel/data/truth_indels_vaf0400_a.vcf
+
+umi:
+  length: 5
+  duplex: true
+  pcr_cycles: 10
+  family_size_mean: 8.20
+  family_size_sd: 2.09
+
+chromosomes:
+  - chr1
+
+seed: 404755
