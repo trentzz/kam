@@ -718,6 +718,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
                     confidence: fusion_call.confidence,
                     strand_bias_p: 1.0,
                     filter: fusion_call.filter,
+                    ml_prob: None,
                 });
             }
         }
@@ -737,6 +738,25 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             target_set.len(),
             tol,
         );
+    }
+
+    // Optional ML scoring.
+    if let Some(ref model_path) = args.ml_model {
+        let meta_path = model_path.with_extension("meta.json");
+        match kam_call::ml::MlScorer::load(model_path, &meta_path) {
+            Ok(mut scorer) => {
+                for call in &mut all_calls {
+                    call.ml_prob = scorer.score(call);
+                }
+                eprintln!(
+                    "[run/call] ML scoring applied: {} calls scored",
+                    all_calls.len()
+                );
+            }
+            Err(e) => {
+                eprintln!("[run/call] WARNING: failed to load ML model: {}", e);
+            }
+        }
     }
 
     for call in &all_calls {
@@ -1185,6 +1205,7 @@ mod tests {
             log_dir: None,
             log: vec![],
             threads: None,
+            ml_model: None,
         }
     }
 
@@ -1407,6 +1428,7 @@ min_umi_quality = 0
             log_dir: None,
             log: vec![],
             threads: None,
+            ml_model: None,
         };
 
         run_pipeline(args).expect("config file mode should succeed");
@@ -1496,6 +1518,7 @@ min_umi_quality = 0
             log_dir: None,
             log: vec![],
             threads: None,
+            ml_model: None,
         };
 
         run_pipeline(args).expect("CLI override mode should succeed");

@@ -445,12 +445,21 @@ fn write_delimited(calls: &[VariantCall], sep: char, writer: &mut dyn Write) -> 
         writer,
         "target_id{s}variant_type{s}ref_seq{s}alt_seq{s}vaf{s}vaf_ci_low{s}vaf_ci_high{s}\
          n_molecules_ref{s}n_molecules_alt{s}n_duplex_alt{s}n_simplex_alt{s}\
-         strand_bias_p{s}confidence{s}filter"
+         strand_bias_p{s}confidence{s}filter{s}ml_prob{s}ml_filter"
     )?;
     for call in calls {
+        let ml_prob_str = match call.ml_prob {
+            Some(p) => format!("{:.4}", p),
+            None => ".".to_string(),
+        };
+        let ml_filter_str = match call.ml_prob {
+            Some(p) if p >= 0.5 => "ML_PASS",
+            Some(_) => "ML_FILTER",
+            None => ".",
+        };
         writeln!(
             writer,
-            "{}{s}{}{s}{}{s}{}{s}{:.6}{s}{:.6}{s}{:.6}{s}{}{s}{}{s}{}{s}{}{s}{:.6}{s}{:.6}{s}{}",
+            "{}{s}{}{s}{}{s}{}{s}{:.6}{s}{:.6}{s}{:.6}{s}{}{s}{}{s}{}{s}{}{s}{:.6}{s}{:.6}{s}{}{s}{}{s}{}",
             call.target_id,
             variant_type_to_str(call.variant_type),
             bytes_to_str(&call.ref_sequence),
@@ -465,6 +474,8 @@ fn write_delimited(calls: &[VariantCall], sep: char, writer: &mut dyn Write) -> 
             call.strand_bias_p,
             call.confidence,
             filter_to_str(call.filter),
+            ml_prob_str,
+            ml_filter_str,
         )?;
     }
     Ok(())
@@ -472,6 +483,11 @@ fn write_delimited(calls: &[VariantCall], sep: char, writer: &mut dyn Write) -> 
 
 /// Serialise a single [`VariantCall`] to a JSON [`Value`].
 fn call_to_json(call: &VariantCall) -> Value {
+    let ml_filter = match call.ml_prob {
+        Some(p) if p >= 0.5 => "ML_PASS",
+        Some(_) => "ML_FILTER",
+        None => ".",
+    };
     json!({
         "target_id": call.target_id,
         "variant_type": variant_type_to_str(call.variant_type),
@@ -487,6 +503,8 @@ fn call_to_json(call: &VariantCall) -> Value {
         "strand_bias_p": call.strand_bias_p,
         "confidence": call.confidence,
         "filter": filter_to_str(call.filter),
+        "ml_prob": call.ml_prob,
+        "ml_filter": ml_filter,
     })
 }
 
@@ -546,6 +564,7 @@ mod tests {
             confidence: 0.999,
             strand_bias_p: 0.8,
             filter: VariantFilter::Pass,
+            ml_prob: None,
         }
     }
 

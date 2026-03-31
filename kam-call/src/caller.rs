@@ -49,6 +49,10 @@ pub struct VariantCall {
     pub strand_bias_p: f64,
     /// Quality filter outcome.
     pub filter: VariantFilter,
+    /// ML model posterior probability (class 1 = real variant).
+    ///
+    /// `None` when no model was loaded.
+    pub ml_prob: Option<f32>,
 }
 
 /// Classification of a variant by allele length comparison.
@@ -286,6 +290,7 @@ pub fn call_variant(
             confidence: 0.0,
             strand_bias_p: 1.0,
             filter: VariantFilter::LowConfidence,
+            ml_prob: None,
         };
     }
 
@@ -364,6 +369,7 @@ pub fn call_variant(
         confidence,
         strand_bias_p,
         filter,
+        ml_prob: None,
     }
 }
 

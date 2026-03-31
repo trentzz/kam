@@ -80,7 +80,26 @@ pub fn run_call(args: CallArgs) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // ── 5b. Apply tumour-informed filter if --target-variants provided ─────────
+    // ── 5b. Optional ML scoring ───────────────────────────────────────────────
+    if let Some(ref model_path) = args.ml_model {
+        let meta_path = model_path.with_extension("meta.json");
+        match kam_call::ml::MlScorer::load(model_path, &meta_path) {
+            Ok(mut scorer) => {
+                for call in &mut all_calls {
+                    call.ml_prob = scorer.score(call);
+                }
+                eprintln!(
+                    "[call] ML scoring applied: {} calls scored",
+                    all_calls.len()
+                );
+            }
+            Err(e) => {
+                eprintln!("[call] WARNING: failed to load ML model: {}", e);
+            }
+        }
+    }
+
+    // ── 5c. Apply tumour-informed filter if --target-variants provided ─────────
     if let Some(ref vcf_path) = args.target_variants {
         let targets = load_target_variants(vcf_path)?;
         let tol = args.ti_position_tolerance as i64;
@@ -213,6 +232,7 @@ mod tests {
             target_variants: None,
             ti_position_tolerance: 0,
             sv_strand_bias_threshold: 1.0,
+            ml_model: None,
         }
     }
 

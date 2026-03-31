@@ -206,6 +206,7 @@ pub fn extract_variant_key(
 ///     confidence: 0.99,
 ///     strand_bias_p: 0.5,
 ///     filter: VariantFilter::Pass,
+///     ml_prob: None,
 /// };
 ///
 /// let targets = HashSet::new(); // empty — nothing targeted
@@ -265,6 +266,7 @@ pub fn apply_target_filter(calls: &mut [VariantCall], targets: &TargetVariantSet
 ///     confidence: 0.99,
 ///     strand_bias_p: 0.5,
 ///     filter: VariantFilter::Pass,
+///     ml_prob: None,
 /// };
 ///
 /// // Truth VCF has a DUP at pos 500; call is at pos 493 (partial allele).
@@ -524,6 +526,7 @@ mod tests {
             confidence: 0.99,
             strand_bias_p: 0.5,
             filter: VariantFilter::Pass,
+            ml_prob: None,
         };
 
         let empty_targets = TargetVariantSet::new();
@@ -556,6 +559,7 @@ mod tests {
             confidence: 0.99,
             strand_bias_p: 0.5,
             filter: VariantFilter::Pass,
+            ml_prob: None,
         };
 
         let mut targets = TargetVariantSet::new();
@@ -586,6 +590,7 @@ mod tests {
             confidence: 0.5,
             strand_bias_p: 0.5,
             filter: VariantFilter::LowConfidence,
+            ml_prob: None,
         };
 
         let empty = TargetVariantSet::new();
@@ -618,6 +623,7 @@ mod tests {
             confidence: 0.99,
             strand_bias_p: 0.5,
             filter: VariantFilter::Pass,
+            ml_prob: None,
         };
 
         let mut targets = TargetVariantSet::new();
@@ -655,6 +661,7 @@ mod tests {
             confidence: 0.99,
             strand_bias_p: 0.5,
             filter: VariantFilter::Pass,
+            ml_prob: None,
         };
 
         let mut targets = TargetVariantSet::new();
@@ -686,6 +693,7 @@ mod tests {
             confidence: 0.99,
             strand_bias_p: 0.5,
             filter: VariantFilter::Pass,
+            ml_prob: None,
         };
 
         // Target VCF has BND record (ALT contains ']').
@@ -723,6 +731,7 @@ mod tests {
             confidence: 0.99,
             strand_bias_p: 0.5,
             filter: VariantFilter::Pass,
+            ml_prob: None,
         };
 
         // Target VCF has only SNV records (no BND).

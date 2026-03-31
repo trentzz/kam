@@ -220,6 +220,15 @@ pub struct CallArgs {
     /// Set to 0.0 to apply the same threshold as SNVs/indels.
     #[arg(long, default_value_t = 1.0f64)]
     pub sv_strand_bias_threshold: f64,
+
+    /// Path to an ONNX ML model for optional variant re-scoring.
+    ///
+    /// When provided, each variant call is scored by the ML model and the
+    /// result is appended as `ml_prob` and `ml_filter` columns. Requires a
+    /// companion `<model>.meta.json` file at the same path with `.onnx`
+    /// replaced by `.meta.json`.
+    #[arg(long)]
+    pub ml_model: Option<PathBuf>,
 }
 
 impl CallerConfigArgs for CallArgs {
@@ -449,6 +458,15 @@ pub struct RunArgs {
     /// Set to 0.0 to apply the same threshold as SNVs/indels.
     #[arg(long)]
     pub sv_strand_bias_threshold_override: Option<f64>,
+
+    /// Path to an ONNX ML model for optional variant re-scoring.
+    ///
+    /// When provided, each variant call is scored by the ML model and the
+    /// result is appended as `ml_prob` and `ml_filter` columns. Requires a
+    /// companion `<model>.meta.json` file at the same path with `.onnx`
+    /// replaced by `.meta.json`.
+    #[arg(long)]
+    pub ml_model: Option<PathBuf>,
 }
 
 #[cfg(test)]
