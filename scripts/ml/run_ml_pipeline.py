@@ -121,8 +121,28 @@ def find_truth_vcf(sim_dir):
 
 
 def needs_kam(name):
+    """Return True if this sample needs any kam processing.
+
+    A sample is fully done when both calls_discovery.tsv and
+    calls_tumour_informed.tsv exist.
+    """
+    kam_dir = RESULTS / f"kam_{name}"
+    return not (
+        (kam_dir / "calls_discovery.tsv").exists()
+        and (kam_dir / "calls_tumour_informed.tsv").exists()
+    )
+
+
+def needs_disc(name):
+    """Return True if the discovery run is still needed."""
     kam_dir = RESULTS / f"kam_{name}"
     return not (kam_dir / "calls_discovery.tsv").exists()
+
+
+def needs_ti(name):
+    """Return True if the tumour-informed run is still needed."""
+    kam_dir = RESULTS / f"kam_{name}"
+    return not (kam_dir / "calls_tumour_informed.tsv").exists()
 
 
 def run_kam(name):
@@ -149,47 +169,59 @@ def run_kam(name):
 
     disc_tmp = kam_dir / "tmp_disc"
     ti_tmp = kam_dir / "tmp_ti"
+    any_failed = False
 
-    # Discovery run
-    disc_result = subprocess.run(
-        [str(KAM), "run",
-         "--r1", str(r1), "--r2", str(r2),
-         "--targets", str(targets),
-         "--output-dir", str(disc_tmp),
-         "--output-format-override", "vcf,tsv"],
-        cwd=str(REPO), capture_output=True, text=True
-    )
-    if disc_result.returncode != 0:
-        print(f"[KAM DISC FAIL] {name}: {disc_result.stderr[-400:]}", flush=True)
-        return name, "disc_failed"
+    # Discovery run (skip if already done)
+    if needs_disc(name):
+        disc_result = subprocess.run(
+            [str(KAM), "run",
+             "--r1", str(r1), "--r2", str(r2),
+             "--targets", str(targets),
+             "--output-dir", str(disc_tmp),
+             "--output-format-override", "vcf,tsv"],
+            cwd=str(REPO), capture_output=True, text=True
+        )
+        if disc_result.returncode != 0:
+            print(f"[KAM DISC FAIL] {name}: {disc_result.stderr[-400:]}", flush=True)
+            return name, "disc_failed"
+        # Copy disc outputs immediately
+        for src, dst in [
+            (disc_tmp / "variants.tsv", kam_dir / "calls_discovery.tsv"),
+            (disc_tmp / "variants.vcf", kam_dir / "calls_discovery.vcf"),
+        ]:
+            if src.exists():
+                shutil.copy2(src, dst)
+        shutil.rmtree(disc_tmp, ignore_errors=True)
 
-    # Tumour-informed run
-    ti_result = subprocess.run(
-        [str(KAM), "run",
-         "--r1", str(r1), "--r2", str(r2),
-         "--targets", str(targets),
-         "--target-variants", str(truth_vcf),
-         "--output-dir", str(ti_tmp),
-         "--output-format-override", "vcf,tsv"],
-        cwd=str(REPO), capture_output=True, text=True
-    )
-    if ti_result.returncode != 0:
-        print(f"[KAM TI FAIL] {name}: {ti_result.stderr[-400:]}", flush=True)
+    # Tumour-informed run (skip if already done)
+    if needs_ti(name):
+        ti_result = subprocess.run(
+            [str(KAM), "run",
+             "--r1", str(r1), "--r2", str(r2),
+             "--targets", str(targets),
+             "--target-variants", str(truth_vcf),
+             "--output-dir", str(ti_tmp),
+             "--output-format-override", "vcf,tsv"],
+            cwd=str(REPO), capture_output=True, text=True
+        )
+        if ti_result.returncode != 0:
+            print(f"[KAM TI FAIL] {name}: {ti_result.stderr[-400:]}", flush=True)
+            any_failed = True
+        else:
+            # Copy TI outputs (guard against race between exists() and copy2)
+            for src, dst in [
+                (ti_tmp / "variants.tsv", kam_dir / "calls_tumour_informed.tsv"),
+                (ti_tmp / "variants.vcf", kam_dir / "calls_tumour_informed.vcf"),
+            ]:
+                if src.exists():
+                    try:
+                        shutil.copy2(src, dst)
+                    except FileNotFoundError:
+                        pass
+            shutil.rmtree(ti_tmp, ignore_errors=True)
+
+    if any_failed:
         return name, "ti_failed"
-
-    # Copy outputs
-    for src, dst in [
-        (disc_tmp / "variants.tsv", kam_dir / "calls_discovery.tsv"),
-        (disc_tmp / "variants.vcf", kam_dir / "calls_discovery.vcf"),
-        (ti_tmp / "variants.tsv", kam_dir / "calls_tumour_informed.tsv"),
-        (ti_tmp / "variants.vcf", kam_dir / "calls_tumour_informed.vcf"),
-    ]:
-        if src.exists():
-            shutil.copy2(src, dst)
-
-    # Remove tmp dirs
-    shutil.rmtree(disc_tmp, ignore_errors=True)
-    shutil.rmtree(ti_tmp, ignore_errors=True)
 
     print(f"[KAM] {name}", flush=True)
     return name, "done"
@@ -222,7 +254,12 @@ def step2_kam(workers=4):
 # ---------------------------------------------------------------------------
 
 def parse_truth_vcf(vcf_path):
-    """Parse varforge truth VCF to list of dicts."""
+    """Parse varforge truth VCF to list of dicts.
+
+    Adjusts pos to be 0-based to match kam's output convention.
+    VCFs use 1-based positions, but kam reports 0-based positions.
+    Subtracting 1 ensures truth/call positions align for label matching.
+    """
     rows = []
     opener = gzip.open if str(vcf_path).endswith(".gz") else open
     with opener(vcf_path, "rt") as fh:
@@ -232,6 +269,8 @@ def parse_truth_vcf(vcf_path):
             parts = line.rstrip().split("\t")
             chrom, pos, _, ref, alt = parts[0], parts[1], parts[2], parts[3], parts[4]
             info = parts[7]
+            # Convert 1-based VCF pos to 0-based to match kam output
+            pos_0based = str(int(pos) - 1)
             # Parse EXPECTED_VAF or VAF
             vaf_match = re.search(r"EXPECTED_VAF=([0-9.eE+\-]+)", info)
             if not vaf_match:
@@ -242,8 +281,46 @@ def parse_truth_vcf(vcf_path):
             if not type_match:
                 type_match = re.search(r"TYPE=([^;]+)", info)
             vartype = type_match.group(1) if type_match else ""
-            rows.append({"chrom": chrom, "pos": pos, "ref": ref, "alt": alt, "vaf": vaf, "type": vartype})
+            rows.append({"chrom": chrom, "pos": pos_0based, "ref": ref, "alt": alt, "vaf": vaf, "type": vartype})
     return rows
+
+
+def vcf_calls_to_tsv(vcf_path):
+    """Convert a kam VCF output to the old TSV format expected by build_training_data_v2.
+
+    Returns (cols, rows) where cols is the list of column names and rows is a list of dicts.
+    """
+    cols = ["chrom", "pos", "ref", "alt", "filter", "vaf", "vaf_lo", "vaf_hi",
+            "nref", "nalt", "ndupalt", "nsimalt", "sbp", "conf"]
+    rows = []
+    with open(vcf_path) as fh:
+        for line in fh:
+            if line.startswith("#"):
+                continue
+            parts = line.rstrip().split("\t")
+            if len(parts) < 8:
+                continue
+            chrom, pos, _, ref, alt, _, filt, info = parts[:8]
+            info_d = {}
+            for kv in info.split(";"):
+                if "=" in kv:
+                    k, v = kv.split("=", 1)
+                    info_d[k] = v
+            row = {
+                "chrom": chrom, "pos": pos, "ref": ref, "alt": alt,
+                "filter": filt,
+                "vaf": info_d.get("VAF", ""),
+                "vaf_lo": info_d.get("VAF_LO", ""),
+                "vaf_hi": info_d.get("VAF_HI", ""),
+                "nref": info_d.get("NREF", ""),
+                "nalt": info_d.get("NALT", ""),
+                "ndupalt": info_d.get("NDUPALT", ""),
+                "nsimalt": info_d.get("NSIMALT", ""),
+                "sbp": info_d.get("SBP", ""),
+                "conf": info_d.get("CONF", ""),
+            }
+            rows.append(row)
+    return cols, rows
 
 
 def parse_config_params(config_path, name):
@@ -335,10 +412,29 @@ def build_sample_dir(name, config_path):
             fh.write(f"{r['chrom']}\t{r['pos']}\t{r['ref']}\t{r['alt']}\t{r['vaf']}\t{r['type']}\n")
 
     # discovery.tsv and tumour_informed.tsv
-    shutil.copy2(kam_dir / "calls_discovery.tsv", sample_dir / "discovery.tsv")
-    ti_src = kam_dir / "calls_tumour_informed.tsv"
-    if ti_src.exists():
-        shutil.copy2(ti_src, sample_dir / "tumour_informed.tsv")
+    # The new kam output is a TSV with a different column schema from what
+    # build_training_data_v2.py expects. Convert via the VCF output instead,
+    # which has standard chrom/pos/ref/alt fields.
+    disc_vcf = kam_dir / "calls_discovery.vcf"
+    if disc_vcf.exists():
+        cols, rows_disc = vcf_calls_to_tsv(disc_vcf)
+        with open(sample_dir / "discovery.tsv", "w") as fh:
+            fh.write("\t".join(cols) + "\n")
+            for r in rows_disc:
+                fh.write("\t".join(str(r[c]) for c in cols) + "\n")
+    else:
+        shutil.copy2(kam_dir / "calls_discovery.tsv", sample_dir / "discovery.tsv")
+
+    ti_vcf = kam_dir / "calls_tumour_informed.vcf"
+    ti_tsv = kam_dir / "calls_tumour_informed.tsv"
+    if ti_vcf.exists():
+        cols, rows_ti = vcf_calls_to_tsv(ti_vcf)
+        with open(sample_dir / "tumour_informed.tsv", "w") as fh:
+            fh.write("\t".join(cols) + "\n")
+            for r in rows_ti:
+                fh.write("\t".join(str(r[c]) for c in cols) + "\n")
+    elif ti_tsv.exists():
+        shutil.copy2(ti_tsv, sample_dir / "tumour_informed.tsv")
 
     # params.json
     params = parse_config_params(config_path, name)
@@ -349,7 +445,12 @@ def build_sample_dir(name, config_path):
     return name, "done"
 
 
-def step3_samples():
+def step3_samples(force=False):
+    """Build per-sample directories.
+
+    When force=True, rebuild all samples even if they already exist.
+    By default, rebuild all (needed when VCF conversion logic changes).
+    """
     print("\n=== Step 3: build sample directories ===", flush=True)
     SAMPLES.mkdir(parents=True, exist_ok=True)
 
@@ -359,7 +460,9 @@ def step3_samples():
     done = skipped = failed = 0
     for name, config_path in config_map.items():
         kam_dir = RESULTS / f"kam_{name}"
-        if not (kam_dir / "calls_discovery.tsv").exists():
+        disc_vcf = kam_dir / "calls_discovery.vcf"
+        disc_tsv = kam_dir / "calls_discovery.tsv"
+        if not disc_vcf.exists() and not disc_tsv.exists():
             skipped += 1
             continue
         _, status = build_sample_dir(name, config_path)
