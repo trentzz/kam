@@ -1,8 +1,0 @@
-{
-  "stage": "variant_calling",
-  "version": "0.1.0",
-  "n_variants_called": 100,
-  "n_pass": 2,
-  "n_filtered": 98,
-  "passed": true
-}

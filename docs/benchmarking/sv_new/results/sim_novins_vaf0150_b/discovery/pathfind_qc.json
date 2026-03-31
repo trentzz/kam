@@ -1,8 +1,0 @@
-{
-  "stage": "graph_walking",
-  "version": "0.1.0",
-  "n_targets_queried": 1,
-  "n_targets_with_variants": 1,
-  "n_anchors_non_unique": 1,
-  "passed": true
-}
