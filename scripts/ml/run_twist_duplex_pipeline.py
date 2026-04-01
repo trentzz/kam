@@ -71,7 +71,9 @@ TARGETS: dict[str, Path] = {
 NEXTCLOUD_URL = "https://nextcloudlocal.trentz.me/public.php/dav/files/pTizAiSAJQsPcDo"
 NEXTCLOUD_TOKEN = "pTizAiSAJQsPcDo"
 
-DEFAULT_WORKERS = 12
+# 4 workers × 4 threads each = 16 threads total, matching the 16-thread machine.
+DEFAULT_WORKERS = 4
+PROCESS_THREADS = 4
 DEFAULT_BATCH_SIZE = 500
 
 # SV types that need position-tolerance for tumour-informed mode
@@ -188,7 +190,7 @@ def run_varforge(config_path: Path, sample_name: str) -> bool:
         [
             "varforge", "simulate",
             "--config", str(config_path.relative_to(REPO)),
-            "-t", "12",
+            "-t", str(PROCESS_THREADS),
         ],
         cwd=str(REPO),
         capture_output=True,
@@ -236,7 +238,7 @@ def run_kam_discovery(
         "--targets", str(targets),
         "--output-dir", str(disc_tmp),
         "--output-format-override", "vcf,tsv",
-        "--threads", "12",
+        "--threads", str(PROCESS_THREADS),
     ]
 
     result = subprocess.run(
@@ -308,7 +310,7 @@ def run_kam_tumour_informed(
         "--output-dir", str(ti_tmp),
         "--output-format-override", "vcf,tsv",
         "--target-variants", str(truth_vcf),
-        "--threads", "12",
+        "--threads", str(PROCESS_THREADS),
     ]
     if vtype in SV_TYPES:
         cmd += ["--ti-position-tolerance-override", "10"]
