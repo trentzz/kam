@@ -2,20 +2,32 @@
 """Full pipeline runner for the Twist duplex ML dataset.
 
 For each of 11,000 samples (10k train + 1k test):
-  1. Run varforge simulate to generate FASTQs and truth VCF.
+  1. Run varforge simulate (-t 12) to generate FASTQs and truth VCF.
   2. Run kam (discovery mode) on the FASTQs.
-  3. Run kam (tumour-informed mode) on the FASTQs.
+  3. Run kam (tumour-informed mode) on the FASTQs with --target-variants.
   4. Write params.json to the sample directory.
-  5. Copy the truth VCF to the sample directory.
 
-Processes in batches of 500. After each batch, uploads to Nextcloud and
-logs progress. Checkpointing allows resuming interrupted runs.
+Per-sample output directory:
+  docs/benchmarking/ml-twist-duplex/simulations/{split}/{sample_name}/
+    {sample_name}_R1.fastq.gz
+    {sample_name}_R2.fastq.gz
+    {sample_name}.truth.vcf
+    calls_discovery.tsv
+    calls_discovery.vcf
+    calls_tumour_informed.tsv
+    calls_tumour_informed.vcf
+    params.json
+
+Processes in batches of 500. After each batch completes, tars all sample
+directories and uploads to Nextcloud, then continues. Checkpointing allows
+resuming interrupted runs.
 
 Usage:
     python3 scripts/ml/run_twist_duplex_pipeline.py [--split train|test|all]
-                                                      [--workers N]
-                                                      [--batch-size N]
-                                                      [--dry-run]
+                                                     [--workers N]
+                                                     [--batch-size N]
+                                                     [--dry-run]
+                                                     [--skip-upload]
 
 Run from the repository root.
 """
@@ -23,6 +35,7 @@ Run from the repository root.
 from __future__ import annotations
 
 import argparse
+import gzip as _gzip
 import json
 import os
 import shutil
@@ -38,21 +51,21 @@ REPO = Path(__file__).resolve().parent.parent.parent
 # ─── Paths ────────────────────────────────────────────────────────────────────
 
 ML_DIR = REPO / "docs" / "benchmarking" / "ml-twist-duplex"
-CONFIGS_TRAIN = ML_DIR / "configs" / "train"
-CONFIGS_TEST = ML_DIR / "configs" / "test"
+CONFIGS_DIR = ML_DIR / "configs"
 SIM_DIR = ML_DIR / "simulations"
 CHECKPOINT_PATH = ML_DIR / "checkpoint.json"
 MANIFEST_PATH = ML_DIR / "manifest.json"
 
 KAM = REPO / "target" / "release" / "kam"
 
-# Targets FASTA: used for all variant types (the ML dataset uses a single
-# synthetic chr1 that is short enough for all variant types).
-# SNV/indel samples use the snvindel targets; SV samples use the SV targets.
-SNVINDEL_TARGETS = REPO / "docs" / "benchmarking" / "snvindel" / "data" / "snvindel_targets.fa"
-SV_TARGETS = REPO / "docs" / "benchmarking" / "sv" / "data" / "sv_suite_targets.fa"
-INS_TARGETS = REPO / "docs" / "benchmarking" / "sv" / "data" / "ins_targets.fa"
-INVDEL_TARGETS = REPO / "docs" / "benchmarking" / "sv" / "data" / "invdel_targets.fa"
+# Targets FASTA: keyed by vtype, absolute paths
+TARGETS: dict[str, Path] = {
+    "snv":       REPO / "docs/benchmarking/snvindel/data/snvindel_targets.fa",
+    "indel":     REPO / "docs/benchmarking/snvindel/data/snvindel_targets.fa",
+    "sv_dupinv": REPO / "docs/benchmarking/sv/data/sv_suite_targets.fa",
+    "ins":       REPO / "docs/benchmarking/sv/data/ins_targets.fa",
+    "invdel":    REPO / "docs/benchmarking/sv/data/invdel_targets.fa",
+}
 
 # Nextcloud upload config
 NEXTCLOUD_URL = "https://nextcloudlocal.trentz.me/public.php/dav/files/pTizAiSAJQsPcDo"
@@ -61,7 +74,8 @@ NEXTCLOUD_TOKEN = "pTizAiSAJQsPcDo"
 DEFAULT_WORKERS = 12
 DEFAULT_BATCH_SIZE = 500
 
-SV_TYPES = {"sv_del", "sv_dup", "sv_inv", "sv_large_del", "ins", "invdel"}
+# SV types that need position-tolerance for tumour-informed mode
+SV_TYPES = {"sv_dupinv", "ins", "invdel"}
 
 
 # ─── Checkpoint ───────────────────────────────────────────────────────────────
@@ -70,7 +84,7 @@ def load_checkpoint() -> dict[str, str]:
     """Load the checkpoint file, returning a dict of sample_name -> status.
 
     Returns:
-        Dict mapping sample name to 'done' or 'failed'.
+        Dict mapping sample name to 'done' or a failure string.
     """
     if CHECKPOINT_PATH.exists():
         with open(CHECKPOINT_PATH) as fh:
@@ -113,36 +127,16 @@ def load_manifest() -> list[dict[str, Any]]:
     return data["samples"]
 
 
-# ─── Target selection ─────────────────────────────────────────────────────────
-
-def targets_for(vtype: str) -> Path:
-    """Return the targets FASTA for a given variant type.
-
-    Args:
-        vtype: Variant type string, e.g. 'snv', 'ins'.
-
-    Returns:
-        Path to the targets FASTA file.
-    """
-    if vtype == "ins":
-        return INS_TARGETS
-    if vtype == "invdel":
-        return INVDEL_TARGETS
-    if vtype in SV_TYPES:
-        return SV_TARGETS
-    return SNVINDEL_TARGETS
-
-
 # ─── FASTQ discovery ──────────────────────────────────────────────────────────
 
 def find_fastqs(sample_dir: Path) -> tuple[Path | None, Path | None]:
-    """Find R1 and R2 FASTQ files in a varforge output directory.
+    """Find R1 and R2 FASTQ files in a sample directory.
 
     Args:
         sample_dir: Directory to search.
 
     Returns:
-        Tuple (r1_path, r2_path) or (None, None) if not found.
+        Tuple (r1_path, r2_path), or (None, None) if not found.
     """
     r1s = sorted(sample_dir.glob("*_R1.fastq.gz"))
     r2s = sorted(sample_dir.glob("*_R2.fastq.gz"))
@@ -163,8 +157,6 @@ def find_truth_vcf(sample_dir: Path) -> Path | None:
     Returns:
         Path to the truth VCF, or None if not found.
     """
-    import gzip as _gzip
-
     plain = sorted(sample_dir.glob("*.truth.vcf"))
     if plain:
         return plain[0]
@@ -193,7 +185,11 @@ def run_varforge(config_path: Path, sample_name: str) -> bool:
         True on success, False on failure.
     """
     result = subprocess.run(
-        ["varforge", "simulate", "--config", str(config_path.relative_to(REPO))],
+        [
+            "varforge", "simulate",
+            "--config", str(config_path.relative_to(REPO)),
+            "-t", "12",
+        ],
         cwd=str(REPO),
         capture_output=True,
         text=True,
@@ -215,30 +211,36 @@ def run_kam_discovery(
     targets: Path,
     out_dir: Path,
 ) -> bool:
-    """Run kam in discovery mode.
+    """Run kam in discovery mode, writing outputs into a temp subdirectory.
+
+    Output files variants.vcf and variants.tsv are copied to out_dir as
+    calls_discovery.vcf and calls_discovery.tsv.
 
     Args:
         sample_name: For logging.
         r1: R1 FASTQ path.
         r2: R2 FASTQ path.
         targets: Targets FASTA path.
-        out_dir: Directory where outputs will be written.
+        out_dir: Sample directory where renamed outputs are placed.
 
     Returns:
         True on success.
     """
-    tmp = out_dir / "tmp_disc"
-    tmp.mkdir(parents=True, exist_ok=True)
+    disc_tmp = out_dir / "tmp_disc"
+    disc_tmp.mkdir(parents=True, exist_ok=True)
+
+    cmd = [
+        str(KAM), "run",
+        "--r1", str(r1),
+        "--r2", str(r2),
+        "--targets", str(targets),
+        "--output-dir", str(disc_tmp),
+        "--output-format-override", "vcf,tsv",
+        "--threads", "12",
+    ]
 
     result = subprocess.run(
-        [
-            str(KAM), "run",
-            "--r1", str(r1),
-            "--r2", str(r2),
-            "--targets", str(targets),
-            "--output-dir", str(tmp),
-            "--output-format", "vcf,tsv",
-        ],
+        cmd,
         cwd=str(REPO),
         capture_output=True,
         text=True,
@@ -249,12 +251,13 @@ def run_kam_discovery(
             file=sys.stderr,
             flush=True,
         )
-        shutil.rmtree(tmp, ignore_errors=True)
+        shutil.rmtree(disc_tmp, ignore_errors=True)
         return False
 
+    # Copy outputs to the canonical names in the sample directory
     for src, dst_name in [
-        (tmp / "variants.tsv", "discovery.tsv"),
-        (tmp / "variants.vcf", "discovery.vcf"),
+        (disc_tmp / "variants.tsv", "calls_discovery.tsv"),
+        (disc_tmp / "variants.vcf", "calls_discovery.vcf"),
     ]:
         if src.exists():
             try:
@@ -262,7 +265,7 @@ def run_kam_discovery(
             except OSError as exc:
                 print(f"[WARN] copy failed {src}: {exc}", file=sys.stderr)
 
-    shutil.rmtree(tmp, ignore_errors=True)
+    shutil.rmtree(disc_tmp, ignore_errors=True)
     return True
 
 
@@ -277,9 +280,10 @@ def run_kam_tumour_informed(
 ) -> bool:
     """Run kam in tumour-informed mode.
 
-    For SV types, passes --ti-position-tolerance 10 because the called alleles
-    are partial junction sequences that do not match the full SV alleles in the
-    truth VCF. Position-based matching allows monitoring of known SV loci.
+    SV types use --ti-position-tolerance-override 10 because kam reports
+    partial junction alleles that do not match the full-length SV alleles
+    in the truth VCF. Position-based matching allows monitoring of known
+    SV loci even when the called allele differs.
 
     Args:
         sample_name: For logging.
@@ -287,26 +291,27 @@ def run_kam_tumour_informed(
         r2: R2 FASTQ path.
         targets: Targets FASTA path.
         truth_vcf: Truth VCF for --target-variants.
-        out_dir: Output directory.
-        vtype: Variant type (used to decide whether to add position tolerance).
+        out_dir: Sample directory where renamed outputs are placed.
+        vtype: Variant type; determines whether position tolerance is applied.
 
     Returns:
         True on success.
     """
-    tmp = out_dir / "tmp_ti"
-    tmp.mkdir(parents=True, exist_ok=True)
+    ti_tmp = out_dir / "tmp_ti"
+    ti_tmp.mkdir(parents=True, exist_ok=True)
 
     cmd = [
         str(KAM), "run",
         "--r1", str(r1),
         "--r2", str(r2),
         "--targets", str(targets),
+        "--output-dir", str(ti_tmp),
+        "--output-format-override", "vcf,tsv",
         "--target-variants", str(truth_vcf),
-        "--output-dir", str(tmp),
-        "--output-format", "vcf,tsv",
+        "--threads", "12",
     ]
     if vtype in SV_TYPES:
-        cmd += ["--ti-position-tolerance", "10"]
+        cmd += ["--ti-position-tolerance-override", "10"]
 
     result = subprocess.run(
         cmd,
@@ -320,12 +325,12 @@ def run_kam_tumour_informed(
             file=sys.stderr,
             flush=True,
         )
-        shutil.rmtree(tmp, ignore_errors=True)
+        shutil.rmtree(ti_tmp, ignore_errors=True)
         return False
 
     for src, dst_name in [
-        (tmp / "variants.tsv", "tumour_informed.tsv"),
-        (tmp / "variants.vcf", "tumour_informed.vcf"),
+        (ti_tmp / "variants.tsv", "calls_tumour_informed.tsv"),
+        (ti_tmp / "variants.vcf", "calls_tumour_informed.vcf"),
     ]:
         if src.exists():
             try:
@@ -333,7 +338,7 @@ def run_kam_tumour_informed(
             except OSError as exc:
                 print(f"[WARN] copy failed {src}: {exc}", file=sys.stderr)
 
-    shutil.rmtree(tmp, ignore_errors=True)
+    shutil.rmtree(ti_tmp, ignore_errors=True)
     return True
 
 
@@ -341,7 +346,7 @@ def write_params_json(out_dir: Path, sample: dict[str, Any]) -> None:
     """Write params.json to the sample output directory.
 
     Stores all varforge parameters so the feature extraction script can
-    include simulation conditions as features without reading the YAML.
+    include simulation conditions as features without re-reading the YAML.
 
     Args:
         out_dir: Sample output directory.
@@ -353,6 +358,7 @@ def write_params_json(out_dir: Path, sample: dict[str, Any]) -> None:
         "vtype": sample["vtype"],
         "coverage": sample["coverage"],
         "family_size_mean": sample["family_size_mean"],
+        "family_size_sd": sample.get("family_size_sd"),
         "pcr_cycles": sample["pcr_cycles"],
         "fragment_mean": sample["fragment_mean"],
         "fragment_sd": sample.get("fragment_sd"),
@@ -360,6 +366,7 @@ def write_params_json(out_dir: Path, sample: dict[str, Any]) -> None:
         "vaf": sample["vaf"],
         "purity": sample["purity"],
         "seed": sample["seed"],
+        "truth_vcf": sample["truth_vcf"],
     }
     with open(out_dir / "params.json", "w") as fh:
         json.dump(params, fh, indent=2)
@@ -368,18 +375,36 @@ def write_params_json(out_dir: Path, sample: dict[str, Any]) -> None:
 def is_complete(sample_name: str, split: str) -> bool:
     """Return True if a sample already has all required outputs.
 
+    A sample is complete when both TSV outputs exist. The VCF counterparts
+    are optional (some run modes may not produce them).
+
     Args:
         sample_name: Sample identifier.
         split: 'train' or 'test'.
 
     Returns:
-        True if both discovery.tsv and tumour_informed.tsv exist.
+        True if both calls_discovery.tsv and calls_tumour_informed.tsv exist.
     """
     out_dir = SIM_DIR / split / sample_name
     return (
-        (out_dir / "discovery.tsv").exists()
-        and (out_dir / "tumour_informed.tsv").exists()
+        (out_dir / "calls_discovery.tsv").exists()
+        and (out_dir / "calls_tumour_informed.tsv").exists()
     )
+
+
+def targets_for(vtype: str) -> Path:
+    """Return the absolute targets FASTA path for a given variant type.
+
+    Args:
+        vtype: Variant type string, e.g. 'snv', 'ins'.
+
+    Returns:
+        Absolute path to the targets FASTA.
+
+    Raises:
+        KeyError: If vtype is not in TARGETS.
+    """
+    return TARGETS[vtype]
 
 
 # ─── Per-sample worker ────────────────────────────────────────────────────────
@@ -394,8 +419,8 @@ def process_sample(sample: dict[str, Any], dry_run: bool = False) -> tuple[str, 
         dry_run: If True, skip actual execution.
 
     Returns:
-        Tuple (sample_name, status) where status is 'done', 'skipped', or
-        one of several failure strings.
+        Tuple (sample_name, status) where status is 'done', 'skipped',
+        'dry_run', or a failure string.
     """
     name = sample["name"]
     split = sample["split"]
@@ -410,14 +435,13 @@ def process_sample(sample: dict[str, Any], dry_run: bool = False) -> tuple[str, 
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Determine config path
-    config_dir = CONFIGS_TRAIN if split == "train" else CONFIGS_TEST
-    config_path = config_dir / f"{name}.yaml"
+    # Locate config
+    config_path = CONFIGS_DIR / split / f"{name}.yaml"
     if not config_path.exists():
         print(f"[ERROR] Config not found: {config_path}", file=sys.stderr)
         return name, "no_config"
 
-    # Step 1: varforge simulation
+    # Step 1: varforge simulation (skip if FASTQs already present)
     if not any(out_dir.glob("*_R1.fastq.gz")):
         if not run_varforge(config_path, name):
             return name, "varforge_failed"
@@ -428,28 +452,25 @@ def process_sample(sample: dict[str, Any], dry_run: bool = False) -> tuple[str, 
         print(f"[ERROR] No FASTQs after simulation: {out_dir}", file=sys.stderr)
         return name, "no_fastq"
 
-    # Step 3: locate truth VCF
+    # Step 3: locate truth VCF (produced by varforge)
     truth_vcf = find_truth_vcf(out_dir)
     if truth_vcf is None:
-        # Fall back to the pre-generated truth VCF
-        truth_vcf = ML_DIR / "truth_vcfs" / f"{name}.vcf"
-        if not truth_vcf.exists():
-            print(f"[ERROR] No truth VCF for {name}", file=sys.stderr)
-            return name, "no_truth_vcf"
+        print(f"[ERROR] No truth VCF for {name}", file=sys.stderr)
+        return name, "no_truth_vcf"
 
     targets = targets_for(vtype)
 
     # Step 4: kam discovery
-    if not (out_dir / "discovery.tsv").exists():
+    if not (out_dir / "calls_discovery.tsv").exists():
         if not run_kam_discovery(name, r1, r2, targets, out_dir):
             return name, "disc_failed"
 
     # Step 5: kam tumour-informed
-    if not (out_dir / "tumour_informed.tsv").exists():
+    if not (out_dir / "calls_tumour_informed.tsv").exists():
         if not run_kam_tumour_informed(name, r1, r2, targets, truth_vcf, out_dir, vtype):
             return name, "ti_failed"
 
-    # Step 6: write params
+    # Step 6: params
     write_params_json(out_dir, sample)
 
     print(f"[DONE] {name}", flush=True)
@@ -461,8 +482,8 @@ def process_sample(sample: dict[str, Any], dry_run: bool = False) -> tuple[str, 
 def upload_batch(batch_samples: list[dict[str, Any]], batch_idx: int, split: str) -> bool:
     """Tar and upload a batch of sample directories to Nextcloud.
 
-    Creates a tarball of all sample directories in the batch, uploads via
-    WebDAV, then removes the local tarball.
+    Creates a tarball of all completed sample directories in the batch,
+    uploads via WebDAV, then removes the local tarball.
 
     Args:
         batch_samples: List of sample dicts in this batch.
@@ -476,7 +497,6 @@ def upload_batch(batch_samples: list[dict[str, Any]], batch_idx: int, split: str
     tarball = Path(f"/tmp/ml_twist_{split}_{batch_name}.tar.gz")
     split_dir = SIM_DIR / split
 
-    # Collect sample directory names that actually exist
     dirs_to_tar = [
         s["name"]
         for s in batch_samples
@@ -487,7 +507,6 @@ def upload_batch(batch_samples: list[dict[str, Any]], batch_idx: int, split: str
         print(f"[UPLOAD] No directories to upload for {batch_name}", flush=True)
         return True
 
-    # Build tarball
     tar_cmd = ["tar", "-czf", str(tarball), "-C", str(split_dir)] + dirs_to_tar
     tar_result = subprocess.run(tar_cmd, capture_output=True, text=True)
     if tar_result.returncode != 0:
@@ -497,7 +516,6 @@ def upload_batch(batch_samples: list[dict[str, Any]], batch_idx: int, split: str
         )
         return False
 
-    # Upload via WebDAV
     upload_url = (
         f"{NEXTCLOUD_URL}/benchmarking/ml-twist-duplex/{split}/{batch_name}.tar.gz"
     )
@@ -524,7 +542,10 @@ def upload_batch(batch_samples: list[dict[str, Any]], batch_idx: int, split: str
         )
         return False
 
-    print(f"[UPLOAD] {split}/{batch_name} uploaded ({len(dirs_to_tar)} dirs)", flush=True)
+    print(
+        f"[UPLOAD] {split}/{batch_name} uploaded ({len(dirs_to_tar)} dirs)",
+        flush=True,
+    )
     return True
 
 
@@ -555,10 +576,16 @@ def process_batch(
     to_run = [s for s in batch if checkpoint.get(s["name"]) != "done"]
 
     if not to_run:
-        print(f"[BATCH {batch_idx}] All {len(batch)} samples already done — skipping.", flush=True)
+        print(
+            f"[BATCH {batch_idx}] All {len(batch)} samples already done — skipping.",
+            flush=True,
+        )
         return checkpoint
 
-    print(f"\n[BATCH {batch_idx}] Processing {len(to_run)} samples (split={split})...", flush=True)
+    print(
+        f"\n[BATCH {batch_idx}] Processing {len(to_run)} samples (split={split})...",
+        flush=True,
+    )
 
     done = skipped = failed = 0
     with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -641,7 +668,6 @@ def main() -> None:
 
     samples = load_manifest()
 
-    # Filter by split
     if args.split != "all":
         samples = [s for s in samples if s["split"] == args.split]
 
@@ -651,7 +677,6 @@ def main() -> None:
     already_done = sum(1 for s in samples if checkpoint.get(s["name"]) == "done")
     print(f"Already completed: {already_done}", flush=True)
 
-    # Split into batches
     batches = [
         samples[i : i + args.batch_size]
         for i in range(0, len(samples), args.batch_size)
@@ -672,10 +697,13 @@ def main() -> None:
 
     elapsed = time.time() - t_start
     total_done = sum(1 for v in checkpoint.values() if v == "done")
-    total_failed = sum(1 for v in checkpoint.values() if v not in ("done", "skipped", "dry_run"))
+    total_failed = sum(
+        1 for v in checkpoint.values()
+        if v not in ("done", "skipped", "dry_run")
+    )
     print(f"\n=== COMPLETE ===")
-    print(f"Done:   {total_done}")
-    print(f"Failed: {total_failed}")
+    print(f"Done:    {total_done}")
+    print(f"Failed:  {total_failed}")
     print(f"Elapsed: {elapsed / 60:.1f} min")
 
 

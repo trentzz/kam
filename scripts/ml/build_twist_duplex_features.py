@@ -2,7 +2,7 @@
 """Extract features from Twist duplex ML pipeline outputs.
 
 Reads per-sample directories under docs/benchmarking/ml-twist-duplex/simulations/,
-loads the discovery.tsv and tumour_informed.tsv outputs from kam, labels each
+loads the calls_discovery.tsv and calls_tumour_informed.tsv outputs from kam, labels each
 row against the truth VCF, and builds a rich feature set (~55 features) that
 exploits the 7 new columns added to the kam TSV output.
 
@@ -359,7 +359,7 @@ def process_sample(
     split = sample["split"]
     sample_dir = SIM_DIR / split / name
 
-    tsv_name = "discovery.tsv" if mode == "discovery" else "tumour_informed.tsv"
+    tsv_name = "calls_discovery.tsv" if mode == "discovery" else "calls_tumour_informed.tsv"
     calls = load_kam_tsv(sample_dir / tsv_name)
     if calls.empty:
         return pd.DataFrame()
