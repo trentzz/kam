@@ -16,6 +16,7 @@ WebDAV root: `https://nextcloudlocal.trentz.me/public.php/dav/files/pTizAiSAJQsP
 | `lightgbm_model.txt` | Trained LightGBM classifier (binary format) | `scripts/ml/train_model.py` |
 | `training_data_v2.csv.gz` | ML training features extracted from benchmarking runs | `scripts/ml/extract_features.py` |
 | `ml-boost/` | ML boost pipeline outputs | `scripts/ml/` |
+| `benchmarking/ml-twist-duplex/` | Twist duplex ML dataset: 10k train + 1k test varforge simulations, kam outputs | `scripts/ml/run_twist_duplex_pipeline.py` |
 | `paper/` | Paper PDFs and supplementary materials | `docs/paper/` |
 
 ## Uploading
