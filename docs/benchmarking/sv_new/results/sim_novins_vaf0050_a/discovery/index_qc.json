@@ -1,8 +1,0 @@
-{
-  "stage": "kmer_indexing",
-  "version": "0.1.0",
-  "n_target_kmers": 269,
-  "n_kmers_observed": 27379,
-  "mean_molecule_depth": 16.26944008181453,
-  "passed": true
-}

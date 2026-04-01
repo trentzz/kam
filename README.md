@@ -167,6 +167,16 @@ cargo fmt -- --check
 
 ---
 
+## Large Files
+
+Benchmark data, simulation outputs, and compiled PDFs are stored in Nextcloud
+rather than git. See [docs/NEXTCLOUD.md](docs/NEXTCLOUD.md) for the folder
+manifest and download instructions.
+
+**Access**: https://nextcloudlocal.trentz.me/s/pTizAiSAJQsPcDo
+
+---
+
 ## Licence
 
 MIT
