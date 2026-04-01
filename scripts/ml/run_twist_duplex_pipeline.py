@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import subprocess
 import sys
 import tarfile
@@ -327,6 +328,13 @@ def process_sample(sample: dict) -> tuple[str, str]:
 
     targets = targets_for(vtype)
 
+    # Skip if already complete (idempotent across restarts).
+    disc = out_dir / "calls_discovery.tsv"
+    ti = out_dir / "calls_tumour_informed.tsv"
+    params = out_dir / "params.json"
+    if disc.exists() and ti.exists() and params.exists():
+        return name, "ok"
+
     # Step 1: varforge simulation.
     if not run_varforge(config, name):
         return name, "varforge_failed"
@@ -383,7 +391,7 @@ def upload_batch(
         dry_run: If True, skip actual upload.
     """
     split_dir = SIM_DIR / split
-    tarball = Path(f"/tmp/ml_twist_{split}_batch_{batch_idx:03d}.tar.gz")
+    tarball = Path(f"/tmp/ml_twist_{split}_batch_{batch_idx:03d}_pid{os.getpid()}.tar.gz")
     nc_path = f"benchmarking/ml-twist-duplex/{split}/batch_{batch_idx:03d}.tar.gz"
 
     log.info("Tarballing batch %d (%d samples)...", batch_idx, len(sample_names))
