@@ -12,3 +12,14 @@ docs/benchmarking/ml/training_data*.csv
 docs/benchmarking/ml/results/sim_*/
 docs/benchmarking/ml/results/kam_*/
 docs/paper/pdfs/*.pdf
+
+# Twist duplex ML dataset: large simulation outputs, feature CSVs, trained models.
+# Nextcloud-hosted — see benchmarking/ml-twist-duplex/ in Nextcloud.
+docs/benchmarking/ml-twist-duplex/simulations/
+docs/benchmarking/ml-twist-duplex/train_features.csv.gz
+docs/benchmarking/ml-twist-duplex/test_features.csv.gz
+docs/benchmarking/ml-twist-duplex/checkpoint.json
+docs/benchmarking/ml-twist-duplex/models/*.txt
+docs/benchmarking/ml-twist-duplex/models/*.json
+docs/benchmarking/ml-twist-duplex/models/*.pkl
+docs/benchmarking/ml-twist-duplex/models/*.onnx
