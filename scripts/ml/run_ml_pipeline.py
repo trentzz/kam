@@ -501,7 +501,7 @@ if __name__ == "__main__":
     import sys
 
     sim_failures = step1_simulate(workers=6)
-    kam_failures = step2_kam(workers=4)
+    kam_failures = step2_kam(workers=12)
     sample_failures = step3_samples()
     training_failure = step4_training_data()
 
