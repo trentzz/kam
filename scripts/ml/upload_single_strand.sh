@@ -43,6 +43,27 @@ mkdir -p ~/tmp
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
+# Ensure a remote directory exists, creating it and all parents if needed.
+nc_mkdir_p() {
+    local path="$1"  # e.g. "experiments/02-ml-single-strand/samples/test"
+    local parts
+    IFS='/' read -ra parts <<< "$path"
+    local current=""
+    for part in "${parts[@]}"; do
+        [[ -z "$part" ]] && continue
+        current="${current}${part}"
+        local status
+        status="$(curl -s -o /dev/null -w "%{http_code}" -X MKCOL \
+            -u "${TOKEN}:" "${NC_URL}/${current}/")"
+        # 201 = created, 405 = already exists — both are fine.
+        if [[ "$status" != "201" && "$status" != "405" ]]; then
+            echo "  [ERROR] MKCOL ${current}/ failed: HTTP ${status}" >&2
+            return 1
+        fi
+        current="${current}/"
+    done
+}
+
 # Upload a single file using chunked protocol.
 chunked_upload() {
     local local_path="$1"
@@ -110,6 +131,8 @@ upload_dir_batches() {
         echo "[WARN] Not found: ${base_dir}" >&2; return
     fi
 
+    nc_mkdir_p "${nc_prefix}"
+
     local batch_idx=0
     local -a batch_dirs=()
     local count=0
@@ -144,6 +167,7 @@ upload_dir_batches() {
 upload_models() {
     local dir="${BIGDATA}/models"
     [[ -d "$dir" ]] || { echo "[WARN] No models dir" >&2; return; }
+    nc_mkdir_p "${NC_PREFIX}/models"
     for f in "${dir}"/*.txt "${dir}"/*.json "${dir}"/*.pkl "${dir}"/*.onnx; do
         [[ -f "$f" ]] || continue
         chunked_upload "$f" "${NC_PREFIX}/models/$(basename "$f")"
@@ -153,6 +177,7 @@ upload_models() {
 upload_configs() {
     local dir="${BIGDATA}/configs"
     [[ -d "$dir" ]] || { echo "[WARN] No configs dir" >&2; return; }
+    nc_mkdir_p "${NC_PREFIX}"
     # Upload as a single tarball — configs are small YAML files.
     local tarball="${HOME}/tmp/ss_configs.tar.gz"
     echo "[TAR] configs"
@@ -168,6 +193,7 @@ upload_samples() {
     # ML2 samples are top-level dirs (exclude test/ and train/).
     local base="${BIGDATA}/samples"
     local nc_p="${NC_PREFIX}/samples"
+    nc_mkdir_p "${nc_p}"
     local batch_idx=0 count=0
     local -a batch_dirs=()
     while IFS= read -r -d '' d; do
@@ -205,6 +231,7 @@ upload_results() {
     # Top-level ml2 result dirs (cam_* and sim_* at root of results/).
     local base="${BIGDATA}/results"
     local nc_p="${NC_PREFIX}/results"
+    nc_mkdir_p "${nc_p}"
     local batch_idx=0 count=0
     local -a batch_dirs=()
     while IFS= read -r -d '' d; do
@@ -238,6 +265,7 @@ upload_results() {
 upload_training() {
     local f="${BIGDATA}/training_data_v2.csv"
     [[ -f "$f" ]] || { echo "[WARN] training_data_v2.csv not found" >&2; return; }
+    nc_mkdir_p "${NC_PREFIX}"
     chunked_upload "$f" "${NC_PREFIX}/training_data_v2.csv"
 }
 
