@@ -1,0 +1,44 @@
+# varforge config: snv_00981  — VAF 0.2343%  type=snv
+reference: docs/benchmarking/snvindel/data/ref.fa
+
+output:
+  directory: docs/benchmarking/ml-twist-duplex/simulations/train/snv_00981
+  fastq: true
+  bam: false
+  truth_vcf: true
+  manifest: true
+
+sample:
+  name: snv_00981
+  read_length: 150
+  coverage: 3297.0
+  platform: illumina
+
+fragment:
+  model: normal
+  mean: 220.1
+  sd: 39.5
+
+quality:
+  mean_quality: 39
+  tail_decay: 0.002
+
+tumour:
+  purity: 0.004686
+  ploidy: 2
+
+mutations:
+  vcf: docs/benchmarking/snvindel/data/truth_snvs_vaf1000_b.vcf
+
+umi:
+  length: 5
+  duplex: true
+  pcr_cycles: 9
+  family_size_mean: 2.98
+  family_size_sd: 1.0
+  inline: true
+
+chromosomes:
+  - chr1
+
+seed: 9773582

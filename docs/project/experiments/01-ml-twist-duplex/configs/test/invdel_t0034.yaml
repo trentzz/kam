@@ -1,0 +1,44 @@
+# varforge config: invdel_t0034  — VAF 0.8519%  type=invdel
+reference: docs/benchmarking/sv/data/ref.fa
+
+output:
+  directory: docs/benchmarking/ml-twist-duplex/simulations/test/invdel_t0034
+  fastq: true
+  bam: false
+  truth_vcf: true
+  manifest: true
+
+sample:
+  name: invdel_t0034
+  read_length: 150
+  coverage: 13598.2
+  platform: illumina
+
+fragment:
+  model: normal
+  mean: 186.6
+  sd: 41.0
+
+quality:
+  mean_quality: 40
+  tail_decay: 0.002
+
+tumour:
+  purity: 0.017039
+  ploidy: 2
+
+mutations:
+  vcf: docs/benchmarking/sv/data/truth_invdel_vaf0025_b.vcf
+
+umi:
+  length: 5
+  duplex: true
+  pcr_cycles: 6
+  family_size_mean: 4.03
+  family_size_sd: 1.0
+  inline: true
+
+chromosomes:
+  - chr1
+
+seed: 109533501

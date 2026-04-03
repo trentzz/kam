@@ -1,0 +1,9 @@
+# Large simulation outputs — these belong in bigdata/experiments/01-ml-twist-duplex/
+# and on Nextcloud. Do not commit them here.
+simulations/
+train_features.csv.gz
+test_features.csv.gz
+models/*.txt
+models/*.json
+models/*.pkl
+models/*.onnx

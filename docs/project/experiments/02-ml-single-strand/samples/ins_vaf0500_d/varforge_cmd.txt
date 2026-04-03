@@ -1,0 +1,2 @@
+# Run from the repository root.
+varforge simulate --config docs/benchmarking/ml/configs/ins_vaf0500_d.yaml

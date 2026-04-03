@@ -1,14 +1,9 @@
 target/
+.env
+__pycache__/
+*.pyc
 
-# Benchmarking: varforge FASTQ simulation outputs (large, reproducible).
-# The samples/ directories with per-sample TSV results ARE committed.
-# Nextcloud-hosted — see https://nextcloudlocal.trentz.me/s/pTizAiSAJQsPcDo
-docs/benchmarking/sv/results/sim_*/
-docs/benchmarking/sv/results/kam_*/
-docs/benchmarking/sv_new/results/
-docs/benchmarking/snvindel/results/
-docs/benchmarking/snvindel/per_sample/*.tsv
-docs/benchmarking/ml/training_data*.csv
-docs/benchmarking/ml/results/sim_*/
-docs/benchmarking/ml/results/kam_*/
-docs/paper/pdfs/*.pdf
+# Large generated files — see bigdata/
+bigdata/
+
+scripts/ml/__pycache__/

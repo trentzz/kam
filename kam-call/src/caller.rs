@@ -43,12 +43,44 @@ pub struct VariantCall {
     pub n_duplex_alt: u32,
     /// Number of simplex molecules supporting the alternate allele.
     pub n_simplex_alt: u32,
+    /// Forward-strand simplex molecules supporting the alternate allele.
+    ///
+    /// Derived from `alt PathEvidence.min_simplex_fwd`.
+    pub n_simplex_fwd_alt: u32,
+    /// Reverse-strand simplex molecules supporting the alternate allele.
+    ///
+    /// Derived from `alt PathEvidence.min_simplex_rev`.
+    pub n_simplex_rev_alt: u32,
+    /// Duplex molecules supporting the reference allele.
+    ///
+    /// Derived from `ref PathEvidence.min_duplex`.
+    pub n_duplex_ref: u32,
+    /// Simplex molecules supporting the reference allele (both strands combined).
+    ///
+    /// Sum of `ref PathEvidence.min_simplex_fwd` and `ref PathEvidence.min_simplex_rev`.
+    pub n_simplex_ref: u32,
+    /// Mean per-base error probability for the alternate path.
+    ///
+    /// Derived from `alt PathEvidence.mean_error_prob`.
+    pub mean_alt_error_prob: f32,
+    /// Minimum duplex support at variant-specific k-mers in the alternate path.
+    ///
+    /// Derived from `alt PathEvidence.min_variant_specific_duplex`.
+    pub min_variant_specific_duplex: u32,
+    /// Mean molecule count at variant-specific k-mers in the alternate path.
+    ///
+    /// Derived from `alt PathEvidence.mean_variant_specific_molecules`.
+    pub mean_variant_specific_molecules: f32,
     /// Posterior probability that the variant is real.
     pub confidence: f64,
     /// Fisher's exact test p-value for strand bias.
     pub strand_bias_p: f64,
     /// Quality filter outcome.
     pub filter: VariantFilter,
+    /// ML model posterior probability (class 1 = real variant).
+    ///
+    /// `None` when no model was loaded.
+    pub ml_prob: Option<f32>,
 }
 
 /// Classification of a variant by allele length comparison.
@@ -283,9 +315,17 @@ pub fn call_variant(
             n_molecules_alt: 0,
             n_duplex_alt: 0,
             n_simplex_alt: 0,
+            n_simplex_fwd_alt: 0,
+            n_simplex_rev_alt: 0,
+            n_duplex_ref: ref_evidence.min_duplex,
+            n_simplex_ref: ref_evidence.min_simplex_fwd + ref_evidence.min_simplex_rev,
+            mean_alt_error_prob: alt_evidence.mean_error_prob,
+            min_variant_specific_duplex: 0,
+            mean_variant_specific_molecules: 0.0,
             confidence: 0.0,
             strand_bias_p: 1.0,
             filter: VariantFilter::LowConfidence,
+            ml_prob: None,
         };
     }
 
@@ -361,9 +401,17 @@ pub fn call_variant(
         n_molecules_alt: k,
         n_duplex_alt,
         n_simplex_alt,
+        n_simplex_fwd_alt: alt_evidence.min_simplex_fwd,
+        n_simplex_rev_alt: alt_evidence.min_simplex_rev,
+        n_duplex_ref: ref_evidence.min_duplex,
+        n_simplex_ref: ref_evidence.min_simplex_fwd + ref_evidence.min_simplex_rev,
+        mean_alt_error_prob: alt_evidence.mean_error_prob,
+        min_variant_specific_duplex: alt_evidence.min_variant_specific_duplex,
+        mean_variant_specific_molecules: alt_evidence.mean_variant_specific_molecules,
         confidence,
         strand_bias_p,
         filter,
+        ml_prob: None,
     }
 }
 

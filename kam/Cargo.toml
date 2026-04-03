@@ -19,7 +19,7 @@ kam-core = { workspace = true }
 kam-assemble = { workspace = true }
 kam-index = { workspace = true }
 kam-pathfind = { workspace = true }
-kam-call = { workspace = true }
+kam-call = { workspace = true, features = ["ml"] }
 log = { workspace = true }
 clap = { workspace = true }
 needletail = { workspace = true }

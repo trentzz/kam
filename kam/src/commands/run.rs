@@ -715,9 +715,18 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
                     n_molecules_alt: fusion_call.n_molecules,
                     n_duplex_alt: fusion_call.n_duplex,
                     n_simplex_alt: fusion_call.n_molecules.saturating_sub(fusion_call.n_duplex),
+                    // Strand-level breakdown is not available from FusionCall; zero-fill.
+                    n_simplex_fwd_alt: 0,
+                    n_simplex_rev_alt: 0,
+                    n_duplex_ref: 0,
+                    n_simplex_ref: 0,
+                    mean_alt_error_prob: 0.0,
+                    min_variant_specific_duplex: fusion_call.n_duplex,
+                    mean_variant_specific_molecules: fusion_call.n_molecules as f32,
                     confidence: fusion_call.confidence,
                     strand_bias_p: 1.0,
                     filter: fusion_call.filter,
+                    ml_prob: None,
                 });
             }
         }
@@ -737,6 +746,25 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             target_set.len(),
             tol,
         );
+    }
+
+    // Optional ML scoring.
+    if let Some(ref model_path) = args.ml_model {
+        let meta_path = model_path.with_extension("meta.json");
+        match kam_call::ml::MlScorer::load(model_path, &meta_path) {
+            Ok(mut scorer) => {
+                for call in &mut all_calls {
+                    call.ml_prob = scorer.score(call);
+                }
+                eprintln!(
+                    "[run/call] ML scoring applied: {} calls scored",
+                    all_calls.len()
+                );
+            }
+            Err(e) => {
+                eprintln!("[run/call] WARNING: failed to load ML model: {}", e);
+            }
+        }
     }
 
     for call in &all_calls {
@@ -1185,6 +1213,7 @@ mod tests {
             log_dir: None,
             log: vec![],
             threads: None,
+            ml_model: None,
         }
     }
 
@@ -1407,6 +1436,7 @@ min_umi_quality = 0
             log_dir: None,
             log: vec![],
             threads: None,
+            ml_model: None,
         };
 
         run_pipeline(args).expect("config file mode should succeed");
@@ -1496,6 +1526,7 @@ min_umi_quality = 0
             log_dir: None,
             log: vec![],
             threads: None,
+            ml_model: None,
         };
 
         run_pipeline(args).expect("CLI override mode should succeed");

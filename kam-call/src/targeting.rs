@@ -203,9 +203,17 @@ pub fn extract_variant_key(
 ///     n_molecules_alt: 1,
 ///     n_duplex_alt: 0,
 ///     n_simplex_alt: 1,
+///     n_simplex_fwd_alt: 1,
+///     n_simplex_rev_alt: 0,
+///     n_duplex_ref: 0,
+///     n_simplex_ref: 99,
+///     mean_alt_error_prob: 0.001,
+///     min_variant_specific_duplex: 0,
+///     mean_variant_specific_molecules: 1.0,
 ///     confidence: 0.99,
 ///     strand_bias_p: 0.5,
 ///     filter: VariantFilter::Pass,
+///     ml_prob: None,
 /// };
 ///
 /// let targets = HashSet::new(); // empty — nothing targeted
@@ -262,9 +270,17 @@ pub fn apply_target_filter(calls: &mut [VariantCall], targets: &TargetVariantSet
 ///     n_molecules_alt: 1,
 ///     n_duplex_alt: 0,
 ///     n_simplex_alt: 1,
+///     n_simplex_fwd_alt: 1,
+///     n_simplex_rev_alt: 0,
+///     n_duplex_ref: 0,
+///     n_simplex_ref: 99,
+///     mean_alt_error_prob: 0.001,
+///     min_variant_specific_duplex: 0,
+///     mean_variant_specific_molecules: 1.0,
 ///     confidence: 0.99,
 ///     strand_bias_p: 0.5,
 ///     filter: VariantFilter::Pass,
+///     ml_prob: None,
 /// };
 ///
 /// // Truth VCF has a DUP at pos 500; call is at pos 493 (partial allele).
@@ -521,9 +537,17 @@ mod tests {
             n_molecules_alt: 1,
             n_duplex_alt: 0,
             n_simplex_alt: 1,
+            n_simplex_fwd_alt: 1,
+            n_simplex_rev_alt: 0,
+            n_duplex_ref: 0,
+            n_simplex_ref: 99,
+            mean_alt_error_prob: 0.001,
+            min_variant_specific_duplex: 0,
+            mean_variant_specific_molecules: 1.0,
             confidence: 0.99,
             strand_bias_p: 0.5,
             filter: VariantFilter::Pass,
+            ml_prob: None,
         };
 
         let empty_targets = TargetVariantSet::new();
@@ -553,9 +577,17 @@ mod tests {
             n_molecules_alt: 1,
             n_duplex_alt: 0,
             n_simplex_alt: 1,
+            n_simplex_fwd_alt: 1,
+            n_simplex_rev_alt: 0,
+            n_duplex_ref: 0,
+            n_simplex_ref: 99,
+            mean_alt_error_prob: 0.001,
+            min_variant_specific_duplex: 0,
+            mean_variant_specific_molecules: 1.0,
             confidence: 0.99,
             strand_bias_p: 0.5,
             filter: VariantFilter::Pass,
+            ml_prob: None,
         };
 
         let mut targets = TargetVariantSet::new();
@@ -583,9 +615,17 @@ mod tests {
             n_molecules_alt: 1,
             n_duplex_alt: 0,
             n_simplex_alt: 1,
+            n_simplex_fwd_alt: 1,
+            n_simplex_rev_alt: 0,
+            n_duplex_ref: 0,
+            n_simplex_ref: 99,
+            mean_alt_error_prob: 0.001,
+            min_variant_specific_duplex: 0,
+            mean_variant_specific_molecules: 1.0,
             confidence: 0.5,
             strand_bias_p: 0.5,
             filter: VariantFilter::LowConfidence,
+            ml_prob: None,
         };
 
         let empty = TargetVariantSet::new();
@@ -615,9 +655,17 @@ mod tests {
             n_molecules_alt: 1,
             n_duplex_alt: 0,
             n_simplex_alt: 1,
+            n_simplex_fwd_alt: 1,
+            n_simplex_rev_alt: 0,
+            n_duplex_ref: 0,
+            n_simplex_ref: 99,
+            mean_alt_error_prob: 0.001,
+            min_variant_specific_duplex: 0,
+            mean_variant_specific_molecules: 1.0,
             confidence: 0.99,
             strand_bias_p: 0.5,
             filter: VariantFilter::Pass,
+            ml_prob: None,
         };
 
         let mut targets = TargetVariantSet::new();
@@ -652,9 +700,17 @@ mod tests {
             n_molecules_alt: 1,
             n_duplex_alt: 0,
             n_simplex_alt: 1,
+            n_simplex_fwd_alt: 1,
+            n_simplex_rev_alt: 0,
+            n_duplex_ref: 0,
+            n_simplex_ref: 99,
+            mean_alt_error_prob: 0.001,
+            min_variant_specific_duplex: 0,
+            mean_variant_specific_molecules: 1.0,
             confidence: 0.99,
             strand_bias_p: 0.5,
             filter: VariantFilter::Pass,
+            ml_prob: None,
         };
 
         let mut targets = TargetVariantSet::new();
@@ -683,9 +739,17 @@ mod tests {
             n_molecules_alt: 400,
             n_duplex_alt: 0,
             n_simplex_alt: 400,
+            n_simplex_fwd_alt: 200,
+            n_simplex_rev_alt: 200,
+            n_duplex_ref: 0,
+            n_simplex_ref: 600,
+            mean_alt_error_prob: 0.001,
+            min_variant_specific_duplex: 0,
+            mean_variant_specific_molecules: 400.0,
             confidence: 0.99,
             strand_bias_p: 0.5,
             filter: VariantFilter::Pass,
+            ml_prob: None,
         };
 
         // Target VCF has BND record (ALT contains ']').
@@ -720,9 +784,17 @@ mod tests {
             n_molecules_alt: 400,
             n_duplex_alt: 0,
             n_simplex_alt: 400,
+            n_simplex_fwd_alt: 200,
+            n_simplex_rev_alt: 200,
+            n_duplex_ref: 0,
+            n_simplex_ref: 600,
+            mean_alt_error_prob: 0.001,
+            min_variant_specific_duplex: 0,
+            mean_variant_specific_molecules: 400.0,
             confidence: 0.99,
             strand_bias_p: 0.5,
             filter: VariantFilter::Pass,
+            ml_prob: None,
         };
 
         // Target VCF has only SNV records (no BND).

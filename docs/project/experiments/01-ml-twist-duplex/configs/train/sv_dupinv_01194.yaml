@@ -1,0 +1,44 @@
+# varforge config: sv_dupinv_01194  — VAF 1.0586%  type=sv_dupinv
+reference: docs/benchmarking/sv/data/ref.fa
+
+output:
+  directory: docs/benchmarking/ml-twist-duplex/simulations/train/sv_dupinv_01194
+  fastq: true
+  bam: false
+  truth_vcf: true
+  manifest: true
+
+sample:
+  name: sv_dupinv_01194
+  read_length: 150
+  coverage: 8083.0
+  platform: illumina
+
+fragment:
+  model: normal
+  mean: 231.4
+  sd: 24.7
+
+quality:
+  mean_quality: 32
+  tail_decay: 0.002
+
+tumour:
+  purity: 0.021172
+  ploidy: 2
+
+mutations:
+  vcf: docs/benchmarking/sv/data/truth_svs_vaf0600_b.vcf
+
+umi:
+  length: 5
+  duplex: true
+  pcr_cycles: 8
+  family_size_mean: 5.72
+  family_size_sd: 1.0
+  inline: true
+
+chromosomes:
+  - chr1
+
+seed: 83204781

@@ -3,12 +3,12 @@
 
 Reads benchmark results from the following directory trees:
 
-  docs/benchmarking/sv/results/sim_*/discovery/variants.vcf
-  docs/benchmarking/sv/results/sim_*/tumour_informed/variants.vcf
-  docs/benchmarking/sv_new/results/sim_*/discovery/variants.vcf
-  docs/benchmarking/sv_new/results/sim_*/tumour_informed/variants.vcf
-  docs/benchmarking/snvindel/results/sim_*/discovery/variants.vcf
-  docs/benchmarking/snvindel/results/sim_*/tumour_informed/variants.vcf
+  docs/benchmarking/02-sv-core/results/sim_*/discovery/variants.vcf
+  docs/benchmarking/02-sv-core/results/sim_*/tumour_informed/variants.vcf
+  docs/benchmarking/03-sv-extended/results/sim_*/discovery/variants.vcf
+  docs/benchmarking/03-sv-extended/results/sim_*/tumour_informed/variants.vcf
+  docs/benchmarking/01-snvindel/results/sim_*/discovery/variants.vcf
+  docs/benchmarking/01-snvindel/results/sim_*/tumour_informed/variants.vcf
 
 Each sim_* directory also contains a *.truth.vcf that defines the expected
 variants. Scoring is position-based with a ±10 bp tolerance window. This is

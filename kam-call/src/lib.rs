@@ -7,5 +7,6 @@
 pub mod allele;
 pub mod caller;
 pub mod fusion;
+pub mod ml;
 pub mod output;
 pub mod targeting;

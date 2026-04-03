@@ -35,7 +35,7 @@ kam-call     — statistical variant calling with confidence intervals
 kam          — integrated binary CLI
 ```
 
-See `docs/planning/rust_workspace_architecture.md` for full architecture.
+See `docs/project/devmanual/rust_workspace_architecture.md` for full architecture.
 
 ## Code Quality Rules
 
@@ -58,7 +58,7 @@ See `docs/planning/rust_workspace_architecture.md` for full architecture.
 
 ## Documentation Pointers
 
-### Research (background context)
+### Research (prior art and background)
 - `docs/research/humid_analysis.md` — HUMID algorithm, capabilities, and gaps
 - `docs/research/tool_landscape.md` — UMI-tools, fgbio, UMICollapse, Sentieon, Jellyfish, km
 - `docs/research/gaps_to_fill.md` — 7 differentiated value areas for kam
@@ -68,36 +68,41 @@ See `docs/planning/rust_workspace_architecture.md` for full architecture.
 - `docs/research/endpoint_fingerprinting.md` — UMI collision detection via template endpoints, bases/threshold tradeoffs
 - `docs/research/twist_skip_bases.md` — skip base identity research, auto-detection approach, QC usage
 - `docs/research/consensus_calling_algorithms.md` — majority vote, quality-weighted, Bayesian, duplex crossing, edge cases
-- `docs/research/de_novo_discovery_design.md` — 4 approaches explored, panel-aware de novo as near-term extension, deferred to Phase 2
 - `docs/research/statistical_calling_models.md` — binomial/beta-binomial models, duplex-aware scoring, strand bias, background error model, validation strategy
 - `docs/research/streaming_molecule_assembly.md` — sort-then-group, hash-partition, memory bounds, interaction with Hamming clustering
-- `docs/research/output_format_specs.md` — annotated FASTQ tag definitions, QC JSON schemas per stage, TSV/VCF/JSON variant output, collision probability reporting
 
-### Planning (architecture and design)
-- `docs/planning/current_pipeline_analysis.md` — information loss analysis at each pipeline stage
-- `docs/planning/rust_workspace_architecture.md` — crate layout, dependencies, build order
-- `docs/planning/core_data_model.md` — Molecule, ConsensusRead, MoleculeEvidence, traits
-- `docs/planning/nextflow_integration.md` — HPC config, QC JSON, morning report
-- `docs/planning/design_principles.md` — transparency, granular control, extreme logging, explain-why, no black boxes, reproducibility
-- `docs/planning/logging_architecture.md` — per-file togglable logs, drop log format, zero-cost-when-off pattern, Nextflow interaction
-- `docs/planning/development_workflow.md` — Claude Code loop, task format, safety boundaries
+### Developer manual (architecture and design)
+- `docs/project/devmanual/rust_workspace_architecture.md` — crate layout, dependencies, build order
+- `docs/project/devmanual/core_data_model.md` — Molecule, ConsensusRead, MoleculeEvidence, traits
+- `docs/project/devmanual/design_principles.md` — transparency, granular control, extreme logging, explain-why, no black boxes, reproducibility
+- `docs/project/devmanual/logging_architecture.md` — per-file togglable logs, drop log format, zero-cost-when-off pattern, Nextflow interaction
+- `docs/project/devmanual/nextflow_integration.md` — HPC config, QC JSON, morning report
+- `docs/project/devmanual/development_workflow.md` — Claude Code loop, task format, safety boundaries
+- `docs/project/devmanual/current_pipeline_analysis.md` — information loss analysis at each pipeline stage
+- `docs/project/devmanual/de_novo_discovery_design.md` — 4 approaches explored, panel-aware de novo as near-term extension, deferred to Phase 2
+- `docs/project/devmanual/output_format_specs.md` — annotated FASTQ tag definitions, QC JSON schemas per stage, TSV/VCF/JSON variant output, collision probability reporting
+- `docs/project/devmanual/nextcloud.md` — Nextcloud download and upload instructions, bigdata/ structure
 
 ### Other
-- `docs/features/` — feature specs (todo/inprogress/done)
-- `docs/benchmarking/` — performance benchmarks, sensitivity metrics
+- `docs/project/features/` — feature specs (todo/inprogress/done)
+- `docs/project/tracking/` — kanban task board
+- `docs/project/investigations/` — diagnostic investigation writeups
+- `docs/project/experiments/` — research experiments (ML, etc.)
+- `docs/benchmarking/` — benchmark definitions, configs, scripts
 - `docs/paper/` — publication materials
 - `docs/manual/` — end-user documentation
+- `docs/examples/` — example configuration files
 
 ## Guides
 
-Detailed instructions for working in this repo live in `docs/claudeguide/`.
+Detailed instructions for working in this repo live in `docs/project/devmanual/`.
 Read the relevant guide before starting work in that area.
 
 | Guide | When to read |
 |-------|-------------|
-| `benchmarking.md` | Running benchmarks, adding datasets, scoring results |
-| `task-tracking.md` | Picking up tasks, creating epics, committing work |
-| `investigation-docs.md` | Writing up a diagnostic investigation |
+| `docs/project/devmanual/benchmarking.md` | Running benchmarks, adding datasets, scoring results |
+| `docs/project/devmanual/task-tracking.md` | Picking up tasks, creating epics, committing work |
+| `docs/project/devmanual/investigation-docs.md` | Writing up a diagnostic investigation |
 
 ## Autonomous Session Behaviour
 
