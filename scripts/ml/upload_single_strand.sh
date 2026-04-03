@@ -116,7 +116,7 @@ upload_dir_batches() {
 
     while IFS= read -r -d '' d; do
         batch_dirs+=("$(basename "$d")")
-        (( count++ ))
+        count=$(( count + 1 ))
         if (( count % batch_size == 0 )); then
             local name
             name="$(printf 'batch_%03d' "$batch_idx")"
@@ -126,7 +126,7 @@ upload_dir_batches() {
             chunked_upload "$tarball" "${nc_prefix}/${name}.tar.gz"
             rm -f "$tarball"
             batch_dirs=()
-            (( batch_idx++ ))
+            batch_idx=$(( batch_idx + 1 ))
         fi
     done < <(find "$base_dir" -maxdepth 1 -mindepth 1 -type d -print0 | sort -z)
 
@@ -175,7 +175,7 @@ upload_samples() {
         name="$(basename "$d")"
         [[ "$name" == "test" || "$name" == "train" ]] && continue
         batch_dirs+=("$name")
-        (( count++ ))
+        count=$(( count + 1 ))
         if (( count % 200 == 0 )); then
             local bname
             bname="$(printf 'batch_%03d' "$batch_idx")"
@@ -184,7 +184,7 @@ upload_samples() {
             tar -czf "$tarball" -C "$base" "${batch_dirs[@]}"
             chunked_upload "$tarball" "${nc_p}/${bname}.tar.gz"
             rm -f "$tarball"
-            batch_dirs=(); (( batch_idx++ ))
+            batch_dirs=(); batch_idx=$(( batch_idx + 1 ))
         fi
     done < <(find "$base" -maxdepth 1 -mindepth 1 -type d -print0 | sort -z)
     if (( ${#batch_dirs[@]} > 0 )); then
@@ -212,7 +212,7 @@ upload_results() {
         name="$(basename "$d")"
         [[ "$name" == "test" || "$name" == "train" ]] && continue
         batch_dirs+=("$name")
-        (( count++ ))
+        count=$(( count + 1 ))
         if (( count % 200 == 0 )); then
             local bname
             bname="$(printf 'batch_%03d' "$batch_idx")"
@@ -221,7 +221,7 @@ upload_results() {
             tar -czf "$tarball" -C "$base" "${batch_dirs[@]}"
             chunked_upload "$tarball" "${nc_p}/${bname}.tar.gz"
             rm -f "$tarball"
-            batch_dirs=(); (( batch_idx++ ))
+            batch_dirs=(); batch_idx=$(( batch_idx + 1 ))
         fi
     done < <(find "$base" -maxdepth 1 -mindepth 1 -type d -print0 | sort -z)
     if (( ${#batch_dirs[@]} > 0 )); then
