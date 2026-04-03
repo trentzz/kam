@@ -18,11 +18,11 @@ Also run feature selection experiments:
   - RFE (Recursive Feature Elimination) with LightGBM estimator
 
 Outputs:
-  docs/benchmarking/ml/results/cv_results_v2.csv     — per-fold metrics
-  docs/benchmarking/ml/results/feature_importance_v2.csv
-  docs/benchmarking/ml/results/feature_selection.csv — RFE selected features
-  docs/benchmarking/ml/models/lightgbm_v2.txt        — best LightGBM model
-  docs/benchmarking/ml/models/xgboost_v2.json        — best XGBoost model
+  docs/project/experiments/02-ml-single-strand/results/cv_results_v2.csv     — per-fold metrics
+  docs/project/experiments/02-ml-single-strand/results/feature_importance_v2.csv
+  docs/project/experiments/02-ml-single-strand/results/feature_selection.csv — RFE selected features
+  bigdata/experiments/02-ml-single-strand/models/lightgbm_v2.txt              — best LightGBM model
+  bigdata/experiments/02-ml-single-strand/models/xgboost_v2.json              — best XGBoost model
 
 Usage: python3 scripts/ml/train_eval_v2.py
 Run from the repository root.
@@ -53,9 +53,11 @@ import lightgbm as lgb
 import xgboost as xgb
 
 REPO = Path(__file__).resolve().parent.parent.parent
-DATA = REPO / "docs/benchmarking/ml/training_data_v2.csv"
-RESULTS = REPO / "docs/benchmarking/ml/results"
-MODELS = REPO / "docs/benchmarking/ml/models"
+DATA = REPO / "bigdata/experiments/02-ml-single-strand/training_data_v2.csv"
+# Small summary outputs (CSV, figures) are committed to docs/.
+RESULTS = REPO / "docs/project/experiments/02-ml-single-strand/results"
+# Trained model files are large and go to bigdata/.
+MODELS = REPO / "bigdata/experiments/02-ml-single-strand/models"
 RESULTS.mkdir(parents=True, exist_ok=True)
 MODELS.mkdir(parents=True, exist_ok=True)
 

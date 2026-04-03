@@ -1,7 +1,7 @@
 """Export a LightGBM classifier to ONNX for use with the Rust ML scorer.
 
 Trains on the rust-safe 33-feature set derived from VariantCall fields,
-then exports the model and companion metadata to docs/benchmarking/ml/models/.
+then exports the model and companion metadata to bigdata/experiments/02-ml-single-strand/models/.
 
 Usage:
     python scripts/ml/export_model.py
@@ -17,8 +17,8 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-TRAINING_DATA = REPO_ROOT / "docs" / "benchmarking" / "ml" / "training_data_v2.csv"
-MODEL_DIR = REPO_ROOT / "docs" / "benchmarking" / "ml" / "models"
+TRAINING_DATA = REPO_ROOT / "bigdata" / "experiments" / "02-ml-single-strand" / "training_data_v2.csv"
+MODEL_DIR = REPO_ROOT / "bigdata" / "experiments" / "02-ml-single-strand" / "models"
 MODEL_PATH = MODEL_DIR / "lightgbm_rust.onnx"
 META_PATH = MODEL_DIR / "model_meta.json"
 

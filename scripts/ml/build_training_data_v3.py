@@ -1,8 +1,8 @@
 """Build ML training dataset v3 with an explicit train/test split.
 
 Extends build_training_data_v2.py to cover the ML3 dataset structure:
-  - docs/benchmarking/ml/samples/train/<sample>/   — ML3 training samples
-  - docs/benchmarking/ml/samples/test/<sample>/    — ML3 test samples
+  - bigdata/experiments/02-ml-single-strand/samples/train/<sample>/   — ML3 training samples
+  - bigdata/experiments/02-ml-single-strand/samples/test/<sample>/    — ML3 test samples
 
 The 'split' column is derived from the directory path: 'train' or 'test'
 for ML3 samples, and 'legacy' for all earlier samples (snvindel + sv + ml).
@@ -10,7 +10,7 @@ for ML3 samples, and 'legacy' for all earlier samples (snvindel + sv + ml).
 Legacy samples are kept so the training set is as large as possible.
 The test split contains only ML3 test samples to prevent contamination.
 
-Outputs to docs/benchmarking/ml/training_data_v3.csv.
+Outputs to bigdata/experiments/02-ml-single-strand/training_data_v3.csv.
 """
 
 import json
@@ -24,16 +24,16 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # Legacy sample roots (all labelled split='legacy').
 LEGACY_ROOTS = {
-    "snvindel": REPO_ROOT / "docs/benchmarking/snvindel/samples",
-    "sv":       REPO_ROOT / "docs/benchmarking/sv/samples",
-    "ml":       REPO_ROOT / "docs/benchmarking/ml/samples",
+    "snvindel": REPO_ROOT / "docs/benchmarking/01-snvindel/samples",
+    "sv":       REPO_ROOT / "docs/benchmarking/02-sv-core/samples",
+    "ml":       REPO_ROOT / "docs/project/experiments/02-ml-single-strand/samples",
 }
 
-# ML3 train and test roots.
-ML3_TRAIN_ROOT = REPO_ROOT / "docs/benchmarking/ml/samples/train"
-ML3_TEST_ROOT  = REPO_ROOT / "docs/benchmarking/ml/samples/test"
+# ML3 train and test sample roots (assembled by run_ml3_*_pipeline.py).
+ML3_TRAIN_ROOT = REPO_ROOT / "bigdata/experiments/02-ml-single-strand/samples/train"
+ML3_TEST_ROOT  = REPO_ROOT / "bigdata/experiments/02-ml-single-strand/samples/test"
 
-OUT_PATH = REPO_ROOT / "docs/benchmarking/ml/training_data_v3.csv"
+OUT_PATH = REPO_ROOT / "bigdata/experiments/02-ml-single-strand/training_data_v3.csv"
 
 TRUTH_KEY = ["chrom", "pos", "ref", "alt"]
 CALL_COLS = [

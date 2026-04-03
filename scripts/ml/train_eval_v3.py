@@ -12,11 +12,11 @@ Workflow:
   4. Export the best model to ONNX via export_model.py.
 
 Outputs:
-  docs/benchmarking/ml/results/cv_results_v3.csv         — per-fold CV metrics
-  docs/benchmarking/ml/results/test_results_v3.csv       — held-out test metrics
-  docs/benchmarking/ml/results/feature_importance_v3.csv — feature gain
-  docs/benchmarking/ml/models/lightgbm_v3.txt            — trained LightGBM
-  docs/benchmarking/ml/models/xgboost_v3.json            — trained XGBoost
+  docs/project/experiments/02-ml-single-strand/results/cv_results_v3.csv         — per-fold CV metrics
+  docs/project/experiments/02-ml-single-strand/results/test_results_v3.csv       — held-out test metrics
+  docs/project/experiments/02-ml-single-strand/results/feature_importance_v3.csv — feature gain
+  bigdata/experiments/02-ml-single-strand/models/lightgbm_v3.txt                 — trained LightGBM
+  bigdata/experiments/02-ml-single-strand/models/xgboost_v3.json                 — trained XGBoost
 
 Usage: python3 scripts/ml/train_eval_v3.py
 Run from the repository root.
@@ -47,8 +47,10 @@ import lightgbm as lgb
 import xgboost as xgb
 
 REPO = Path(__file__).resolve().parent.parent.parent
-RESULTS = REPO / "docs/benchmarking/ml/results"
-MODELS = REPO / "docs/benchmarking/ml/models"
+# Small summary outputs (CSV, figures) are committed to docs/.
+RESULTS = REPO / "docs/project/experiments/02-ml-single-strand/results"
+# Trained model files are large and go to bigdata/.
+MODELS = REPO / "bigdata/experiments/02-ml-single-strand/models"
 RESULTS.mkdir(parents=True, exist_ok=True)
 MODELS.mkdir(parents=True, exist_ok=True)
 
@@ -187,8 +189,8 @@ def cross_validate(X, y, groups, model_name: str, clf) -> list[dict]:
 def main() -> None:
     """Main training and evaluation loop."""
     # Try loading v3 data first; fall back to v2.
-    data_v3 = REPO / "docs/benchmarking/ml/training_data_v3.csv"
-    data_v2 = REPO / "docs/benchmarking/ml/training_data_v2.csv"
+    data_v3 = REPO / "bigdata/experiments/02-ml-single-strand/training_data_v3.csv"
+    data_v2 = REPO / "bigdata/experiments/02-ml-single-strand/training_data_v2.csv"
     if data_v3.exists():
         print(f"Loading {data_v3}...")
         df = load_data(data_v3)

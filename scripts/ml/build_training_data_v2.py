@@ -4,7 +4,7 @@ Extends build_training_data.py with log transforms, ratios, interactions,
 binned features, and confidence flags. Also ingests params.json from each
 sample directory when present.
 
-Outputs to docs/benchmarking/ml/training_data_v2.csv.
+Outputs to bigdata/experiments/02-ml-single-strand/training_data_v2.csv.
 """
 
 import json
@@ -19,12 +19,12 @@ import pandas as pd
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 SAMPLE_ROOTS = {
-    "snvindel": REPO_ROOT / "docs/benchmarking/snvindel/samples",
-    "sv": REPO_ROOT / "docs/benchmarking/sv/samples",
-    "ml": REPO_ROOT / "docs/benchmarking/ml/samples",
+    "snvindel": REPO_ROOT / "docs/benchmarking/01-snvindel/samples",
+    "sv": REPO_ROOT / "docs/benchmarking/02-sv-core/samples",
+    "ml": REPO_ROOT / "docs/project/experiments/02-ml-single-strand/samples",
 }
 
-OUT_PATH = REPO_ROOT / "docs/benchmarking/ml/training_data_v2.csv"
+OUT_PATH = REPO_ROOT / "bigdata/experiments/02-ml-single-strand/training_data_v2.csv"
 
 TRUTH_KEY = ["chrom", "pos", "ref", "alt"]
 CALL_COLS = [

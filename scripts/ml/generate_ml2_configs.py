@@ -4,8 +4,8 @@ Uses random sampling across the full parameter space rather than grid sweeps,
 producing a richer and more diverse training set for better generalisation.
 
 Output:
-  docs/benchmarking/ml/configs/  — one YAML + one params.json per config
-  docs/benchmarking/ml/configs/ml2_manifest.json  — list of all 3000 names
+  bigdata/experiments/02-ml-single-strand/configs/  — one YAML + one params.json per config
+  bigdata/experiments/02-ml-single-strand/configs/ml2_manifest.json  — list of all 3000 names
 """
 
 import json
@@ -14,7 +14,7 @@ import random
 from pathlib import Path
 
 REPO = Path("/home/trent/code/kam")
-CONFIGS_DIR = REPO / "docs/benchmarking/ml/configs"
+CONFIGS_DIR = REPO / "bigdata/experiments/02-ml-single-strand/configs"
 
 # Available VAF tags in the truth VCF filenames (as integers, vaf * 10000).
 AVAILABLE_VAF_TAGS = [
@@ -25,21 +25,21 @@ AVAILABLE_VAF_TAGS = [
 
 # Reference files per variant type.
 REFERENCES = {
-    "snv":    "docs/benchmarking/snvindel/data/ref.fa",
-    "indel":  "docs/benchmarking/snvindel/data/ref.fa",
-    "sv":     "docs/benchmarking/sv/data/ref.fa",
-    "ins":    "docs/benchmarking/sv/data/ref.fa",
-    "invdel": "docs/benchmarking/sv/data/ref.fa",
+    "snv":    "docs/benchmarking/01-snvindel/data/ref.fa",
+    "indel":  "docs/benchmarking/01-snvindel/data/ref.fa",
+    "sv":     "docs/benchmarking/02-sv-core/data/ref.fa",
+    "ins":    "docs/benchmarking/02-sv-core/data/ref.fa",
+    "invdel": "docs/benchmarking/02-sv-core/data/ref.fa",
 }
 
 # Truth VCF path templates per variant type.
 # {vaf} will be replaced with the 4-digit VAF tag, {rep} with a or b.
 TRUTH_VCF_TEMPLATES = {
-    "snv":    "docs/benchmarking/snvindel/data/truth_snvs_vaf{vaf}_{rep}.vcf",
-    "indel":  "docs/benchmarking/snvindel/data/truth_indels_vaf{vaf}_{rep}.vcf",
-    "sv":     "docs/benchmarking/sv/data/truth_svs_vaf{vaf}_{rep}.vcf",
-    "ins":    "docs/benchmarking/sv/data/truth_ins_vaf{vaf}_{rep}.vcf",
-    "invdel": "docs/benchmarking/sv/data/truth_invdel_vaf{vaf}_{rep}.vcf",
+    "snv":    "docs/benchmarking/01-snvindel/data/truth_snvs_vaf{vaf}_{rep}.vcf",
+    "indel":  "docs/benchmarking/01-snvindel/data/truth_indels_vaf{vaf}_{rep}.vcf",
+    "sv":     "docs/benchmarking/02-sv-core/data/truth_svs_vaf{vaf}_{rep}.vcf",
+    "ins":    "docs/benchmarking/02-sv-core/data/truth_ins_vaf{vaf}_{rep}.vcf",
+    "invdel": "docs/benchmarking/02-sv-core/data/truth_invdel_vaf{vaf}_{rep}.vcf",
 }
 
 # How many configs to generate per type.
@@ -102,7 +102,7 @@ def make_config_yaml(name: str, vtype: str, params: dict, truth_vcf: str, replic
         f"reference: {ref}",
         "",
         "output:",
-        f"  directory: docs/benchmarking/ml/results/sim_{name}",
+        f"  directory: bigdata/experiments/02-ml-single-strand/results/sim_{name}",
         "  fastq: true",
         "  bam: false",
         "  truth_vcf: true",
@@ -210,4 +210,4 @@ def generate_configs(seed: int = 42) -> list[str]:
 if __name__ == "__main__":
     names = generate_configs()
     print(f"Generated {len(names)} configs.")
-    print(f"Manifest written to docs/benchmarking/ml/configs/ml2_manifest.json")
+    print(f"Manifest written to bigdata/experiments/02-ml-single-strand/configs/ml2_manifest.json")

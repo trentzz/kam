@@ -1,16 +1,16 @@
-"""Run the full pipeline for the ML3 test split.
+"""Run the full pipeline for the ML3 train split.
 
 Steps:
-  1. Simulate: run varforge on all 1000 test configs.
+  1. Simulate: run varforge on all 10,000 train configs.
   2. Kam: run kam discovery + tumour-informed on each simulation.
   3. Samples: build per-sample directories with truth TSV, calls TSVs, params.json.
 
 Output directories:
-  bigdata/experiments/02-ml-single-strand/results/test/sim_<name>/   — varforge outputs
-  bigdata/experiments/02-ml-single-strand/results/test/kam_<name>/   — kam outputs
-  bigdata/experiments/02-ml-single-strand/samples/test/<name>/        — sample dirs for training data builder
+  bigdata/experiments/02-ml-single-strand/results/train/sim_<name>/   — varforge outputs
+  bigdata/experiments/02-ml-single-strand/results/train/kam_<name>/   — kam outputs
+  bigdata/experiments/02-ml-single-strand/samples/train/<name>/        — sample dirs for training data builder
 
-Usage: python3 scripts/ml/run_ml3_test_pipeline.py
+Usage: python3 scripts/ml/run_ml3_train_pipeline.py
 Run from the repository root.
 """
 
@@ -22,10 +22,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 REPO    = Path("/home/trent/code/kam")
-CONFIGS = sorted((REPO / "bigdata/experiments/02-ml-single-strand/configs/test").glob("*.yaml"))
-SIM_DIR = REPO / "bigdata/experiments/02-ml-single-strand/results/test"
-KAM_DIR = REPO / "bigdata/experiments/02-ml-single-strand/results/test"
-SAMPLES = REPO / "bigdata/experiments/02-ml-single-strand/samples/test"
+CONFIGS = sorted((REPO / "bigdata/experiments/02-ml-single-strand/configs/train").glob("*.yaml"))
+SIM_DIR = REPO / "bigdata/experiments/02-ml-single-strand/results/train"
+KAM_DIR = REPO / "bigdata/experiments/02-ml-single-strand/results/train"
+SAMPLES = REPO / "bigdata/experiments/02-ml-single-strand/samples/train"
 KAM     = REPO / "target/release/kam"
 VARFORGE = shutil.which("varforge") or "varforge"
 
@@ -113,11 +113,9 @@ def run_kam_one(name: str) -> tuple[str, str]:
              "--output-format-override", "vcf,tsv"],
             capture_output=True, text=True, cwd=REPO,
         )
-        # Save full stderr log (QC progress lines from kam).
         disc_log.write_text(r.stderr)
         if r.returncode != 0:
             return name, f"disc_fail:{r.stderr[-400:]}"
-        # Copy all output files (TSV, VCF, QC JSONs) to kam_out.
         for f in disc_dir.iterdir():
             shutil.copy(f, kam_out / f"discovery_{f.name}")
         for f in disc_dir.glob("*.tsv"):
@@ -145,11 +143,9 @@ def run_kam_one(name: str) -> tuple[str, str]:
              "--target-variants", str(truth_vcf)],
             capture_output=True, text=True, cwd=REPO,
         )
-        # Save full stderr log.
         ti_log.write_text(r.stderr)
         if r.returncode != 0:
             return name, f"ti_fail:{r.stderr[-400:]}"
-        # Copy all output files (TSV, VCF, QC JSONs) to kam_out.
         for f in ti_dir.iterdir():
             shutil.copy(f, kam_out / f"tumour_informed_{f.name}")
         for f in ti_dir.glob("*.tsv"):
@@ -225,7 +221,7 @@ def build_sample_one(name: str) -> tuple[str, str]:
         if src.exists():
             shutil.copy(src, dst)
 
-    # Rename columns in TSVs to match build_training_data_v2.py expectations.
+    # Rename columns to match build_training_data_v3.py expectations.
     for tsv in [sample_dir / "discovery.tsv", sample_dir / "tumour_informed.tsv"]:
         if not tsv.exists():
             continue
@@ -266,7 +262,7 @@ def build_sample_one(name: str) -> tuple[str, str]:
         tsv.write_text(out.getvalue())
 
     # Copy params.json.
-    params_src = REPO / "bigdata/experiments/02-ml-single-strand/configs/test" / f"{name}_params.json"
+    params_src = REPO / "bigdata/experiments/02-ml-single-strand/configs/train" / f"{name}_params.json"
     if params_src.exists():
         shutil.copy(params_src, sample_dir / "params.json")
 
@@ -299,4 +295,4 @@ if __name__ == "__main__":
     step2_kam(workers=12)
     step3_samples()
 
-    print("\n=== ML3 test pipeline complete ===", flush=True)
+    print("\n=== ML3 train pipeline complete ===", flush=True)

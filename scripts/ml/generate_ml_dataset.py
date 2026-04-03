@@ -3,7 +3,7 @@
 
 Produces many simulated samples with varied coverage, UMI family size, PCR
 cycles, fragment size, and replicates. All output goes to
-docs/benchmarking/ml/.
+bigdata/experiments/02-ml-single-strand/.
 
 Usage:
     python3 scripts/ml/generate_ml_dataset.py
@@ -27,13 +27,13 @@ REPO = Path(__file__).resolve().parent.parent.parent
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
 
-ML_DIR      = REPO / "docs" / "benchmarking" / "ml"
+ML_DIR      = REPO / "bigdata" / "experiments" / "02-ml-single-strand"
 CONFIGS_DIR = ML_DIR / "configs"
 RESULTS_DIR = ML_DIR / "results"
-SAMPLES_DIR = ML_DIR / "samples"
+SAMPLES_DIR = REPO / "docs" / "project" / "experiments" / "02-ml-single-strand" / "samples"
 
-SNVINDEL_DATA = REPO / "docs" / "benchmarking" / "snvindel" / "data"
-SV_DATA       = REPO / "docs" / "benchmarking" / "sv" / "data"
+SNVINDEL_DATA = REPO / "docs" / "benchmarking" / "01-snvindel" / "data"
+SV_DATA       = REPO / "docs" / "benchmarking" / "02-sv-core" / "data"
 
 SNVINDEL_TARGETS = SNVINDEL_DATA / "snvindel_targets.fa"
 SV_TARGETS       = SV_DATA / "sv_suite_targets.fa"
@@ -126,8 +126,8 @@ def targets_for(vtype: str) -> Path:
 def ref_for(vtype: str) -> str:
     """Return the reference path (relative to repo root) for a variant type."""
     if vtype in ("sv", "ins", "invdel"):
-        return "docs/benchmarking/sv/data/ref.fa"
-    return "docs/benchmarking/snvindel/data/ref.fa"
+        return "docs/benchmarking/02-sv-core/data/ref.fa"
+    return "docs/benchmarking/01-snvindel/data/ref.fa"
 
 
 # ─── Sample specification ─────────────────────────────────────────────────────
@@ -253,7 +253,7 @@ def write_config(s: dict[str, Any]) -> Path:
     CONFIGS_DIR.mkdir(parents=True, exist_ok=True)
     config_path = CONFIGS_DIR / f"{s['name']}.yaml"
 
-    sim_output_dir = f"docs/benchmarking/ml/results/sim_{s['name']}"
+    sim_output_dir = f"bigdata/experiments/02-ml-single-strand/results/sim_{s['name']}"
     sample_label   = s["name"].upper()
     vaf_pct        = s["vaf"] * 100.0
 

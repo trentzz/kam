@@ -2,7 +2,7 @@
 
 Runs 5-fold GroupKFold cross-validation with LightGBM and XGBoost,
 computes a PASS-filter baseline, and writes results to
-docs/benchmarking/ml/results/.
+docs/project/experiments/02-ml-single-strand/results/.
 """
 
 import sys
@@ -23,9 +23,11 @@ from sklearn.model_selection import GroupKFold
 from sklearn.preprocessing import LabelEncoder
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DATA_PATH = REPO_ROOT / "docs/benchmarking/ml/training_data.csv"
-RESULTS_DIR = REPO_ROOT / "docs/benchmarking/ml/results"
-MODELS_DIR = REPO_ROOT / "docs/benchmarking/ml/models"
+DATA_PATH = REPO_ROOT / "bigdata/experiments/02-ml-single-strand/training_data.csv"
+# Small summary outputs (CSV, figures) are committed to docs/.
+RESULTS_DIR = REPO_ROOT / "docs/project/experiments/02-ml-single-strand/results"
+# Trained model files are large and go to bigdata/.
+MODELS_DIR = REPO_ROOT / "bigdata/experiments/02-ml-single-strand/models"
 
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 MODELS_DIR.mkdir(parents=True, exist_ok=True)

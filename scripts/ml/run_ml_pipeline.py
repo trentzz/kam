@@ -16,17 +16,17 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 REPO = Path("/home/trent/code/kam")
-CONFIGS = sorted((REPO / "docs/benchmarking/ml/configs").glob("*.yaml"))
-RESULTS = REPO / "docs/benchmarking/ml/results"
-SAMPLES = REPO / "docs/benchmarking/ml/samples"
+CONFIGS = sorted((REPO / "bigdata/experiments/02-ml-single-strand/configs").glob("*.yaml"))
+RESULTS = REPO / "bigdata/experiments/02-ml-single-strand/results"
+SAMPLES = REPO / "docs/project/experiments/02-ml-single-strand/samples"
 KAM = REPO / "target/release/kam"
 
 TARGETS = {
-    "snv": REPO / "docs/benchmarking/snvindel/data/snvindel_targets.fa",
-    "indel": REPO / "docs/benchmarking/snvindel/data/snvindel_targets.fa",
-    "sv": REPO / "docs/benchmarking/sv/data/sv_suite_targets.fa",
-    "ins": REPO / "docs/benchmarking/sv/data/ins_targets.fa",
-    "invdel": REPO / "docs/benchmarking/sv/data/invdel_targets.fa",
+    "snv": REPO / "docs/benchmarking/01-snvindel/data/snvindel_targets.fa",
+    "indel": REPO / "docs/benchmarking/01-snvindel/data/snvindel_targets.fa",
+    "sv": REPO / "docs/benchmarking/02-sv-core/data/sv_suite_targets.fa",
+    "ins": REPO / "docs/benchmarking/02-sv-core/data/ins_targets.fa",
+    "invdel": REPO / "docs/benchmarking/02-sv-core/data/invdel_targets.fa",
 }
 
 
@@ -401,7 +401,7 @@ def build_sample_dir(name, config_path):
         shutil.copy2(cmd_path, sample_dir / "varforge_cmd.txt")
     else:
         (sample_dir / "varforge_cmd.txt").write_text(
-            f"varforge simulate --config docs/benchmarking/ml/configs/{name}.yaml\n"
+            f"varforge simulate --config bigdata/experiments/02-ml-single-strand/configs/{name}.yaml\n"
         )
 
     # truth.tsv

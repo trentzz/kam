@@ -8,7 +8,7 @@ For each of 11,000 samples (10k train + 1k test):
   4. Write params.json to the sample directory.
 
 Per-sample output:
-  docs/benchmarking/ml-twist-duplex/simulations/{split}/{sample_name}/
+  bigdata/experiments/01-ml-twist-duplex/simulations/{split}/{sample_name}/
     {sample_name}_R1.fastq.gz, {sample_name}_R2.fastq.gz
     {sample_name}.truth.vcf.gz      (from varforge)
     calls_discovery.tsv / .vcf      (from kam)

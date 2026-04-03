@@ -1,6 +1,6 @@
 """Generate ML benchmark figures from CV results and feature importance data.
 
-Outputs five figures to docs/benchmarking/ml/results/figures/:
+Outputs five figures to docs/project/experiments/02-ml-single-strand/results/figures/:
   1. auroc_comparison.png
   2. auprc_comparison.png
   3. feature_importance.png
@@ -18,7 +18,8 @@ import numpy as np
 import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-RESULTS_DIR = REPO_ROOT / "docs/benchmarking/ml/results"
+# Small summary outputs are committed to docs/.
+RESULTS_DIR = REPO_ROOT / "docs/project/experiments/02-ml-single-strand/results"
 FIGURES_DIR = RESULTS_DIR / "figures"
 CV_CSV = RESULTS_DIR / "cv_results.csv"
 FI_CSV = RESULTS_DIR / "feature_importance.csv"

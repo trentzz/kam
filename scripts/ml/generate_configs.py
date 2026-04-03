@@ -7,8 +7,8 @@ import re
 from pathlib import Path
 
 REPO = Path("/home/trent/code/kam")
-CONFIGS_DIR = REPO / "docs/benchmarking/ml/configs"
-RESULTS = REPO / "docs/benchmarking/ml/results"
+CONFIGS_DIR = REPO / "bigdata/experiments/02-ml-single-strand/configs"
+RESULTS = REPO / "bigdata/experiments/02-ml-single-strand/results"
 
 # Seed base per variant type and replicate
 # Pattern: type_base + rep_offset + vaf_int
@@ -52,11 +52,11 @@ FRAG_MEANS = {
 
 # Mutation VCF paths per type (always _a variant)
 MUTATION_VCFS = {
-    "snv": "docs/benchmarking/snvindel/data/truth_snvs_vaf{vaf}_a.vcf",
-    "indel": "docs/benchmarking/snvindel/data/truth_indels_vaf{vaf}_a.vcf",
-    "sv": "docs/benchmarking/sv/data/truth_svs_vaf{vaf}_a.vcf",
-    "ins": "docs/benchmarking/sv/data/truth_ins_vaf{vaf}_a.vcf",
-    "invdel": "docs/benchmarking/sv/data/truth_invdel_vaf{vaf}_a.vcf",
+    "snv": "docs/benchmarking/01-snvindel/data/truth_snvs_vaf{vaf}_a.vcf",
+    "indel": "docs/benchmarking/01-snvindel/data/truth_indels_vaf{vaf}_a.vcf",
+    "sv": "docs/benchmarking/02-sv-core/data/truth_svs_vaf{vaf}_a.vcf",
+    "ins": "docs/benchmarking/02-sv-core/data/truth_ins_vaf{vaf}_a.vcf",
+    "invdel": "docs/benchmarking/02-sv-core/data/truth_invdel_vaf{vaf}_a.vcf",
 }
 
 
@@ -138,9 +138,9 @@ def generate_config(name):
 
     # SV types use a different reference
     if vtype in ("sv", "ins", "invdel"):
-        reference = "docs/benchmarking/sv/data/ref.fa"
+        reference = "docs/benchmarking/02-sv-core/data/ref.fa"
     else:
-        reference = "docs/benchmarking/snvindel/data/ref.fa"
+        reference = "docs/benchmarking/01-snvindel/data/ref.fa"
 
     upper_name = name.upper()
     comment_vaf = f"{vaf_percent:.3f}%"
@@ -149,7 +149,7 @@ def generate_config(name):
 reference: {reference}
 
 output:
-  directory: docs/benchmarking/ml/results/sim_{name}
+  directory: bigdata/experiments/02-ml-single-strand/results/sim_{name}
   fastq: true
   bam: false
   truth_vcf: true
@@ -232,7 +232,7 @@ def main():
         cmd_path = CONFIGS_DIR / f"{name}_cmd.txt"
         cmd_path.write_text(
             f"# Run from the repository root.\n"
-            f"varforge simulate --config docs/benchmarking/ml/configs/{name}.yaml\n"
+            f"varforge simulate --config bigdata/experiments/02-ml-single-strand/configs/{name}.yaml\n"
         )
         generated += 1
 

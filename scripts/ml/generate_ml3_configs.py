@@ -7,10 +7,10 @@ Configs are written to separate subdirectories so the pipeline runner can
 process them independently and prevent any data leakage between splits.
 
 Output layout:
-  docs/benchmarking/ml/configs/train/   — 10k YAML + params.json pairs
-  docs/benchmarking/ml/configs/test/    — 1k YAML + params.json pairs
-  docs/benchmarking/ml/configs/ml3_train_manifest.json
-  docs/benchmarking/ml/configs/ml3_test_manifest.json
+  bigdata/experiments/02-ml-single-strand/configs/train/   — 10k YAML + params.json pairs
+  bigdata/experiments/02-ml-single-strand/configs/test/    — 1k YAML + params.json pairs
+  bigdata/experiments/02-ml-single-strand/configs/ml3_train_manifest.json
+  bigdata/experiments/02-ml-single-strand/configs/ml3_test_manifest.json
 
 Each config has a companion <name>_params.json recording the simulation
 parameters so the training script can use them as features.
@@ -22,7 +22,7 @@ import random
 from pathlib import Path
 
 REPO = Path("/home/trent/code/kam")
-CONFIGS_DIR = REPO / "docs/benchmarking/ml/configs"
+CONFIGS_DIR = REPO / "bigdata/experiments/02-ml-single-strand/configs"
 TRAIN_DIR = CONFIGS_DIR / "train"
 TEST_DIR = CONFIGS_DIR / "test"
 
@@ -35,20 +35,20 @@ AVAILABLE_VAF_TAGS = [
 
 # Reference files per variant type.
 REFERENCES = {
-    "snv":    "docs/benchmarking/snvindel/data/ref.fa",
-    "indel":  "docs/benchmarking/snvindel/data/ref.fa",
-    "sv":     "docs/benchmarking/sv/data/ref.fa",
-    "ins":    "docs/benchmarking/sv/data/ref.fa",
-    "invdel": "docs/benchmarking/sv/data/ref.fa",
+    "snv":    "docs/benchmarking/01-snvindel/data/ref.fa",
+    "indel":  "docs/benchmarking/01-snvindel/data/ref.fa",
+    "sv":     "docs/benchmarking/02-sv-core/data/ref.fa",
+    "ins":    "docs/benchmarking/02-sv-core/data/ref.fa",
+    "invdel": "docs/benchmarking/02-sv-core/data/ref.fa",
 }
 
 # Truth VCF path templates — {vaf} = 4-digit tag, {rep} = a or b.
 TRUTH_VCF_TEMPLATES = {
-    "snv":    "docs/benchmarking/snvindel/data/truth_snvs_vaf{vaf}_{rep}.vcf",
-    "indel":  "docs/benchmarking/snvindel/data/truth_indels_vaf{vaf}_{rep}.vcf",
-    "sv":     "docs/benchmarking/sv/data/truth_svs_vaf{vaf}_{rep}.vcf",
-    "ins":    "docs/benchmarking/sv/data/truth_ins_vaf{vaf}_{rep}.vcf",
-    "invdel": "docs/benchmarking/sv/data/truth_invdel_vaf{vaf}_{rep}.vcf",
+    "snv":    "docs/benchmarking/01-snvindel/data/truth_snvs_vaf{vaf}_{rep}.vcf",
+    "indel":  "docs/benchmarking/01-snvindel/data/truth_indels_vaf{vaf}_{rep}.vcf",
+    "sv":     "docs/benchmarking/02-sv-core/data/truth_svs_vaf{vaf}_{rep}.vcf",
+    "ins":    "docs/benchmarking/02-sv-core/data/truth_ins_vaf{vaf}_{rep}.vcf",
+    "invdel": "docs/benchmarking/02-sv-core/data/truth_invdel_vaf{vaf}_{rep}.vcf",
 }
 
 # Per-type counts: balanced across all five types.
@@ -214,7 +214,7 @@ def generate_split(
             truth_vcf = TRUTH_VCF_TEMPLATES[vtype].format(
                 vaf=vaf_tag_str, rep=replicate
             )
-            output_dir = f"docs/benchmarking/ml/results/{split}/sim_{name}"
+            output_dir = f"bigdata/experiments/02-ml-single-strand/results/{split}/sim_{name}"
 
             yaml_content = make_config_yaml(name, vtype, p, truth_vcf, output_dir)
             (out_dir / f"{name}.yaml").write_text(yaml_content)

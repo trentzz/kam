@@ -3,7 +3,7 @@
 Walks snvindel and sv sample directories, loads discovery.tsv,
 tumour_informed.tsv, and truth.tsv for each sample, matches calls
 to truth by exact chrom+pos+ref+alt, derives features, and writes
-a combined CSV to docs/benchmarking/ml/training_data.csv.
+a combined CSV to bigdata/experiments/02-ml-single-strand/training_data.csv.
 """
 
 import os
@@ -16,11 +16,11 @@ import pandas as pd
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 SAMPLE_ROOTS = {
-    "snvindel": REPO_ROOT / "docs/benchmarking/snvindel/samples",
-    "sv": REPO_ROOT / "docs/benchmarking/sv/samples",
+    "snvindel": REPO_ROOT / "docs/benchmarking/01-snvindel/samples",
+    "sv": REPO_ROOT / "docs/benchmarking/02-sv-core/samples",
 }
 
-OUT_PATH = REPO_ROOT / "docs/benchmarking/ml/training_data.csv"
+OUT_PATH = REPO_ROOT / "bigdata/experiments/02-ml-single-strand/training_data.csv"
 
 TRUTH_KEY = ["chrom", "pos", "ref", "alt"]
 CALL_COLS = ["chrom", "pos", "ref", "alt", "filter", "vaf", "vaf_lo", "vaf_hi",

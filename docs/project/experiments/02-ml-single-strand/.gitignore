@@ -1,0 +1,19 @@
+# Large simulation outputs and training data — these belong in bigdata/experiments/02-ml-single-strand/
+# and on Nextcloud. Do not commit them here.
+results/train/
+results/test/
+training_data*.csv
+models/*.txt
+models/*.json
+models/*.pkl
+models/*.onnx
+
+# ML3 sample outputs and configs — stored in bigdata/ and on Nextcloud
+samples/test/
+samples/train/
+samples/indel_ml2_*/
+samples/ins_ml2_*/
+samples/invdel_ml2_*/
+samples/snv_ml2_*/
+samples/sv_ml2_*/
+configs/
