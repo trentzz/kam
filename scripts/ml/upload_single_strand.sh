@@ -109,14 +109,24 @@ chunked_upload() {
         echo "  chunk ${chunk_idx} — $(numfmt --to=iec "$offset") / $(numfmt --to=iec "$file_size")"
     done
 
-    # 3. Assemble.
-    status="$(curl -s -o /dev/null -w "%{http_code}" -X MOVE \
-        -u "${TOKEN}:" "${upload_base}/.file" \
-        -H "Destination: ${dest_url}" \
-        -H "Overwrite: T")"
-    if [[ "$status" != "201" && "$status" != "204" ]]; then
-        echo "  [ERROR] MOVE failed: HTTP ${status}" >&2; return 1
-    fi
+    # 3. Assemble — retry up to 5 times (Cloudflare 524 timeout on large files).
+    local move_attempt=0
+    while true; do
+        status="$(curl -s -o /dev/null -w "%{http_code}" -X MOVE \
+            -u "${TOKEN}:" "${upload_base}/.file" \
+            -H "Destination: ${dest_url}" \
+            -H "Overwrite: T")"
+        if [[ "$status" == "201" || "$status" == "204" ]]; then
+            break
+        fi
+        move_attempt=$(( move_attempt + 1 ))
+        if (( move_attempt >= 5 )); then
+            echo "  [ERROR] MOVE failed after ${move_attempt} attempts: HTTP ${status}" >&2
+            return 1
+        fi
+        echo "  [RETRY] MOVE HTTP ${status}, attempt ${move_attempt}/5 ..."
+        sleep 5
+    done
     echo "  OK: ${filename}"
 }
 
@@ -225,9 +235,9 @@ upload_samples() {
 }
 
 upload_results() {
-    # ML3 train/test subdirs.
-    upload_dir_batches "${BIGDATA}/results/train" "${NC_PREFIX}/results/train" "ss_results_train" 200
-    upload_dir_batches "${BIGDATA}/results/test"  "${NC_PREFIX}/results/test"  "ss_results_test"  200
+    # ML3 train/test subdirs — small batches (25 dirs ≈ 500 MB) to avoid Cloudflare 524.
+    upload_dir_batches "${BIGDATA}/results/train" "${NC_PREFIX}/results/train" "ss_results_train" 25
+    upload_dir_batches "${BIGDATA}/results/test"  "${NC_PREFIX}/results/test"  "ss_results_test"  25
     # Top-level ml2 result dirs (cam_* and sim_* at root of results/).
     local base="${BIGDATA}/results"
     local nc_p="${NC_PREFIX}/results"
@@ -240,7 +250,7 @@ upload_results() {
         [[ "$name" == "test" || "$name" == "train" ]] && continue
         batch_dirs+=("$name")
         count=$(( count + 1 ))
-        if (( count % 200 == 0 )); then
+        if (( count % 25 == 0 )); then
             local bname
             bname="$(printf 'batch_%03d' "$batch_idx")"
             local tarball="${HOME}/tmp/ss_results_${bname}.tar.gz"
