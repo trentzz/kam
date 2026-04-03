@@ -109,7 +109,12 @@ chunked_upload() {
         echo "  chunk ${chunk_idx} — $(numfmt --to=iec "$offset") / $(numfmt --to=iec "$file_size")"
     done
 
-    # 3. Assemble — retry up to 5 times (Cloudflare 524 timeout on large files).
+    # 3. Assemble.
+    # Clear any stale lock from a previous interrupted upload at this destination.
+    curl -s -o /dev/null -X DELETE -u "${TOKEN}:" "${dest_url}" || true
+
+    # Retry up to 8 times — Cloudflare 524 (timeout) or 423 (locked) can both
+    # occur when the server is still assembling a previous upload.
     local move_attempt=0
     while true; do
         status="$(curl -s -o /dev/null -w "%{http_code}" -X MOVE \
@@ -120,12 +125,14 @@ chunked_upload() {
             break
         fi
         move_attempt=$(( move_attempt + 1 ))
-        if (( move_attempt >= 5 )); then
+        if (( move_attempt >= 8 )); then
             echo "  [ERROR] MOVE failed after ${move_attempt} attempts: HTTP ${status}" >&2
             return 1
         fi
-        echo "  [RETRY] MOVE HTTP ${status}, attempt ${move_attempt}/5 ..."
-        sleep 5
+        echo "  [RETRY] MOVE HTTP ${status}, attempt ${move_attempt}/8 — waiting 30s ..."
+        sleep 30
+        # Re-attempt DELETE on each retry in case the lock persists.
+        curl -s -o /dev/null -X DELETE -u "${TOKEN}:" "${dest_url}" || true
     done
     echo "  OK: ${filename}"
 }
