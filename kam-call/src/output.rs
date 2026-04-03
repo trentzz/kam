@@ -445,7 +445,10 @@ fn write_delimited(calls: &[VariantCall], sep: char, writer: &mut dyn Write) -> 
         writer,
         "target_id{s}variant_type{s}ref_seq{s}alt_seq{s}vaf{s}vaf_ci_low{s}vaf_ci_high{s}\
          n_molecules_ref{s}n_molecules_alt{s}n_duplex_alt{s}n_simplex_alt{s}\
-         strand_bias_p{s}confidence{s}filter{s}ml_prob{s}ml_filter"
+         strand_bias_p{s}confidence{s}filter{s}\
+         n_simplex_fwd_alt{s}n_simplex_rev_alt{s}n_duplex_ref{s}n_simplex_ref{s}\
+         mean_alt_error_prob{s}min_variant_specific_duplex{s}mean_variant_specific_molecules{s}\
+         ml_prob{s}ml_filter"
     )?;
     for call in calls {
         let ml_prob_str = match call.ml_prob {
@@ -459,7 +462,7 @@ fn write_delimited(calls: &[VariantCall], sep: char, writer: &mut dyn Write) -> 
         };
         writeln!(
             writer,
-            "{}{s}{}{s}{}{s}{}{s}{:.6}{s}{:.6}{s}{:.6}{s}{}{s}{}{s}{}{s}{}{s}{:.6}{s}{:.6}{s}{}{s}{}{s}{}",
+            "{}{s}{}{s}{}{s}{}{s}{:.6}{s}{:.6}{s}{:.6}{s}{}{s}{}{s}{}{s}{}{s}{:.6}{s}{:.6}{s}{}{s}{}{s}{}{s}{}{s}{}{s}{:.6}{s}{}{s}{:.4}{s}{}{s}{}",
             call.target_id,
             variant_type_to_str(call.variant_type),
             bytes_to_str(&call.ref_sequence),
@@ -474,6 +477,13 @@ fn write_delimited(calls: &[VariantCall], sep: char, writer: &mut dyn Write) -> 
             call.strand_bias_p,
             call.confidence,
             filter_to_str(call.filter),
+            call.n_simplex_fwd_alt,
+            call.n_simplex_rev_alt,
+            call.n_duplex_ref,
+            call.n_simplex_ref,
+            call.mean_alt_error_prob,
+            call.min_variant_specific_duplex,
+            call.mean_variant_specific_molecules,
             ml_prob_str,
             ml_filter_str,
         )?;
@@ -503,6 +513,13 @@ fn call_to_json(call: &VariantCall) -> Value {
         "strand_bias_p": call.strand_bias_p,
         "confidence": call.confidence,
         "filter": filter_to_str(call.filter),
+        "n_simplex_fwd_alt": call.n_simplex_fwd_alt,
+        "n_simplex_rev_alt": call.n_simplex_rev_alt,
+        "n_duplex_ref": call.n_duplex_ref,
+        "n_simplex_ref": call.n_simplex_ref,
+        "mean_alt_error_prob": call.mean_alt_error_prob,
+        "min_variant_specific_duplex": call.min_variant_specific_duplex,
+        "mean_variant_specific_molecules": call.mean_variant_specific_molecules,
         "ml_prob": call.ml_prob,
         "ml_filter": ml_filter,
     })
@@ -561,6 +578,13 @@ mod tests {
             n_molecules_alt: 10,
             n_duplex_alt: 5,
             n_simplex_alt: 5,
+            n_simplex_fwd_alt: 3,
+            n_simplex_rev_alt: 2,
+            n_duplex_ref: 100,
+            n_simplex_ref: 890,
+            mean_alt_error_prob: 0.001,
+            min_variant_specific_duplex: 4,
+            mean_variant_specific_molecules: 9.5,
             confidence: 0.999,
             strand_bias_p: 0.8,
             filter: VariantFilter::Pass,
