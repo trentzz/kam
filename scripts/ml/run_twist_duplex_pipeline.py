@@ -376,6 +376,88 @@ def save_checkpoint(completed: set[str]) -> None:
 
 # ─── Nextcloud upload ─────────────────────────────────────────────────────────
 
+# Cloudflare proxies nextcloudlocal.trentz.me with a ~100MB request size limit.
+# Use Nextcloud's TUS-style chunked upload protocol to handle large tarballs:
+#   1. MKCOL  /dav/uploads/{token}/{uuid}/
+#   2. PUT    /dav/uploads/{token}/{uuid}/{offset}   (one per chunk)
+#   3. MOVE   /dav/uploads/{token}/{uuid}/.file  →  final destination
+CHUNK_SIZE = 90 * 1024 * 1024  # 90 MB per chunk (safely under Cloudflare limit)
+NEXTCLOUD_UPLOADS_URL = "https://nextcloudlocal.trentz.me/public.php/dav/uploads"
+
+
+def _curl_check(result: subprocess.CompletedProcess, label: str) -> int:
+    """Return HTTP status from a curl run with -w HTTP_STATUS:... or raise on error."""
+    if result.returncode != 0:
+        raise RuntimeError(f"{label}: curl error: {result.stderr.strip()}")
+    for line in result.stdout.splitlines():
+        if line.startswith("HTTP_STATUS:"):
+            code = int(line.split(":")[1])
+            if code not in (200, 201, 204):
+                raise RuntimeError(
+                    f"{label}: HTTP {code}: {result.stdout[:300]}"
+                )
+            return code
+    raise RuntimeError(f"{label}: no HTTP_STATUS in curl output")
+
+
+def _chunked_upload(tarball: Path, nc_dest_path: str) -> None:
+    """Upload tarball to Nextcloud using chunked protocol.
+
+    Args:
+        tarball: Local path to the tarball.
+        nc_dest_path: Path relative to the share root, e.g.
+            'benchmarking/ml-twist-duplex/train/batch_000.tar.gz'.
+    """
+    uuid = f"ml-twist-{os.getpid()}-{int(time.time())}"
+    upload_base = f"{NEXTCLOUD_UPLOADS_URL}/{NEXTCLOUD_TOKEN}/{uuid}"
+    dest_url = f"{NEXTCLOUD_URL}/{nc_dest_path}"
+
+    # 1. Create upload slot.
+    r = subprocess.run(
+        ["curl", "-s", "-X", "MKCOL", "-u", f"{NEXTCLOUD_TOKEN}:",
+         f"{upload_base}/", "-w", "\nHTTP_STATUS:%{http_code}"],
+        capture_output=True, text=True,
+    )
+    _curl_check(r, "MKCOL upload slot")
+
+    # 2. Upload chunks.
+    file_size = tarball.stat().st_size
+    offset = 0
+    chunk_idx = 0
+    with tarball.open("rb") as fh:
+        while True:
+            chunk = fh.read(CHUNK_SIZE)
+            if not chunk:
+                break
+            chunk_path = Path(f"/tmp/ml_chunk_{uuid}_{chunk_idx}")
+            chunk_path.write_bytes(chunk)
+            try:
+                r = subprocess.run(
+                    ["curl", "-s", "-T", str(chunk_path),
+                     "-u", f"{NEXTCLOUD_TOKEN}:",
+                     f"{upload_base}/{offset}",
+                     "-w", "\nHTTP_STATUS:%{http_code}"],
+                    capture_output=True, text=True,
+                )
+                _curl_check(r, f"PUT chunk {chunk_idx} (offset {offset})")
+            finally:
+                chunk_path.unlink(missing_ok=True)
+            offset += len(chunk)
+            chunk_idx += 1
+            log.info("  chunk %d uploaded (%d / %d bytes)", chunk_idx, offset, file_size)
+
+    # 3. Assemble: MOVE .file to final destination.
+    r = subprocess.run(
+        ["curl", "-s", "-X", "MOVE", "-u", f"{NEXTCLOUD_TOKEN}:",
+         f"{upload_base}/.file",
+         "-H", f"Destination: {dest_url}",
+         "-H", "Overwrite: T",
+         "-w", "\nHTTP_STATUS:%{http_code}"],
+        capture_output=True, text=True,
+    )
+    _curl_check(r, "MOVE assemble")
+
+
 def upload_batch(
     split: str,
     batch_idx: int,
@@ -383,6 +465,8 @@ def upload_batch(
     dry_run: bool = False,
 ) -> None:
     """Tar and upload a batch of sample directories to Nextcloud.
+
+    Uses chunked upload to bypass Cloudflare's ~100MB request size limit.
 
     Args:
         split: 'train' or 'test'.
@@ -402,29 +486,20 @@ def upload_batch(
                 tf.add(d, arcname=sname)
 
     size_mb = tarball.stat().st_size / 1_048_576
-    log.info("Tarball %.1f MB — uploading...", size_mb)
+    log.info("Tarball %.1f MB — uploading (chunked)...", size_mb)
 
     if dry_run:
         log.info("[DRY RUN] Would upload to %s/%s", NEXTCLOUD_URL, nc_path)
         tarball.unlink(missing_ok=True)
         return
 
-    result = subprocess.run(
-        [
-            "curl", "-T", str(tarball),
-            f"{NEXTCLOUD_URL}/{nc_path}",
-            "-u", f"{NEXTCLOUD_TOKEN}:",
-            "--silent", "--show-error",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    tarball.unlink(missing_ok=True)
-
-    if result.returncode != 0:
-        log.error("Upload failed for batch %d: %s", batch_idx, result.stderr)
-    else:
+    try:
+        _chunked_upload(tarball, nc_path)
         log.info("Batch %d uploaded.", batch_idx)
+    except RuntimeError as exc:
+        log.error("Upload failed for batch %d: %s", batch_idx, exc)
+    finally:
+        tarball.unlink(missing_ok=True)
 
 
 # ─── Split processing ─────────────────────────────────────────────────────────
