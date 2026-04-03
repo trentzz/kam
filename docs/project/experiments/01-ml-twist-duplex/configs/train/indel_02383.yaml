@@ -1,0 +1,44 @@
+# varforge config: indel_02383  — VAF 1.9865%  type=indel
+reference: docs/benchmarking/snvindel/data/ref.fa
+
+output:
+  directory: docs/benchmarking/ml-twist-duplex/simulations/train/indel_02383
+  fastq: true
+  bam: false
+  truth_vcf: true
+  manifest: true
+
+sample:
+  name: indel_02383
+  read_length: 150
+  coverage: 5850.0
+  platform: illumina
+
+fragment:
+  model: normal
+  mean: 198.0
+  sd: 43.9
+
+quality:
+  mean_quality: 33
+  tail_decay: 0.002
+
+tumour:
+  purity: 0.039730
+  ploidy: 2
+
+mutations:
+  vcf: docs/benchmarking/snvindel/data/truth_indels_vaf0175_b.vcf
+
+umi:
+  length: 5
+  duplex: true
+  pcr_cycles: 13
+  family_size_mean: 4.70
+  family_size_sd: 1.0
+  inline: true
+
+chromosomes:
+  - chr1
+
+seed: 62151778

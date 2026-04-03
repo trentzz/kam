@@ -6,11 +6,11 @@ existing truth VCF pools. Each sample gets a unique YAML config with randomised
 simulation parameters.
 
 VCF pools used:
-  docs/benchmarking/snvindel/data/truth_snvs_vaf*.vcf      (54 files)
-  docs/benchmarking/snvindel/data/truth_indels_vaf*.vcf    (54 files)
-  docs/benchmarking/sv/data/truth_svs_vaf*.vcf             (55 files)
-  docs/benchmarking/sv/data/truth_ins_vaf*.vcf             (54 files)
-  docs/benchmarking/sv/data/truth_invdel_vaf*.vcf          (54 files)
+  docs/benchmarking/01-snvindel/data/truth_snvs_vaf*.vcf      (54 files)
+  docs/benchmarking/01-snvindel/data/truth_indels_vaf*.vcf    (54 files)
+  docs/benchmarking/02-sv-core/data/truth_svs_vaf*.vcf        (55 files)
+  docs/benchmarking/02-sv-core/data/truth_ins_vaf*.vcf        (54 files)
+  docs/benchmarking/02-sv-core/data/truth_invdel_vaf*.vcf     (54 files)
 
 Sample counts:
   snv:       3,500 train + 350 test
@@ -39,27 +39,27 @@ REPO = Path(__file__).resolve().parent.parent.parent
 
 # ─── Output paths ─────────────────────────────────────────────────────────────
 
-ML_DIR = REPO / "docs" / "benchmarking" / "ml-twist-duplex"
+# Tracked configs and manifest live in docs/.
+ML_DIR = REPO / "docs" / "project" / "experiments" / "01-ml-twist-duplex"
 CONFIGS_DIR = ML_DIR / "configs"
-SIMS_DIR = ML_DIR / "simulations"
 MANIFEST_PATH = ML_DIR / "manifest.json"
 
 # ─── Reference files (relative to REPO, as used in YAML) ─────────────────────
 
-SNVINDEL_REF = "docs/benchmarking/snvindel/data/ref.fa"
-SV_REF = "docs/benchmarking/sv/data/ref.fa"
+SNVINDEL_REF = "docs/benchmarking/01-snvindel/data/ref.fa"
+SV_REF = "docs/benchmarking/02-sv-core/data/ref.fa"
 
 # ─── VCF pool directories ─────────────────────────────────────────────────────
 
-SNVINDEL_DATA = REPO / "docs" / "benchmarking" / "snvindel" / "data"
-SV_DATA = REPO / "docs" / "benchmarking" / "sv" / "data"
+SNVINDEL_DATA = REPO / "docs" / "benchmarking" / "01-snvindel" / "data"
+SV_DATA = REPO / "docs" / "benchmarking" / "02-sv-core" / "data"
 
 # ─── Targets FASTA (relative to REPO, stored in manifest) ────────────────────
 
-SNVINDEL_TARGETS = "docs/benchmarking/snvindel/data/snvindel_targets.fa"
-SV_SUITE_TARGETS = "docs/benchmarking/sv/data/sv_suite_targets.fa"
-INS_TARGETS = "docs/benchmarking/sv/data/ins_targets.fa"
-INVDEL_TARGETS = "docs/benchmarking/sv/data/invdel_targets.fa"
+SNVINDEL_TARGETS = "docs/benchmarking/01-snvindel/data/snvindel_targets.fa"
+SV_SUITE_TARGETS = "docs/benchmarking/02-sv-core/data/sv_suite_targets.fa"
+INS_TARGETS = "docs/benchmarking/02-sv-core/data/ins_targets.fa"
+INVDEL_TARGETS = "docs/benchmarking/02-sv-core/data/invdel_targets.fa"
 
 # ─── Dataset spec ─────────────────────────────────────────────────────────────
 
@@ -166,8 +166,9 @@ def build_yaml(
         YAML string ready to write to disk.
     """
     vaf_pct = params["vaf"] * 100.0
+    # Large simulation outputs go to bigdata/ (gitignored, mirrors Nextcloud).
     sim_dir = (
-        f"docs/benchmarking/ml-twist-duplex/simulations/{split}/{sample_name}"
+        f"bigdata/experiments/01-ml-twist-duplex/simulations/{split}/{sample_name}"
     )
 
     lines = [
@@ -368,7 +369,7 @@ def main() -> None:
                     "reference": reference,
                     "targets": targets,
                     "sim_dir": (
-                        f"docs/benchmarking/ml-twist-duplex/simulations/"
+                        f"bigdata/experiments/01-ml-twist-duplex/simulations/"
                         f"{split}/{name}"
                     ),
                 })

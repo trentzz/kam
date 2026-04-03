@@ -13,12 +13,32 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-ML_DIR="${REPO}/docs/benchmarking/ml-twist-duplex"
-SIM_DIR="${ML_DIR}/simulations"
-MODELS_DIR="${ML_DIR}/models"
 
-NEXTCLOUD_URL="https://nextcloudlocal.trentz.me/public.php/dav/files/pTizAiSAJQsPcDo"
-NEXTCLOUD_TOKEN="pTizAiSAJQsPcDo"
+# Tracked config and metadata live in docs/.
+ML_DIR="${REPO}/docs/project/experiments/01-ml-twist-duplex"
+
+# Large simulation outputs live in bigdata/ (gitignored, mirrors Nextcloud).
+SIM_DIR="${REPO}/bigdata/experiments/01-ml-twist-duplex/simulations"
+MODELS_DIR="${REPO}/bigdata/experiments/01-ml-twist-duplex/models"
+
+# Load edit token from .env if present.
+if [[ -f "${REPO}/.env" ]]; then
+    # shellcheck source=/dev/null
+    set -a
+    source "${REPO}/.env"
+    set +a
+fi
+
+if [[ -z "${NEXTCLOUD_EDIT_TOKEN:-}" ]]; then
+    echo "[ERROR] NEXTCLOUD_EDIT_TOKEN is not set." >&2
+    echo "        Copy .env.example to .env and fill in the token." >&2
+    exit 1
+fi
+
+NEXTCLOUD_TOKEN="${NEXTCLOUD_EDIT_TOKEN}"
+NEXTCLOUD_URL="https://nextcloudlocal.trentz.me/public.php/dav/files/${NEXTCLOUD_EDIT_TOKEN}"
+
+mkdir -p ~/tmp
 
 SCOPE="${1:-all}"
 
@@ -59,11 +79,11 @@ upload_split_batches() {
         if (( count % 500 == 0 )); then
             local batch_name
             batch_name="$(printf 'batch_%03d' "$batch_idx")"
-            local tarball="/tmp/ml_twist_${split}_${batch_name}.tar.gz"
+            local tarball="${HOME}/tmp/ml_twist_${split}_${batch_name}.tar.gz"
 
             echo "[TAR] ${split}/${batch_name} (${#batch_dirs[@]} dirs)"
             tar -czf "${tarball}" -C "${split_dir}" "${batch_dirs[@]}"
-            upload_file "${tarball}" "benchmarking/ml-twist-duplex/${split}/${batch_name}.tar.gz"
+            upload_file "${tarball}" "experiments/01-ml-twist-duplex/${split}/${batch_name}.tar.gz"
             rm -f "${tarball}"
 
             batch_dirs=()
@@ -75,11 +95,11 @@ upload_split_batches() {
     if (( ${#batch_dirs[@]} > 0 )); then
         local batch_name
         batch_name="$(printf 'batch_%03d' "$batch_idx")"
-        local tarball="/tmp/ml_twist_${split}_${batch_name}.tar.gz"
+        local tarball="${HOME}/tmp/ml_twist_${split}_${batch_name}.tar.gz"
 
         echo "[TAR] ${split}/${batch_name} (${#batch_dirs[@]} dirs)"
         tar -czf "${tarball}" -C "${split_dir}" "${batch_dirs[@]}"
-        upload_file "${tarball}" "benchmarking/ml-twist-duplex/${split}/${batch_name}.tar.gz"
+        upload_file "${tarball}" "experiments/01-ml-twist-duplex/${split}/${batch_name}.tar.gz"
         rm -f "${tarball}"
     fi
 }
@@ -92,7 +112,7 @@ upload_models() {
     for ext in txt json pkl onnx; do
         for f in "${MODELS_DIR}"/*.${ext}; do
             [[ -f "$f" ]] || continue
-            upload_file "$f" "benchmarking/ml-twist-duplex/models/$(basename "$f")"
+            upload_file "$f" "experiments/01-ml-twist-duplex/models/$(basename "$f")"
         done
     done
 }
@@ -100,7 +120,7 @@ upload_models() {
 upload_features() {
     for csv in "${ML_DIR}"/*_features.csv.gz; do
         [[ -f "$csv" ]] || continue
-        upload_file "$csv" "benchmarking/ml-twist-duplex/$(basename "$csv")"
+        upload_file "$csv" "experiments/01-ml-twist-duplex/$(basename "$csv")"
     done
 }
 

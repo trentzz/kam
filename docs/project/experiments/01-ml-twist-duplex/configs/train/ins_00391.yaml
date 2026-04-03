@@ -1,0 +1,44 @@
+# varforge config: ins_00391  — VAF 0.1282%  type=ins
+reference: docs/benchmarking/sv/data/ref.fa
+
+output:
+  directory: docs/benchmarking/ml-twist-duplex/simulations/train/ins_00391
+  fastq: true
+  bam: false
+  truth_vcf: true
+  manifest: true
+
+sample:
+  name: ins_00391
+  read_length: 150
+  coverage: 14388.0
+  platform: illumina
+
+fragment:
+  model: normal
+  mean: 132.8
+  sd: 42.6
+
+quality:
+  mean_quality: 35
+  tail_decay: 0.002
+
+tumour:
+  purity: 0.002564
+  ploidy: 2
+
+mutations:
+  vcf: docs/benchmarking/sv/data/truth_ins_vaf1000_b.vcf
+
+umi:
+  length: 5
+  duplex: true
+  pcr_cycles: 14
+  family_size_mean: 2.05
+  family_size_sd: 1.0
+  inline: true
+
+chromosomes:
+  - chr1
+
+seed: 91651912

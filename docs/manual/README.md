@@ -44,8 +44,8 @@ kam run --config config.toml
 ```
 
 Config files keep all settings in one place and are recommended for reproducible runs. See
-`examples/twist-umi-duplex.toml` for the Twist UMI duplex preset and
-`examples/simplex-umi-12bp.toml` for a simplex 12 bp UMI protocol.
+`docs/examples/twist-umi-duplex.toml` for the Twist UMI duplex preset and
+`docs/examples/simplex-umi-12bp.toml` for a simplex 12 bp UMI protocol.
 
 ---
 
@@ -54,18 +54,18 @@ Config files keep all settings in one place and are recommended for reproducible
 ### Getting Started
 
 - [Configuration](configuration.md) — full config.toml reference
-- [CLI reference](modules/overview.md#targeted-vs-discovery-mode) — quick orientation
+- [CLI reference](06_cli.md) — full CLI reference
 
 ### Pipeline Modules
 
 Each stage of the pipeline is described in detail:
 
-- [Overview](modules/overview.md) — pipeline architecture, variant types, discovery vs monitoring
-- [Assemble](modules/assemble.md) — read parsing, UMI grouping, consensus calling
-- [Index](modules/index.md) — k-mer extraction, molecule evidence index, SV junction k-mers
-- [Pathfind](modules/pathfind.md) — de Bruijn graph, DFS walk, SV fallback paths
-- [Call](modules/call.md) — VAF estimation, strand bias, filters, fusion calling
-- [Output](modules/output.md) — TSV/CSV/JSON/VCF formats, QC JSON schemas, fusion BND
+- [Overview](00_overview.md) — pipeline architecture, variant types, discovery vs monitoring
+- [Assemble](01_assemble.md) — read parsing, UMI grouping, consensus calling
+- [Index](02_index.md) — k-mer extraction, molecule evidence index, SV junction k-mers
+- [Pathfind](03_pathfind.md) — de Bruijn graph, DFS walk, SV fallback paths
+- [Call](04_call.md) — VAF estimation, strand bias, filters, fusion calling
+- [Output formats](05_outputs.md) — TSV/CSV/JSON/VCF formats, QC JSON schemas
 
 ### Reference
 

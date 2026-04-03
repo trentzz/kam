@@ -1,25 +1,5 @@
 target/
+.env
 
-# Benchmarking: varforge FASTQ simulation outputs (large, reproducible).
-# The samples/ directories with per-sample TSV results ARE committed.
-# Nextcloud-hosted — see https://nextcloudlocal.trentz.me/s/pTizAiSAJQsPcDo
-docs/benchmarking/sv/results/sim_*/
-docs/benchmarking/sv/results/kam_*/
-docs/benchmarking/sv_new/results/
-docs/benchmarking/snvindel/results/
-docs/benchmarking/snvindel/per_sample/*.tsv
-docs/benchmarking/ml/training_data*.csv
-docs/benchmarking/ml/results/sim_*/
-docs/benchmarking/ml/results/kam_*/
-docs/paper/pdfs/*.pdf
-
-# Twist duplex ML dataset: large simulation outputs, feature CSVs, trained models.
-# Nextcloud-hosted — see benchmarking/ml-twist-duplex/ in Nextcloud.
-docs/benchmarking/ml-twist-duplex/simulations/
-docs/benchmarking/ml-twist-duplex/train_features.csv.gz
-docs/benchmarking/ml-twist-duplex/test_features.csv.gz
-docs/benchmarking/ml-twist-duplex/checkpoint.json
-docs/benchmarking/ml-twist-duplex/models/*.txt
-docs/benchmarking/ml-twist-duplex/models/*.json
-docs/benchmarking/ml-twist-duplex/models/*.pkl
-docs/benchmarking/ml-twist-duplex/models/*.onnx
+# Large generated files — see bigdata/
+bigdata/

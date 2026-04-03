@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Extract features from Twist duplex ML pipeline outputs.
 
-Reads per-sample directories under docs/benchmarking/ml-twist-duplex/simulations/,
+Reads per-sample directories under bigdata/experiments/01-ml-twist-duplex/simulations/,
 loads the calls_discovery.tsv and calls_tumour_informed.tsv outputs from kam, labels each
 row against the truth VCF, and builds a rich feature set (~55 features) that
 exploits the 7 new columns added to the kam TSV output.
 
 Outputs:
-  docs/benchmarking/ml-twist-duplex/train_features.csv.gz
-  docs/benchmarking/ml-twist-duplex/test_features.csv.gz
+  bigdata/experiments/01-ml-twist-duplex/train_features.csv.gz
+  bigdata/experiments/01-ml-twist-duplex/test_features.csv.gz
 
 Usage:
     python3 scripts/ml/build_twist_duplex_features.py [--mode discovery|tumour_informed|both]
@@ -29,9 +29,14 @@ import pandas as pd
 
 REPO = Path(__file__).resolve().parent.parent.parent
 
-ML_DIR = REPO / "docs" / "benchmarking" / "ml-twist-duplex"
-SIM_DIR = ML_DIR / "simulations"
+# Tracked config and metadata live in docs/.
+ML_DIR = REPO / "docs" / "project" / "experiments" / "01-ml-twist-duplex"
 MANIFEST_PATH = ML_DIR / "manifest.json"
+TRUTH_VCF_DIR = ML_DIR / "truth_vcfs"
+
+# Large simulation outputs and feature CSVs live in bigdata/ (gitignored).
+BIGDATA_DIR = REPO / "bigdata" / "experiments" / "01-ml-twist-duplex"
+SIM_DIR = BIGDATA_DIR / "simulations"
 
 # ─── Column definitions ────────────────────────────────────────────────────────
 
@@ -365,7 +370,7 @@ def process_sample(
         return pd.DataFrame()
 
     # Find truth VCF: prefer the pre-generated one, fall back to sim output
-    truth_vcf = ML_DIR / "truth_vcfs" / f"{name}.vcf"
+    truth_vcf = TRUTH_VCF_DIR / f"{name}.vcf"
     if not truth_vcf.exists():
         vcf_candidates = sorted(sample_dir.glob("*.truth.vcf"))
         if vcf_candidates:
@@ -461,7 +466,7 @@ def main() -> None:
             continue
 
         combined = pd.concat(all_rows, ignore_index=True)
-        out_path = ML_DIR / f"{split}_features.csv.gz"
+        out_path = BIGDATA_DIR / f"{split}_features.csv.gz"
         combined.to_csv(out_path, index=False, compression="gzip")
 
         n_pos = (combined["label"] == 1).sum()

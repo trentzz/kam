@@ -169,11 +169,11 @@ cargo fmt -- --check
 
 ## Large Files
 
-Benchmark data, simulation outputs, and compiled PDFs are stored in Nextcloud
-rather than git. See [docs/NEXTCLOUD.md](docs/NEXTCLOUD.md) for the folder
-manifest and download instructions.
+Benchmark data, simulation outputs, and compiled PDFs are stored in Nextcloud and mirrored locally in `bigdata/`. See [NEXTCLOUD.md](NEXTCLOUD.md) for a quick reference, or [docs/project/devmanual/nextcloud.md](docs/project/devmanual/nextcloud.md) for full documentation.
 
-**Access**: https://nextcloudlocal.trentz.me/s/pTizAiSAJQsPcDo
+**Public read-only share**: https://nextcloudlocal.trentz.me/s/pTizAiSAJQsPcDo
+
+Uploads require a separate edit share token. See `.env.example` and `NEXTCLOUD.md`.
 
 ---
 

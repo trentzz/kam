@@ -5,19 +5,19 @@ Optimises for AUPRC using Optuna HPO (200 trials each).
 Outputs calibrated ensemble + ONNX export.
 
 Inputs:
-  docs/benchmarking/ml-twist-duplex/train_features.csv.gz
-  docs/benchmarking/ml-twist-duplex/test_features.csv.gz
+  bigdata/experiments/01-ml-twist-duplex/train_features.csv.gz
+  bigdata/experiments/01-ml-twist-duplex/test_features.csv.gz
 
 Outputs:
-  docs/benchmarking/ml-twist-duplex/models/lightgbm_twist.txt
-  docs/benchmarking/ml-twist-duplex/models/xgboost_twist.json
-  docs/benchmarking/ml-twist-duplex/models/ensemble_twist.pkl
-  docs/benchmarking/ml-twist-duplex/results/cv_results.csv
-  docs/benchmarking/ml-twist-duplex/results/test_results.json
-  docs/benchmarking/ml-twist-duplex/results/feature_importance_lgb.csv
-  docs/benchmarking/ml-twist-duplex/results/feature_importance_xgb.csv
-  docs/benchmarking/ml-twist-duplex/results/figures/  (plots)
-  docs/benchmarking/ml-twist-duplex/models/xgboost_twist.onnx  (if skl2onnx available)
+  bigdata/experiments/01-ml-twist-duplex/models/lightgbm_twist.txt
+  bigdata/experiments/01-ml-twist-duplex/models/xgboost_twist.json
+  bigdata/experiments/01-ml-twist-duplex/models/ensemble_twist.pkl
+  docs/project/experiments/01-ml-twist-duplex/results/cv_results.csv
+  docs/project/experiments/01-ml-twist-duplex/results/test_results.json
+  docs/project/experiments/01-ml-twist-duplex/results/feature_importance_lgb.csv
+  docs/project/experiments/01-ml-twist-duplex/results/feature_importance_xgb.csv
+  docs/project/experiments/01-ml-twist-duplex/results/figures/  (plots)
+  bigdata/experiments/01-ml-twist-duplex/models/xgboost_twist.onnx  (if skl2onnx available)
 
 Usage:
     python3 scripts/ml/train_twist_duplex.py [--hpo-trials N] [--no-onnx]
@@ -56,12 +56,17 @@ warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 REPO = Path(__file__).resolve().parent.parent.parent
-ML_DIR = REPO / "docs" / "benchmarking" / "ml-twist-duplex"
-TRAIN_PATH = ML_DIR / "train_features.csv.gz"
-TEST_PATH = ML_DIR / "test_features.csv.gz"
+
+# Tracked metadata and small results live in docs/.
+ML_DIR = REPO / "docs" / "project" / "experiments" / "01-ml-twist-duplex"
 RESULTS_DIR = ML_DIR / "results"
 FIGURES_DIR = RESULTS_DIR / "figures"
-MODELS_DIR = ML_DIR / "models"
+
+# Large feature CSVs and trained models live in bigdata/ (gitignored).
+BIGDATA_DIR = REPO / "bigdata" / "experiments" / "01-ml-twist-duplex"
+TRAIN_PATH = BIGDATA_DIR / "train_features.csv.gz"
+TEST_PATH = BIGDATA_DIR / "test_features.csv.gz"
+MODELS_DIR = BIGDATA_DIR / "models"
 
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 FIGURES_DIR.mkdir(parents=True, exist_ok=True)

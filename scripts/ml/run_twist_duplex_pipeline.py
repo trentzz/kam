@@ -44,26 +44,60 @@ from pathlib import Path
 # ─── Paths ────────────────────────────────────────────────────────────────────
 
 REPO = Path(__file__).resolve().parent.parent.parent
-ML_DIR = REPO / "docs" / "benchmarking" / "ml-twist-duplex"
+
+# Tracked config and metadata live in docs/.
+ML_DIR = REPO / "docs" / "project" / "experiments" / "01-ml-twist-duplex"
 MANIFEST = ML_DIR / "manifest.json"
 CHECKPOINT = ML_DIR / "checkpoint.json"
-SIM_DIR = ML_DIR / "simulations"
+
+# Large simulation outputs live in bigdata/ (gitignored, mirrors Nextcloud).
+SIM_DIR = REPO / "bigdata" / "experiments" / "01-ml-twist-duplex" / "simulations"
+
 KAM = REPO / "target" / "release" / "kam"
 
 # ─── Targets FAs ─────────────────────────────────────────────────────────────
 
-SNVINDEL_TARGETS = REPO / "docs/benchmarking/snvindel/data/snvindel_targets.fa"
-SV_TARGETS = REPO / "docs/benchmarking/sv/data/sv_suite_targets.fa"
-INS_TARGETS = REPO / "docs/benchmarking/sv/data/ins_targets.fa"
-INVDEL_TARGETS = REPO / "docs/benchmarking/sv/data/invdel_targets.fa"
+SNVINDEL_TARGETS = REPO / "docs/benchmarking/01-snvindel/data/snvindel_targets.fa"
+SV_TARGETS = REPO / "docs/benchmarking/02-sv-core/data/sv_suite_targets.fa"
+INS_TARGETS = REPO / "docs/benchmarking/02-sv-core/data/ins_targets.fa"
+INVDEL_TARGETS = REPO / "docs/benchmarking/02-sv-core/data/invdel_targets.fa"
 
 # SV types needing position tolerance for tumour-informed matching.
 SV_TYPES = {"sv_dupinv", "ins", "invdel"}
 
-# ─── Nextcloud ────────────────────────────────────────────────────────────────
+# ─── Nextcloud token ─────────────────────────────────────────────────────────
+#
+# The edit share token is stored in .env at the repo root. We parse it manually
+# to avoid adding python-dotenv as a dependency.
 
-NEXTCLOUD_URL = "https://nextcloudlocal.trentz.me/public.php/dav/files/pTizAiSAJQsPcDo"
-NEXTCLOUD_TOKEN = "pTizAiSAJQsPcDo"
+def _load_edit_token() -> str:
+    """Read NEXTCLOUD_EDIT_TOKEN from .env, falling back to os.environ.
+
+    Returns:
+        The token string (may be empty if not configured).
+    """
+    env_file = REPO / ".env"
+    token = os.environ.get("NEXTCLOUD_EDIT_TOKEN", "")
+    if env_file.exists():
+        for raw_line in env_file.read_text().splitlines():
+            line = raw_line.strip()
+            # Skip comments and blank lines.
+            if not line or line.startswith("#"):
+                continue
+            # Strip inline comments.
+            if "#" in line:
+                line = line[:line.index("#")].strip()
+            if "=" in line:
+                key, _, value = line.partition("=")
+                if key.strip() == "NEXTCLOUD_EDIT_TOKEN":
+                    token = value.strip()
+    return token
+
+
+NEXTCLOUD_TOKEN = _load_edit_token()
+NEXTCLOUD_URL = f"https://nextcloudlocal.trentz.me/public.php/dav/files/{NEXTCLOUD_TOKEN}"
+
+# ─── Nextcloud ────────────────────────────────────────────────────────────────
 
 # ─── Parallelism ─────────────────────────────────────────────────────────────
 
@@ -429,7 +463,7 @@ def _chunked_upload(tarball: Path, nc_dest_path: str) -> None:
             chunk = fh.read(CHUNK_SIZE)
             if not chunk:
                 break
-            chunk_path = Path(f"/tmp/ml_chunk_{uuid}_{chunk_idx}")
+            chunk_path = Path.home() / "tmp" / f"ml_chunk_{uuid}_{chunk_idx}"
             chunk_path.write_bytes(chunk)
             try:
                 r = subprocess.run(
@@ -474,9 +508,11 @@ def upload_batch(
         sample_names: Names of completed samples in this batch.
         dry_run: If True, skip actual upload.
     """
+    tmp_dir = Path.home() / "tmp"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
     split_dir = SIM_DIR / split
-    tarball = Path(f"/tmp/ml_twist_{split}_batch_{batch_idx:03d}_pid{os.getpid()}.tar.gz")
-    nc_path = f"benchmarking/ml-twist-duplex/{split}/batch_{batch_idx:03d}.tar.gz"
+    tarball = tmp_dir / f"ml_twist_{split}_batch_{batch_idx:03d}_pid{os.getpid()}.tar.gz"
+    nc_path = f"experiments/01-ml-twist-duplex/{split}/batch_{batch_idx:03d}.tar.gz"
 
     log.info("Tarballing batch %d (%d samples)...", batch_idx, len(sample_names))
     with tarfile.open(tarball, "w:gz") as tf:
@@ -492,6 +528,13 @@ def upload_batch(
         log.info("[DRY RUN] Would upload to %s/%s", NEXTCLOUD_URL, nc_path)
         tarball.unlink(missing_ok=True)
         return
+
+    if not NEXTCLOUD_TOKEN:
+        raise RuntimeError(
+            "NEXTCLOUD_EDIT_TOKEN is not set. "
+            "Copy .env.example to .env and fill in the token, "
+            "or pass --skip-upload to run without uploading."
+        )
 
     try:
         _chunked_upload(tarball, nc_path)
