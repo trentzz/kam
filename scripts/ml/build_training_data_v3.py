@@ -37,7 +37,7 @@ OUT_PATH = REPO_ROOT / "bigdata/experiments/02-ml-single-strand/training_data_v3
 
 TRUTH_KEY = ["chrom", "pos", "ref", "alt"]
 CALL_COLS = [
-    "chrom", "pos", "ref", "alt", "filter", "vaf", "vaf_lo", "vaf_hi",
+    "chrom", "variant_type", "ref", "alt", "filter", "vaf", "vaf_lo", "vaf_hi",
     "nref", "nalt", "ndupalt", "nsimalt", "sbp", "conf",
 ]
 PARAMS_COLS = [
@@ -46,6 +46,23 @@ PARAMS_COLS = [
     "params_pcr_cycles",
     "params_fragment_mean",
 ]
+
+
+def parse_ml3_chrom(chrom: str) -> tuple:
+    """Parse a kam ML3 chrom descriptor to (chromosome, start, end).
+
+    ML3 format: 'chr1:49-250_SNV_1bp' → ('chr1', 49, 250).
+    Legacy format: 'chr1' → ('chr1', None, None).
+    """
+    if ":" not in chrom:
+        return chrom, None, None
+    base, rest = chrom.split(":", 1)
+    coords = rest.split("_")[0]  # '49-250'
+    parts = coords.split("-")
+    try:
+        return base, int(parts[0]), int(parts[1])
+    except (IndexError, ValueError):
+        return base, None, None
 
 
 def load_calls(path: Path) -> pd.DataFrame:
@@ -149,7 +166,18 @@ def derive_features(df: pd.DataFrame) -> pd.DataFrame:
         "Complex": 4, "LargeDeletion": 5, "TandemDuplication": 6,
         "Inversion": 7, "Fusion": 8, "InvDel": 9, "NovelInsertion": 10,
     }
-    df["variant_class"] = df.apply(classify_variant, axis=1)
+    vt_str_map = {
+        "SNV": "SNV", "MNV": "MNV",
+        "Deletion": "Deletion", "Insertion": "Insertion",
+        "LargeDeletion": "LargeDeletion", "TandemDuplication": "TandemDuplication",
+        "Inversion": "Inversion", "InvDel": "InvDel",
+        "NovelInsertion": "NovelInsertion", "Complex": "Complex", "Fusion": "Fusion",
+    }
+
+    if "variant_type" in df.columns and df["variant_type"].notna().any():
+        df["variant_class"] = df["variant_type"].map(vt_str_map).fillna("SNV")
+    else:
+        df["variant_class"] = df.apply(classify_variant, axis=1)
     df["variant_class_enc"] = df["variant_class"].map(vt_map).fillna(0).astype(int)
 
     return df
@@ -170,18 +198,47 @@ def process_mode(
     if calls.empty:
         return pd.DataFrame()
 
-    truth_set = set(zip(
-        truth_df["chrom"].astype(str),
-        truth_df["pos"].astype(str),
-        truth_df["ref"].astype(str),
-        truth_df["alt"].astype(str),
-    ))
-    calls["label"] = calls.apply(
-        lambda r: 1
-        if (str(r["chrom"]), str(r["pos"]), str(r["ref"]), str(r["alt"])) in truth_set
-        else 0,
-        axis=1,
+    # Build truth intervals: list of (chrom_str, pos_int).
+    truth_intervals = [
+        (str(row["chrom"]), int(row["pos"]))
+        for _, row in truth_df.iterrows()
+        if not pd.isna(row.get("pos", float("nan")))
+    ]
+
+    is_invdel = params.get("variant_type", "") == "invdel"
+
+    def label_call(row: pd.Series) -> int:
+        chrom_base, start, end = parse_ml3_chrom(str(row["chrom"]))
+        if is_invdel:
+            # Sample-level label: all calls in an invdel sample are positive
+            # if the sample has truth variants.
+            return 1 if truth_intervals else 0
+        if start is not None:
+            # ML3 format: overlap-based matching.
+            for t_chrom, t_pos in truth_intervals:
+                if t_chrom == chrom_base and start <= t_pos <= end:
+                    return 1
+            return 0
+        else:
+            # Legacy format: exact match on chrom, pos, ref, alt.
+            key = (
+                str(row["chrom"]),
+                str(row.get("pos", "")),
+                str(row["ref"]),
+                str(row["alt"]),
+            )
+            return 1 if key in truth_set else 0
+
+    # Keep the legacy truth_set for the fallback branch.
+    truth_set = set(
+        zip(
+            truth_df["chrom"].astype(str),
+            truth_df["pos"].astype(str) if "pos" in truth_df.columns else [""] * len(truth_df),
+            truth_df["ref"].astype(str),
+            truth_df["alt"].astype(str),
+        )
     )
+    calls["label"] = calls.apply(label_call, axis=1)
     calls = derive_features(calls)
     calls["sample_id"]   = sample_id
     calls["dataset_type"] = dataset_type
