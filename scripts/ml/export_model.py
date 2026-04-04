@@ -19,7 +19,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TRAINING_DATA = REPO_ROOT / "bigdata" / "experiments" / "02-ml-single-strand" / "training_data_v2.csv"
 MODEL_DIR = REPO_ROOT / "bigdata" / "experiments" / "02-ml-single-strand" / "models"
-MODEL_PATH = MODEL_DIR / "lightgbm_rust.onnx"
+MODEL_PATH = MODEL_DIR / "lightgbm_v2b.onnx"
 META_PATH = MODEL_DIR / "model_meta.json"
 
 # Features computable from VariantCall at inference time (no pipeline state needed).
