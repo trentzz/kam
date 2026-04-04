@@ -19,13 +19,18 @@ kam-core = { workspace = true }
 kam-assemble = { workspace = true }
 kam-index = { workspace = true }
 kam-pathfind = { workspace = true }
-kam-call = { workspace = true, features = ["ml"] }
+kam-call = { workspace = true }
+kam-ml = { workspace = true, optional = true, features = ["ml"] }
 log = { workspace = true }
 clap = { workspace = true }
 needletail = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }
+
+[features]
+default = []
+ml = ["dep:kam-ml"]
 
 [dev-dependencies]
 tempfile = "3"

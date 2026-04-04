@@ -1,8 +1,8 @@
 # varforge config: snv_02985  — VAF 0.3589%  type=snv
-reference: docs/benchmarking/snvindel/data/ref.fa
+reference: docs/benchmarking/01-snvindel/data/ref.fa
 
 output:
-  directory: docs/benchmarking/ml-twist-duplex/simulations/train/snv_02985
+  directory: bigdata/experiments/01-ml-twist-duplex/simulations/train/snv_02985
   fastq: true
   bam: false
   truth_vcf: true
@@ -28,7 +28,7 @@ tumour:
   ploidy: 2
 
 mutations:
-  vcf: docs/benchmarking/snvindel/data/truth_snvs_vaf0125_a.vcf
+  vcf: docs/benchmarking/01-snvindel/data/truth_snvs_vaf0125_a.vcf
 
 umi:
   length: 5

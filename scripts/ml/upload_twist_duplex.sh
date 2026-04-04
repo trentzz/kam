@@ -18,8 +18,9 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ML_DIR="${REPO}/docs/project/experiments/01-ml-twist-duplex"
 
 # Large simulation outputs live in bigdata/ (gitignored, mirrors Nextcloud).
-SIM_DIR="${REPO}/bigdata/experiments/01-ml-twist-duplex/simulations"
-MODELS_DIR="${REPO}/bigdata/experiments/01-ml-twist-duplex/models"
+BIGDATA_DIR="${REPO}/bigdata/experiments/01-ml-twist-duplex"
+SIM_DIR="${BIGDATA_DIR}/simulations"
+MODELS_DIR="${BIGDATA_DIR}/models"
 
 # Load edit token from .env if present.
 if [[ -f "${REPO}/.env" ]]; then
@@ -82,7 +83,9 @@ upload_split_batches() {
             local tarball="${HOME}/tmp/ml_twist_${split}_${batch_name}.tar.gz"
 
             echo "[TAR] ${split}/${batch_name} (${#batch_dirs[@]} dirs)"
-            tar -czf "${tarball}" -C "${split_dir}" "${batch_dirs[@]}"
+            tar -czf "${tarball}" -C "${split_dir}" \
+                --exclude="*_R1.fastq.gz" --exclude="*_R2.fastq.gz" \
+                "${batch_dirs[@]}"
             upload_file "${tarball}" "experiments/01-ml-twist-duplex/${split}/${batch_name}.tar.gz"
             rm -f "${tarball}"
 
@@ -98,7 +101,9 @@ upload_split_batches() {
         local tarball="${HOME}/tmp/ml_twist_${split}_${batch_name}.tar.gz"
 
         echo "[TAR] ${split}/${batch_name} (${#batch_dirs[@]} dirs)"
-        tar -czf "${tarball}" -C "${split_dir}" "${batch_dirs[@]}"
+        tar -czf "${tarball}" -C "${split_dir}" \
+            --exclude="*_R1.fastq.gz" --exclude="*_R2.fastq.gz" \
+            "${batch_dirs[@]}"
         upload_file "${tarball}" "experiments/01-ml-twist-duplex/${split}/${batch_name}.tar.gz"
         rm -f "${tarball}"
     fi
@@ -118,10 +123,19 @@ upload_models() {
 }
 
 upload_features() {
-    for csv in "${ML_DIR}"/*_features.csv.gz; do
+    for csv in "${BIGDATA_DIR}"/*_features.csv.gz; do
         [[ -f "$csv" ]] || continue
         upload_file "$csv" "experiments/01-ml-twist-duplex/$(basename "$csv")"
     done
+}
+
+upload_configs() {
+    local tarball="${HOME}/tmp/ml_twist_configs.tar.gz"
+    echo "[TAR] configs (train + test)"
+    tar -czf "${tarball}" -C "${REPO}" \
+        docs/project/experiments/01-ml-twist-duplex/configs/
+    upload_file "${tarball}" "experiments/01-ml-twist-duplex/configs.tar.gz"
+    rm -f "${tarball}"
 }
 
 # ─── Main ────────────────────────────────────────────────────────────────────
@@ -143,14 +157,18 @@ case "${SCOPE}" in
     features)
         upload_features
         ;;
+    configs)
+        upload_configs
+        ;;
     all)
+        upload_configs
         upload_split_batches "train"
         upload_split_batches "test"
         upload_models
         upload_features
         ;;
     *)
-        echo "[ERROR] Unknown scope '${SCOPE}'. Use: train | test | models | features | all" >&2
+        echo "[ERROR] Unknown scope '${SCOPE}'. Use: train | test | models | features | configs | all" >&2
         exit 1
         ;;
 esac

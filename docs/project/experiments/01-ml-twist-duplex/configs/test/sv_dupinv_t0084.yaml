@@ -1,8 +1,8 @@
 # varforge config: sv_dupinv_t0084  — VAF 0.0254%  type=sv_dupinv
-reference: docs/benchmarking/sv/data/ref.fa
+reference: docs/benchmarking/02-sv-core/data/ref.fa
 
 output:
-  directory: docs/benchmarking/ml-twist-duplex/simulations/test/sv_dupinv_t0084
+  directory: bigdata/experiments/01-ml-twist-duplex/simulations/test/sv_dupinv_t0084
   fastq: true
   bam: false
   truth_vcf: true
@@ -28,7 +28,7 @@ tumour:
   ploidy: 2
 
 mutations:
-  vcf: docs/benchmarking/sv/data/truth_svs_vaf0075_b.vcf
+  vcf: docs/benchmarking/02-sv-core/data/truth_svs_vaf0075_b.vcf
 
 umi:
   length: 5
