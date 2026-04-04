@@ -81,9 +81,10 @@ pub fn run_call(args: CallArgs) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // ── 5b. Optional ML scoring ───────────────────────────────────────────────
+    #[cfg(feature = "ml")]
     if let Some(ref model_path) = args.ml_model {
         let meta_path = model_path.with_extension("meta.json");
-        match kam_call::ml::MlScorer::load(model_path, &meta_path) {
+        match kam_ml::MlScorer::load(model_path, &meta_path) {
             Ok(mut scorer) => {
                 for call in &mut all_calls {
                     call.ml_prob = scorer.score(call);
@@ -97,6 +98,13 @@ pub fn run_call(args: CallArgs) -> Result<(), Box<dyn std::error::Error>> {
                 eprintln!("[call] WARNING: failed to load ML model: {}", e);
             }
         }
+    }
+    #[cfg(not(feature = "ml"))]
+    if args.ml_model.is_some() {
+        eprintln!(
+            "[call] WARNING: --ml-model was passed but this binary was compiled without the \
+             'ml' feature. Recompile with --features ml to enable ML scoring."
+        );
     }
 
     // ── 5c. Apply tumour-informed filter if --target-variants provided ─────────

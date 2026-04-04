@@ -514,12 +514,23 @@ def upload_batch(
     tarball = tmp_dir / f"ml_twist_{split}_batch_{batch_idx:03d}_pid{os.getpid()}.tar.gz"
     nc_path = f"experiments/01-ml-twist-duplex/{split}/batch_{batch_idx:03d}.tar.gz"
 
-    log.info("Tarballing batch %d (%d samples)...", batch_idx, len(sample_names))
+    def _exclude_fastqs(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo | None:
+        """Filter function that strips raw FASTQ files from the tarball.
+
+        FASTQs are large (~1-5 GB per batch) and unnecessary for training;
+        the downstream pipeline only needs TSVs, VCFs, and params.json.
+        """
+        name = Path(tarinfo.name).name
+        if name.endswith(("_R1.fastq.gz", "_R2.fastq.gz")):
+            return None
+        return tarinfo
+
+    log.info("Tarballing batch %d (%d samples, no FASTQs)...", batch_idx, len(sample_names))
     with tarfile.open(tarball, "w:gz") as tf:
         for sname in sample_names:
             d = split_dir / sname
             if d.exists():
-                tf.add(d, arcname=sname)
+                tf.add(d, arcname=sname, filter=_exclude_fastqs)
 
     size_mb = tarball.stat().st_size / 1_048_576
     log.info("Tarball %.1f MB — uploading (chunked)...", size_mb)

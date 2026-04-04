@@ -1,8 +1,8 @@
 # varforge config: ins_00673  — VAF 1.0252%  type=ins
-reference: docs/benchmarking/sv/data/ref.fa
+reference: docs/benchmarking/02-sv-core/data/ref.fa
 
 output:
-  directory: docs/benchmarking/ml-twist-duplex/simulations/train/ins_00673
+  directory: bigdata/experiments/01-ml-twist-duplex/simulations/train/ins_00673
   fastq: true
   bam: false
   truth_vcf: true
@@ -28,7 +28,7 @@ tumour:
   ploidy: 2
 
 mutations:
-  vcf: docs/benchmarking/sv/data/truth_ins_vaf0035_a.vcf
+  vcf: docs/benchmarking/02-sv-core/data/truth_ins_vaf0035_a.vcf
 
 umi:
   length: 5

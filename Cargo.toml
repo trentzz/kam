@@ -5,6 +5,7 @@ members = [
     "kam-index",
     "kam-pathfind",
     "kam-call",
+    "kam-ml",
     "kam",
 ]
 resolver = "2"
@@ -36,3 +37,4 @@ kam-assemble = { path = "kam-assemble", version = "0.1.0" }
 kam-index = { path = "kam-index", version = "0.1.0" }
 kam-pathfind = { path = "kam-pathfind", version = "0.1.0" }
 kam-call = { path = "kam-call", version = "0.1.0" }
+kam-ml = { path = "kam-ml", version = "0.1.0" }

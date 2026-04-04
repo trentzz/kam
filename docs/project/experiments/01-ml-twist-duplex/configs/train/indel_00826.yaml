@@ -1,8 +1,8 @@
 # varforge config: indel_00826  — VAF 3.1365%  type=indel
-reference: docs/benchmarking/snvindel/data/ref.fa
+reference: docs/benchmarking/01-snvindel/data/ref.fa
 
 output:
-  directory: docs/benchmarking/ml-twist-duplex/simulations/train/indel_00826
+  directory: bigdata/experiments/01-ml-twist-duplex/simulations/train/indel_00826
   fastq: true
   bam: false
   truth_vcf: true
@@ -28,7 +28,7 @@ tumour:
   ploidy: 2
 
 mutations:
-  vcf: docs/benchmarking/snvindel/data/truth_indels_vaf010.vcf
+  vcf: docs/benchmarking/01-snvindel/data/truth_indels_vaf010.vcf
 
 umi:
   length: 5
