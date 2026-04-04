@@ -240,27 +240,6 @@ def build_sample_one(name: str) -> tuple[str, str]:
                 .replace("alt_seq", "alt"))
         tsv.write_text(text)
 
-    # Parse position from chrom column (chr:start-end → start).
-    for tsv in [sample_dir / "discovery.tsv", sample_dir / "tumour_informed.tsv"]:
-        if not tsv.exists():
-            continue
-        import csv, io
-        rows = list(csv.DictReader(tsv.read_text(), delimiter="\t"))
-        if not rows or "chrom" not in rows[0]:
-            continue
-        for row in rows:
-            chrom = row.get("chrom", "")
-            if ":" in chrom:
-                parts = chrom.split(":")
-                row["chrom"] = parts[0]
-                coords = parts[1].split("-")
-                row["pos"] = coords[0] if coords else "0"
-        out = io.StringIO()
-        w = csv.DictWriter(out, fieldnames=rows[0].keys(), delimiter="\t")
-        w.writeheader()
-        w.writerows(rows)
-        tsv.write_text(out.getvalue())
-
     # Copy params.json.
     params_src = REPO / "bigdata/experiments/02-ml-single-strand/configs/train" / f"{name}_params.json"
     if params_src.exists():
