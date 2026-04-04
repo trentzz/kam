@@ -550,6 +550,17 @@ def upload_batch(
     try:
         _chunked_upload(tarball, nc_path)
         log.info("Batch %d uploaded.", batch_idx)
+        # Delete FASTQs from every sample in this batch now that the
+        # results are safely on Nextcloud. Feature extraction only needs
+        # TSVs and VCFs; keeping FASTQs locally wastes ~3 MB per sample.
+        n_deleted = 0
+        for sname in sample_names:
+            d = split_dir / sname
+            for fastq in d.glob("*_R[12].fastq.gz"):
+                fastq.unlink(missing_ok=True)
+                n_deleted += 1
+        if n_deleted:
+            log.info("Deleted %d FASTQ files from batch %d.", n_deleted, batch_idx)
     except RuntimeError as exc:
         log.error("Upload failed for batch %d: %s", batch_idx, exc)
     finally:
