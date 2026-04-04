@@ -1,8 +1,8 @@
 # varforge config: indel_t0133  — VAF 0.0891%  type=indel
-reference: docs/benchmarking/snvindel/data/ref.fa
+reference: docs/benchmarking/01-snvindel/data/ref.fa
 
 output:
-  directory: docs/benchmarking/ml-twist-duplex/simulations/test/indel_t0133
+  directory: bigdata/experiments/01-ml-twist-duplex/simulations/test/indel_t0133
   fastq: true
   bam: false
   truth_vcf: true
@@ -28,7 +28,7 @@ tumour:
   ploidy: 2
 
 mutations:
-  vcf: docs/benchmarking/snvindel/data/truth_indels_vaf005.vcf
+  vcf: docs/benchmarking/01-snvindel/data/truth_indels_vaf005.vcf
 
 umi:
   length: 5

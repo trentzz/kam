@@ -415,6 +415,7 @@ dependencies = [
  "kam-call",
  "kam-core",
  "kam-index",
+ "kam-ml",
  "kam-pathfind",
  "log",
  "needletail",
@@ -431,9 +432,7 @@ dependencies = [
  "kam-core",
  "kam-pathfind",
  "log",
- "ndarray",
  "needletail",
- "ort",
  "serde",
  "serde_json",
  "statrs",
@@ -461,6 +460,17 @@ dependencies = [
  "log",
  "serde",
  "thiserror",
+]
+
+[[package]]
+name = "kam-ml"
+version = "0.1.0"
+dependencies = [
+ "kam-call",
+ "ndarray",
+ "ort",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
