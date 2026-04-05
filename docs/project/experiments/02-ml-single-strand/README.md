@@ -72,6 +72,35 @@ Large training/test feature CSVs and raw simulation outputs live in
 Stored under `experiments/02-ml-single-strand/`. See
 `docs/project/devmanual/nextcloud.md` for upload/download instructions.
 
+## ML3 Train Pipeline — Monitoring
+
+The ML3 train pipeline runs in the background via `nohup`. It survives closing the terminal or Claude session. Use these commands to check progress:
+
+```bash
+# How many kam runs are complete (target: 10,000)
+ls bigdata/experiments/02-ml-single-strand/results/train/ | grep "^kam_" | wc -l
+
+# Breakdown by variant type
+ls bigdata/experiments/02-ml-single-strand/results/train/ | grep "^kam_" | \
+  sed 's/_ml3_.*//' | sed 's/^kam_//' | sort | uniq -c
+
+# How many sample dirs are built (target: 10,000 — happens after all kam done)
+ls bigdata/experiments/02-ml-single-strand/samples/train/ | wc -l
+
+# Live log tail
+tail -f ~/tmp/ml3_train_pipeline_final.log
+
+# Check if pipeline process is still running
+ps aux | grep run_ml3_train_pipeline | grep -v grep
+```
+
+Once `samples/train/` reaches 10,000, run in order:
+
+```bash
+python3 scripts/ml/build_training_data_v3.py
+python3 scripts/ml/train_eval_v3.py
+```
+
 ## Scripts
 
 | Script | Description |
