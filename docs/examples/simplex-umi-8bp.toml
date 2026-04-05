@@ -1,0 +1,51 @@
+# kam run configuration — simplex 8bp UMI chemistry
+#
+# For protocols using an 8bp UMI with no skip/spacer region and simplex
+# sequencing. An 8bp UMI provides 65,536 possible values; collision rates
+# become non-negligible at very high depth (> 50,000 molecules per target).
+#
+# If your sample has high sequencing depth and you see unexpected inflation
+# in molecule counts, consider switching to a longer UMI (9bp or 12bp).
+#
+# Usage:
+#   kam run --config examples/simplex-umi-8bp.toml \
+#           --r1 sample_R1.fq.gz \
+#           --r2 sample_R2.fq.gz \
+#           --targets panel.fa \
+#           --output-dir results/
+
+[input]
+r1      = "sample_R1.fq.gz"
+r2      = "sample_R2.fq.gz"
+targets = "panel.fa"
+
+[output]
+output_dir    = "results/"
+output_format = "tsv,vcf"
+
+[chemistry]
+umi_length  = 8
+skip_length = 0
+duplex      = false
+min_umi_quality = 20
+
+[assembly]
+min_family_size = 1
+
+[indexing]
+kmer_size = 31
+
+[calling]
+min_confidence        = 0.99
+strand_bias_threshold = 0.001
+min_alt_molecules     = 2
+min_alt_duplex        = 0
+
+sv_min_confidence        = 0.95
+sv_min_alt_molecules     = 1
+sv_strand_bias_threshold = 1.0
+
+ti_position_tolerance = 0
+
+[logging]
+log_dir = "results/logs/"

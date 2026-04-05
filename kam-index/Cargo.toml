@@ -1,0 +1,16 @@
+[package]
+name = "kam-index"
+version.workspace = true
+edition.workspace = true
+description = "K-mer indexing with molecule-level evidence tracking"
+license.workspace = true
+repository.workspace = true
+readme = "../README.md"
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+kam-core = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+log = { workspace = true }

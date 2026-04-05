@@ -1,0 +1,61 @@
+# high_depth_amplicon.yaml — High-depth amplicon panel without UMI
+#
+# Models a 2000x amplicon-based targeted sequencing run with no UMI.
+# Amplicon panels use PCR amplification rather than hybrid capture, producing
+# uniform fragment sizes centred on the amplicon length. Without UMI, PCR
+# errors and duplicates limit sensitivity at 0.1% VAF.
+#
+# Key characteristics:
+#   - No UMI: artefacts from PCR amplification are not correctable
+#   - 2000x raw coverage: compensates partially for lack of error correction
+#   - Normal fragment model with tight sd: models uniform amplicon products
+#   - 0.1% VAF: tests sensitivity at the practical floor for this approach
+#   - Narrow fragment size: ~180 bp mean, reflecting typical amplicon length
+#
+# Reference: chr22 (~51 Mbp) from GRCh38 for portability.
+#
+# Run:
+#   varforge simulate --config benchmarking/scripts/configs/high_depth_amplicon.yaml
+
+reference: /path/to/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna  # set to your local GRCh38 reference
+
+output:
+  directory: benchmarking/synthetic_data/high_depth_amplicon
+  fastq: true
+  bam: true
+  truth_vcf: true
+  manifest: true
+
+sample:
+  name: HIGH_DEPTH_AMPLICON
+  read_length: 150
+  coverage: 2000.0
+  platform: illumina
+
+fragment:
+  model: normal
+  mean: 180.0
+  sd: 15.0
+
+quality:
+  mean_quality: 37
+  tail_decay: 0.002
+
+tumour:
+  purity: 0.50
+  ploidy: 2
+
+mutations:
+  random:
+    count: 50
+    vaf_min: 0.001
+    vaf_max: 0.002
+    snv_fraction: 0.80
+    indel_fraction: 0.15
+    mnv_fraction: 0.05
+
+chromosomes:
+  - chr22
+
+seed: 42
+threads: 8

@@ -1,0 +1,561 @@
+\section{Method}
+\label{sec:method}
+
+\subsection{Overview}
+\label{sec:method:overview}
+
+kam processes paired-end FASTQ files through six stages (Figure~\ref{fig:pipeline}).
+Stage~1 (\textbf{Parse}) extracts UMIs, skip bases, and template sequences from raw reads.
+Stage~2 (\textbf{Assemble}) groups reads into molecule families by canonical UMI pair, detects UMI collisions via endpoint fingerprinting, and calls single-strand and duplex consensus sequences.
+Stage~3 (\textbf{Index}) encodes consensus sequences as 2-bit k-mers and builds a molecule-level k-mer index.
+Stage~4 (\textbf{Pathfind}) constructs a de~Bruijn graph from all on-target k-mers and enumerates paths between reference anchor k-mers using iterative depth-first search.
+Stage~5 (\textbf{Call}) scores each path using molecule evidence, estimates variant allele frequency (VAF) with credible intervals, and applies strand bias and confidence filters.
+Stage~6 (\textbf{Output}) emits called variants in VCF, TSV, and JSON formats with full provenance.
+
+All stages operate on molecules as the atomic unit of evidence.
+A k-mer supported by 100 PCR duplicates of one molecule contributes $n_\text{molecules} = 1$, not 100.
+This distinction is the foundation of kam's error model.
+
+\begin{figure}[h]
+\centering
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}[
+  node distance=2.1cm,
+  stage/.style={
+    draw=blue!60!black, fill=blue!10, rounded corners=3pt,
+    minimum width=1.65cm, minimum height=0.65cm,
+    font=\small\bfseries, align=center
+  },
+  io/.style={
+    draw=blue!60!black, fill=green!15, rounded corners=3pt,
+    minimum width=1.65cm, minimum height=0.65cm,
+    font=\small\bfseries, align=center
+  },
+  arr/.style={-{Latex[length=4pt,width=3pt]}, draw=black!55, line width=0.7pt},
+]
+  \node[io]                       (fastq)    {FASTQ};
+  \node[stage, right of=fastq]    (parse)    {Parse};
+  \node[stage, right of=parse]    (assemble) {Assemble};
+  \node[stage, right of=assemble] (index)    {Index};
+  \node[stage, right of=index]    (pathfind) {Pathfind};
+  \node[stage, right of=pathfind] (call)     {Call};
+  \node[io,    right of=call]     (vcf)      {VCF/TSV};
+
+  \draw[arr] (fastq)    -- node[below, font=\tiny\itshape, text=black!50] {ReadPair}   (parse);
+  \draw[arr] (parse)    -- node[below, font=\tiny\itshape, text=black!50] {ReadPair}   (assemble);
+  \draw[arr] (assemble) -- node[below, font=\tiny\itshape, text=black!50] {Molecule}   (index);
+  \draw[arr] (index)    -- node[below, font=\tiny\itshape, text=black!50] {KmerIndex}  (pathfind);
+  \draw[arr] (pathfind) -- node[below, font=\tiny\itshape, text=black!50] {GraphPath}  (call);
+  \draw[arr] (call)     -- node[below, font=\tiny\itshape, text=black!50] {ScoredPath} (vcf);
+\end{tikzpicture}%
+}
+\caption{The six stages of the kam pipeline. Each arrow is labelled with the
+  data type flowing between stages. Processing stages (blue) preserve
+  molecule-level evidence from assembly through to calling. I/O endpoints
+  (green) are raw FASTQ and variant output.}
+\label{fig:pipeline}
+\end{figure}
+
+\subsection{Read Parsing and UMI Extraction}
+\label{sec:method:parsing}
+
+kam targets Twist Biosciences duplex UMI chemistry~\autocite{Twist22cfdna}.
+Both R1 and R2 follow read structure \texttt{5M2S+T} in fgbio notation~\autocite{fgbio}:
+
+\begin{itemize}
+  \item Positions 0--4: 5\,bp molecular barcode (UMI).
+  \item Positions 5--6: 2\,bp skip/spacer (monotemplate, not biological).
+  \item Position 7 onward: template (genomic) sequence.
+\end{itemize}
+
+Let $U_\text{R1}$ and $U_\text{R2}$ denote the 5\,bp UMIs extracted from R1 and R2.
+The canonical UMI pair is:
+
+\begin{equation}
+  \label{eq:canonical-umi}
+  (U_a, U_b) = \begin{cases}
+    (U_\text{R1}, U_\text{R2}) & \text{if } U_\text{R1} \le U_\text{R2} \text{ lexicographically,} \\
+    (U_\text{R2}, U_\text{R1}) & \text{otherwise.}
+  \end{cases}
+\end{equation}
+
+Canonical pairing ensures that reads from opposite strands of the same molecule map to the same key.
+In duplex sequencing, a forward-strand read pair carries $(U_\text{R1}, U_\text{R2}) = (\texttt{ACGTA}, \texttt{TGCAT})$, while the reverse-strand read pair from the same molecule carries $(\texttt{TGCAT}, \texttt{ACGTA})$.
+Both produce the identical canonical pair $(\texttt{ACGTA}, \texttt{TGCAT})$.
+
+If R1's UMI equals $U_a$, the read is classified as forward-strand. Otherwise it is reverse-strand. This strand assignment is used throughout consensus calling and variant scoring.
+
+The 2\,bp skip bases serve as a quality-control signal.
+Because the skip sequence is fixed within an adapter lot, reads whose skip bases deviate from the expected sequence are flagged.
+
+\subsection{Molecule Assembly}
+\label{sec:method:assembly}
+
+Molecule assembly converts raw read pairs into consensus sequences in three steps: UMI grouping, collision detection, and consensus calling.
+
+\subsubsection{UMI Grouping}
+
+Reads are grouped by their canonical UMI pair (Equation~\ref{eq:canonical-umi}).
+To tolerate sequencing errors in the UMI itself, kam applies directional Hamming clustering with distance threshold $d = 1$~\autocite{Smith17umitools}.
+UMI groups within Hamming distance 1 are merged when one group's count is at least twice the other's, following the directional adjacency method of UMI-tools.
+
+With 5\,bp random UMIs, there are $4^5 = 1{,}024$ possible values.
+This limited diversity makes UMI collisions likely at high sequencing depths.
+
+\subsubsection{Endpoint Fingerprinting}
+
+To detect collisions where unrelated molecules share the same canonical UMI, kam computes a 64-bit endpoint fingerprint for each read pair.
+The fingerprint encodes the first and last 8 bases of the template from both R1 and R2 using 2-bit encoding ($\texttt{A}=00$, $\texttt{C}=01$, $\texttt{G}=10$, $\texttt{T}=11$):
+
+\begin{equation}
+  \label{eq:fingerprint}
+  F = \text{R1}_\text{first\,8} \| \text{R1}_\text{last\,8} \| \text{R2}_\text{first\,8} \| \text{R2}_\text{last\,8}
+\end{equation}
+
+\noindent where $\|$ denotes concatenation of 2-bit encoded subsequences.
+Four endpoints at 8 bases each, 2 bits per base, fills exactly 64 bits, requiring no hashing.
+Comparison is a single integer equality or XOR-plus-popcount operation.
+
+Read pairs within the same UMI group whose fingerprints differ by more than 4 bits (approximately 2 base sequencing errors across all endpoints) are split into separate molecule families.
+This threshold tolerates realistic error rates ($< 1\%$ family splitting at Q20) while catching genuine collisions.
+
+\subsubsection{Single-Strand Consensus}
+\label{sec:method:ssc}
+
+Given a family of $n$ reads from one strand of a molecule, kam calls a per-position consensus using quality-weighted majority vote.
+
+At position $i$, let $Q_{i,j}$ be the Phred quality of the $j$-th read.
+The error probability is:
+
+\begin{equation}
+  \label{eq:phred-to-prob}
+  p_{i,j} = 10^{-Q_{i,j}/10}
+\end{equation}
+
+The weight assigned to read $j$'s base call at position $i$ is $w_{i,j} = 1 - p_{i,j}$.
+Bases with $Q_{i,j}$ below a minimum threshold (default: $Q = 10$) are excluded.
+For each candidate base $b \in \{A, C, G, T\}$, the total weight is:
+
+\begin{equation}
+  \label{eq:weight-sum}
+  W_b(i) = \sum_{\substack{j=1 \\ \text{base}_{i,j} = b}}^{n} w_{i,j}
+\end{equation}
+
+The consensus base at position $i$ is:
+
+\begin{equation}
+  \label{eq:consensus-base}
+  \hat{b}(i) = \operatorname*{argmax}_{b} \; W_b(i)
+\end{equation}
+
+The estimated error probability of the consensus at position $i$ is:
+
+\begin{equation}
+  \label{eq:consensus-error}
+  \hat{p}_\text{SSC}(i) = 1 - \frac{W_{\hat{b}(i)}(i)}{\sum_{b} W_b(i)}
+\end{equation}
+
+If all bases at a position fall below the quality threshold, the position is called as N with $\hat{p}_\text{SSC}(i) = 1.0$.
+Output consensus quality is capped at a configurable maximum (default: Q60).
+
+\subsubsection{Duplex Consensus}
+\label{sec:method:duplex}
+
+The duplex consensus combines the forward-strand SSC and the reverse-strand SSC.
+At each position $i$, let $\hat{b}_\text{fwd}(i)$ and $\hat{b}_\text{rev}(i)$ be the single-strand consensus bases, with error probabilities $\hat{p}_\text{fwd}(i)$ and $\hat{p}_\text{rev}(i)$.
+
+When both strands agree ($\hat{b}_\text{fwd}(i) = \hat{b}_\text{rev}(i)$), the errors are independent, so:
+
+\begin{equation}
+  \label{eq:duplex-error}
+  \hat{p}_\text{duplex}(i) = \hat{p}_\text{fwd}(i) \times \hat{p}_\text{rev}(i)
+\end{equation}
+
+This multiplication yields error rates near $10^{-7}$ for typical input qualities~\autocite{Schmitt12duplex}, which is what makes detection at 0.1\% VAF feasible.
+
+When the strands disagree ($\hat{b}_\text{fwd}(i) \neq \hat{b}_\text{rev}(i)$), the default behaviour picks the base from whichever SSC had lower error probability and marks the position as non-duplex.
+A strict mode (\texttt{-{}-strict-duplex}) masks the position as N.
+In either case, the position does not receive duplex-level confidence.
+
+Each assembled molecule carries a \texttt{MoleculeEvidence} record that tracks the number of forward-strand reads, reverse-strand reads, and whether the molecule has duplex support.
+This record propagates through all downstream stages.
+
+\subsection{K-mer Indexing}
+\label{sec:method:index}
+
+The k-mer index maps each k-mer observed in the consensus sequences to its molecule-level evidence.
+
+\subsubsection{2-Bit Encoding}
+
+Each DNA base is encoded as 2 bits: $\texttt{A}=00$, $\texttt{C}=01$, $\texttt{G}=10$, $\texttt{T}=11$.
+A k-mer of length $k$ occupies $2k$ bits in a \texttt{u64}, supporting $k \le 31$.
+Bases are packed left-to-right, with the first base in the most significant bit pair.
+
+\subsubsection{Canonical K-mers}
+
+Because a molecule's sequence can be observed from either strand, kam stores k-mers in canonical form:
+
+\begin{equation}
+  \label{eq:canonical-kmer}
+  \text{canonical}(s) = \min\bigl(s, \;\overline{s}^{\,R}\bigr)
+\end{equation}
+
+\noindent where $\overline{s}^{\,R}$ denotes the reverse complement of $s$.
+In 2-bit encoding, the complement of each base is obtained by XOR with \texttt{0b11}, and the base order is reversed.
+
+\subsubsection{Sliding Window}
+
+K-mers are extracted using a sliding window that shifts left by 2 bits and ORs in the new base for each position, giving $O(1)$ cost per k-mer after the initial window fill.
+When an ambiguous base (N) is encountered, the window resets and skips forward until $k$ consecutive valid bases are available.
+
+\subsubsection{Molecule-Level Accumulation}
+
+For each canonical k-mer, the index stores a \texttt{MoleculeEvidence} record:
+
+\begin{itemize}
+  \item $n_\text{molecules}$: number of distinct molecules carrying this k-mer.
+  \item $n_\text{duplex}$: of those, how many have duplex support.
+  \item $n_\text{simplex\_fwd}$, $n_\text{simplex\_rev}$: molecules with only forward or reverse strand support.
+  \item $\bar{p}_\text{error}$: mean per-base error probability across supporting molecules.
+\end{itemize}
+
+Each unique molecule contributes 1 to $n_\text{molecules}$ regardless of how many PCR duplicates it produced.
+In targeted mode, only k-mers matching an allowlist (derived from reference and expected variant sequences, padded by $k-1$ bases) are indexed.
+
+\subsection{De Bruijn Graph Construction and Path Walking}
+\label{sec:method:pathfind}
+
+\subsubsection{Graph Construction}
+
+kam builds a de~Bruijn graph~\autocite{Iqbal12cortex} from on-target k-mers.
+Nodes are raw (non-canonical) k-mers, stored in the original read orientation so that consecutive k-mers maintain their suffix-prefix overlap.
+Both the forward and reverse-complement of each on-target k-mer are included as nodes.
+A directed edge from node $A$ to node $B$ exists when the $(k{-}1)$-base suffix of $A$ equals the $(k{-}1)$-base prefix of $B$:
+
+\begin{equation}
+  \label{eq:edge-condition}
+  A[1{:}k{-}1] = B[0{:}k{-}2]
+\end{equation}
+
+In 2-bit encoding, this is:
+
+\begin{equation}
+  \label{eq:edge-2bit}
+  (A \;\texttt{AND}\; M_{k-1}) = (B \gg 2)
+\end{equation}
+
+\noindent where $M_{k-1} = 2^{2(k-1)} - 1$ is the bitmask for the lower $2(k{-}1)$ bits and $\gg$ denotes right shift.
+
+The graph is built from all k-mers observed in on-target molecules, not only reference k-mers.
+Variant k-mers (those differing from the reference by one or more bases) must be nodes in the graph for their paths to be discoverable.
+
+\subsubsection{Anchor K-mers}
+
+For each target, the first and last k-mers of the reference sequence serve as start and end anchors.
+All paths are enumerated from the start anchor to the end anchor.
+The reference path passes through all k-mers of the wildtype sequence.
+Variant paths diverge from the reference at the site of the mutation.
+
+\subsubsection{Path Walking}
+
+Algorithm~\ref{alg:dfs} describes the DFS path enumeration.
+
+\begin{algorithm}
+\caption{Iterative DFS path enumeration between anchor k-mers.}
+\label{alg:dfs}
+\begin{algorithmic}[1]
+\Require{Graph $G$, start anchor $s$, end anchor $t$, max path length $L$, max paths $P$}
+\Ensure{Set of paths $\mathcal{P}$ from $s$ to $t$}
+\State $\mathcal{P} \gets \emptyset$
+\State $\mathit{stack} \gets [(s, 0)]$ \Comment{(node, next-successor-index)}
+\State $\mathit{path} \gets [s]$
+\State $\mathit{visited} \gets \{s\}$
+\While{$\mathit{stack}$ is not empty \textbf{and} $|\mathcal{P}| < P$}
+  \State $(v, i) \gets \mathit{stack}.\text{last}()$
+  \If{$i \ge |\text{successors}(v)|$} \Comment{All successors tried: backtrack}
+    \State $\mathit{stack}.\text{pop}()$; $\mathit{path}.\text{pop}()$; $\mathit{visited}.\text{remove}(v)$
+    \State \textbf{continue}
+  \EndIf
+  \State $u \gets \text{successors}(v)[i]$; increment $i$ in stack
+  \If{$u \in \mathit{visited}$ \textbf{or} $|\mathit{path}| \ge L$}
+    \State \textbf{continue} \Comment{Cycle or path too long}
+  \EndIf
+  \If{$u = t$}
+    \State $\mathcal{P} \gets \mathcal{P} \cup \{\mathit{path} \cup \{u\}\}$
+  \Else
+    \State $\mathit{visited}.\text{insert}(u)$; $\mathit{path}.\text{push}(u)$; $\mathit{stack}.\text{push}((u, 0))$
+  \EndIf
+\EndWhile
+\State \Return $\mathcal{P}$
+\end{algorithmic}
+\end{algorithm}
+
+The DFS uses a single path buffer and a \texttt{HashSet} for O(1) cycle detection.
+Memory use is $O(B \times L)$ where $B$ is the maximum branching factor and $L$ is \texttt{max\_path\_length}, constant regardless of the number of paths enumerated.
+
+In contrast, a BFS implementation clones the full partial path at every branch, accumulating $O(B^{L/2} \times L)$ bytes in the queue at peak.
+At 1 million reads and 30\,ng input, the BFS queue saturates available memory within the pathfind stage for several targets in the titration panel.
+The DFS implementation eliminates this scaling problem entirely.
+
+The maximum path length is set per target:
+\begin{equation}
+  \label{eq:max-path-length}
+  L = (T - k + 1) + 50
+\end{equation}
+\noindent where $T$ is the target length in bases.
+For a 100\,bp target with $k = 31$, this gives $L = 120$: the 70-k-mer reference path plus 50 k-mers of headroom for large indels.
+The constant default ($L = 500$) in earlier versions allowed the walker to explore paths far outside the target window, greatly amplifying the BFS memory cost.
+
+Sequences are reconstructed from paths by taking all $k$ bases from the first k-mer and appending the last base of each subsequent k-mer, yielding a sequence of length $k + |\pi| - 1$ from a path of $|\pi|$ k-mers.
+
+\subsection{Statistical Variant Calling}
+\label{sec:method:calling}
+
+\subsubsection{Path Scoring}
+
+Each path is scored by looking up the \texttt{MoleculeEvidence} for every constituent k-mer.
+The aggregate statistics are:
+
+\begin{itemize}
+  \item $n_\text{min}$: minimum $n_\text{molecules}$ across all k-mers in the path.
+  \item $\bar{n}$: mean $n_\text{molecules}$ across all k-mers in the path.
+  \item $d_\text{min}$: minimum $n_\text{duplex}$ across all k-mers.
+  \item $s_\text{fwd}$, $s_\text{rev}$: minimum forward and reverse simplex molecule counts across all k-mers in the path.
+\end{itemize}
+
+The weakest k-mer (lowest $n_\text{molecules}$) identifies the bottleneck supporting the call.
+The path whose reconstructed sequence matches the reference is marked as the reference path.
+
+\subsubsection{VAF Estimation}
+
+Let $n_a$ be the number of molecules supporting the alternate path (from $n_\text{min}$ of the alt path) and $M$ be the total molecules ($n_\text{min,ref} + n_\text{min,alt}$).
+The point estimate of VAF is:
+
+\begin{equation}
+  \label{eq:vaf}
+  \hat{f} = \frac{n_a}{M}
+\end{equation}
+
+The 95\% credible interval uses the conjugate Beta posterior with a uniform prior $\text{Beta}(1, 1)$.
+Observing $n_a$ successes in $M$ trials yields posterior $\text{Beta}(n_a + 1, M - n_a + 1)$:
+
+\begin{equation}
+  \label{eq:vaf-ci}
+  \text{CI}_{95\%} = \bigl[q_{0.025}, \; q_{0.975}\bigr]
+  \quad \text{where} \quad
+  q_\alpha = F^{-1}_{\text{Beta}(n_a+1, \, M-n_a+1)}(\alpha)
+\end{equation}
+
+\noindent and $F^{-1}$ is the inverse CDF (quantile function) of the Beta distribution.
+
+\subsubsection{Strand Bias}
+
+kam tests for strand bias using Fisher's exact test on a $2 \times 2$ contingency table.
+Let $a = s_\text{fwd,alt}$, $b = s_\text{rev,alt}$ be the minimum forward and reverse simplex molecule counts for the alternate path, and $c = s_\text{fwd,ref}$, $d = s_\text{rev,ref}$ the corresponding counts for the reference path.
+These are per-molecule counts (the path minimum across k-mers), not per-k-mer sums:
+
+\begin{equation}
+  \label{eq:strand-bias-table}
+  \begin{array}{c|cc}
+    & \text{Forward} & \text{Reverse} \\ \hline
+    \text{Alt}  & a & b \\
+    \text{Ref}  & c & d
+  \end{array}
+\end{equation}
+
+The two-tailed p-value is computed by summing all hypergeometric probability masses $\le$ the observed table's probability, given fixed marginals.
+Variants with $p < 0.01$ are flagged as strand-biased.
+
+\subsubsection{Confidence Score}
+
+The posterior probability that the variant is real (versus background noise) uses a binomial likelihood ratio.
+Under equal priors, the posterior is:
+
+\begin{equation}
+  \label{eq:confidence}
+  P(\text{signal} \mid \text{data}) = \frac{L(\hat{f})}{L(\hat{f}) + L(\varepsilon)}
+\end{equation}
+
+\noindent where $L(p) = p^{n_a} (1 - p)^{M - n_a}$ is the binomial likelihood and $\varepsilon$ is the per-site background error rate (default: $10^{-4}$).
+Variants require a posterior probability $\ge 0.99$ to pass the confidence filter.
+
+\subsubsection{Variant Classification}
+
+Variant type is determined by comparing the reconstructed reference and alternate path sequences.
+Let $|R|$ and $|A|$ denote their lengths:
+
+\begin{itemize}
+  \item $|R| = |A|$ with exactly 1 differing base: SNV.
+  \item $|R| = |A|$ with $>1$ differing bases: MNV (or Inversion — see Section~\ref{sec:sv-detection}).
+  \item $|R| > |A|$: deletion (or LargeDeletion if $|R| - |A| \ge 50$).
+  \item $|R| < |A|$: insertion (or TandemDuplication if $|A| - |R| \ge 50$).
+\end{itemize}
+
+\subsubsection{Filter Assignment}
+
+Each variant receives one of five filter labels.
+A variant passes all filters when: the alt molecule count $n_a \ge 2$ (configurable), the duplex alt molecule count $\ge 1$ (configurable), the strand bias p-value $\ge 0.01$, and the posterior confidence $\ge 0.99$.
+Filters are evaluated in this order; a variant failing any criterion is labelled with the first filter it fails: \texttt{LowConfidence}, \texttt{LowDuplex}, \texttt{StrandBias}, or \texttt{CollisionRisk}.
+
+Requiring at least one duplex alt molecule suppresses false positives from background sequencing errors.
+A random single-base error producing 2+ simplex alt molecules is unlikely to produce independent errors on both strands of the same molecule, so it cannot generate duplex evidence.
+True variants at $\ge 0.1\%$ VAF with 5--15\% duplex rates will have duplex alt evidence in all but the rarest cases.
+
+\subsubsection{VCF Allele Extraction and Left-Normalisation}
+
+The graph path walk produces full 100\,bp reference and alternate sequences.
+Converting these to standard VCF alleles requires three steps.
+
+First, the minimal allele is extracted: the common prefix and suffix shared by the reference and alternate sequences are trimmed, leaving only the differing region.
+For SNVs and MNVs (sequences of equal length) this is the final representation.
+For indels, the inner common prefix and suffix of the differing region are further stripped to isolate the inserted or deleted bases.
+
+Second, indels are left-normalised to match the standard VCF convention used by GATK, bcftools, and reference truth sets~\cite{tan2015}.
+An anchor base is placed immediately before the event.
+While the preceding reference base matches the last base of the event sequence, the event sequence is rotated right by one base and the anchor shifts one position to the left.
+This places the variant at the leftmost possible position in any repeat context.
+
+Third, the anchor base is prepended as required by the VCF specification: for a deletion, REF\,=\,anchor\,+\,deleted\,bases and ALT\,=\,anchor; for an insertion, REF\,=\,anchor and ALT\,=\,anchor\,+\,inserted\,bases.
+
+Genomic coordinates are derived from the target header (\texttt{chrN:START-END}), where START is the 1-based genomic position of the first base in the stored sequence. A sequence index $i$ (0-based) maps to VCF position $\text{START} + i$.
+
+\subsection{Targeted Structural Variant Detection}
+\label{sec:sv-detection}
+
+kam extends the de Bruijn graph framework to detect large structural variants (SVs) using junction k-mer injection. When the \texttt{--sv-junctions} flag is provided, a FASTA of SV breakpoint junction sequences is loaded during k-mer indexing. The junction k-mers are added to the allowlist alongside the panel target k-mers, making them eligible for inclusion in the de Bruijn graph.
+
+Junction sequences span each SV breakpoint: for a deletion, the sequence joining the left flank of the deleted region to the right flank; for a tandem duplication, the head-to-tail junction; for an inversion, both the left and right inversion junctions. Each junction sequence is 60--80\,bp, long enough to provide $\ge 30$ overlapping 31-mers across the breakpoint. These k-mers create a continuous path through the graph from the upstream anchor to the downstream anchor via the SV allele, enabling path discovery for large events that would otherwise have no connecting path.
+
+SV classification is applied when the reconstructed reference and alternate paths have a length difference $\ge 50$\,bp or when same-length paths carry a partial inversion. Specifically:
+
+\begin{itemize}
+  \item $|R| - |A| \ge 50$, no inverted content: \textit{LargeDeletion}.
+  \item $|R| - |A| \ge 50$, and the retained alt sequence contains a segment that is the reverse complement of the corresponding reference region: \textit{InvDel} (deletion with inverted flanking repeats).
+  \item $|A| - |R| \ge 50$, and the inserted sequence matches a nearby window of the reference: \textit{TandemDuplication}.
+  \item $|A| - |R| \ge 50$, and the inserted sequence has no significant similarity to the flanking reference: \textit{NovelInsertion}.
+  \item $|R| = |A|$ and a contiguous central segment $[l, r]$ satisfies $\text{RC}(R[l..r]) = A[l..r]$ with $r - l + 1 \ge 50$: \textit{Inversion}.
+\end{itemize}
+
+The inversion classifier finds the leftmost and rightmost positions where the reference and alternate paths differ. If the subsequence spanning those positions is the reverse complement of the corresponding reference subsequence, the variant is classified as an inversion. This partial-inversion check is required because real inversions only invert a central segment of the reference window; the full-path reverse complement check always fails.
+
+SV calls use type-specific thresholds. The default confidence threshold for SNVs and indels is 0.99; for SV types the threshold is 0.95 (\texttt{--sv-min-confidence}), and the minimum alt molecule count is 1 (\texttt{--sv-min-alt-molecules}). A large structural event with even 2 supporting molecules carries qualitatively stronger signal than 2 molecules of a single-base substitution: background sequencing errors cannot produce a 50--200\,bp structural signature. The duplex requirement is relaxed by default for SV benchmarking (\texttt{--min-duplex-alt-molecules 0}), as synthetic SV simulations may produce only simplex molecule evidence.
+
+\subsection{Fusion and Translocation Detection}
+\label{sec:method:fusion}
+
+Fusions and translocations are detected via synthetic junction targets. The user provides a FASTA of synthetic sequences (\texttt{fusion\_targets}) where each entry concatenates the breakpoint-adjacent segment from partner locus A with the corresponding segment from partner locus B. The FASTA header encodes both partners' genomic coordinates using the format:
+
+\begin{center}
+\texttt{\{name\}\_\_\{chromA\}:\{startA\}-\{endA\}\_\_\{chromB\}:\{startB\}-\{endB\}\_\_fusion}
+\end{center}
+
+K-mers from these synthetic sequences are added to the allowlist during indexing, alongside normal target k-mers. Fusion-spanning reads produce k-mers that match the synthetic junction, and the graph walker finds paths through it just as it would through a normal target.
+
+Calling fusions requires a different VAF denominator. Wild-type molecules do not span both partner loci, so the fusion target carries no wild-type depth. Instead, the mean molecule depth at the two partner loci provides the denominator:
+
+\begin{equation}
+  \label{eq:fusion-vaf}
+  \hat{f}_\text{fusion} = \frac{n_\text{fusion}}{\bar{d}_\text{partner} + n_\text{fusion}}
+  \quad \text{where} \quad
+  \bar{d}_\text{partner} = \frac{d_A + d_B}{2}
+\end{equation}
+
+\noindent and $d_A$, $d_B$ are the mean molecule depths at the partner A and partner B target regions respectively. Strand bias filtering is disabled for fusions because the chimeric structure of the fusion sequence is inherently asymmetric with respect to strand.
+
+Fusion calls are emitted as BND records in VCF output, with the partner loci encoded in the standard \texttt{ALT} field format.
+
+\subsection{Tumour-Informed Monitoring Mode}
+\label{sec:method:monitoring}
+
+In monitoring mode, the user provides a VCF of expected somatic variants (\texttt{target\_variants}). The pipeline runs the full statistical calling procedure on all targets and then applies a post-call filter: any variant that passes statistical filters but whose allele does not match an entry in the target VCF receives the \texttt{NotTargeted} filter label. Only variants with alleles matching the expected somatic set receive \texttt{PASS}.
+
+Matching is performed on the normalised (left-aligned, trimmed) allele key. For SNVs and indels, the key is \texttt{CHROM:POS:REF:ALT}. For SVs, the key is \texttt{CHROM:POS:TYPE} with a configurable position tolerance (\texttt{--ti-position-tolerance}, default: 0\,bp).
+
+This two-step approach (call everywhere, then filter to expected variants) means the sensitivity loss from monitoring mode is minimal. The caller evaluates all target loci and reports the full statistical picture; the monitoring filter is applied last, leaving the evidence record intact for both PASS and NotTargeted calls.
+
+The practical effect is near-zero false positives. A background sequencing artefact that coincidentally passes all statistical filters is almost certainly not one of the pre-specified somatic variants, and is removed at the monitoring filter step. In our benchmarks, this mode achieves precision 1.0 on all titration samples.
+
+\subsection{Benchmarking Methodology}
+\label{sec:method:benchmarking}
+
+\subsubsection{Titration Dataset}
+
+The primary benchmark uses the Twist cfDNA Pan-Cancer Reference Standard v2, a commercial mixture of tumour cfDNA and normal cfDNA at precisely controlled concentrations.
+The dataset comprises 24 samples: 3 input amounts (5\,ng, 15\,ng, 30\,ng) each at 8 VAF levels (0\%, 0.001\%, 0.01\%, 0.1\%, 0.25\%, 0.5\%, 1\%, 2\%).
+The truth variant set contains 375 variants: 205 SNVs and 170 indels.
+These are high-confidence variants that pass a QC filter applied during panel design.
+
+The alignment-based baseline is the HUMID v2 deduplication plus RASCALL v3 calling pipeline, run on the same samples as part of a prior thesis investigation~\autocite{ZengThesis}.
+Per-variant detection results from that pipeline provide the direct comparison at matched VAF levels and input amounts.
+
+\subsubsection{Synthetic SV Benchmark}
+
+Structural variant sensitivity is evaluated using reads simulated with varforge~\autocite{varforge} from a 2000\,bp synthetic reference.
+The benchmark covers six SV types: large deletion, tandem duplication, inversion, InvDel (deletion with inverted flanking repeats), novel insertion, and gene fusion.
+For each type, 25 VAF levels spanning 0.05\% to 10\% are tested with 2 independent replicates each, giving 50 simulated samples per SV type.
+
+Gene fusions require a distinct simulation strategy because varforge cannot generate fusion-spanning reads from a BND variant record directly.
+Instead, a fused reference is constructed by concatenating the upstream partner locus (chr1:0--200) with the downstream partner locus (chr1:900--2000), placing the breakpoint at position 200.
+varforge simulates fusion reads from this fused reference at fractional coverage $5000 \times v$ and wild-type background reads from the original reference at $5000 \times (1 - v)$.
+Concatenating the two FASTQ sets produces the final mixed sample at VAF $v$.
+A 100\,bp synthetic fusion target sequence, spanning the breakpoint junction, is passed to kam via \texttt{--fusion-targets}.
+The other five SV types use a single varforge run with a mutation VCF specifying the structural event.
+
+\subsubsection{Public Datasets}
+
+Three publicly available datasets extend the evaluation beyond the titration set.
+
+\textbf{UMI Clustering Benchmark (SRR6794144).}
+A cfDNA panel FASTQ with 12\,bp simplex UMIs, used as the template dataset in a 2025 Scientific Reports benchmarking study~\autocite{Calib25umi}.
+This dataset validates kam's molecule assembly on real cfDNA reads.
+Because it does not carry a per-variant truth set, it is used for assembly quality-control only (family size distributions, collision rates) rather than sensitivity evaluation.
+
+\textbf{SEQC2 HCC1395 Somatic Mutation Benchmark (SRP162370).}
+A multi-centre benchmark using the HCC1395 breast cancer cell line~\autocite{Xiao21seqc2}.
+The truth set was constructed by majority-vote consensus across 63 tumour-normal pairs.
+This dataset validates kam's variant calling component on a community-standard truth set, independent of UMI chemistry.
+
+\textbf{COLO829 Somatic SV Truth Set (PRJEB27698).}
+An Illumina HiSeq WGS benchmark for the COLO829 melanoma cell line, with 68 somatic SVs confirmed across five sequencing technologies~\autocite{vanDijk22colo829}.
+The truth set covers 38 deletions, 13 translocations, 7 duplications, 7 inversions, and 3 insertions.
+This dataset validates SV detection against experimentally confirmed ground truth spanning all major SV classes.
+
+\subsubsection{Evaluation Metrics}
+
+A variant call is classified as a true positive (TP) if its normalised allele key matches a truth variant within the same sample.
+Sensitivity, precision, and F1 are computed at each VAF level:
+
+\begin{equation}
+  \label{eq:sensitivity}
+  \text{Sensitivity} = \frac{\text{TP}}{\text{TP} + \text{FN}}
+  \qquad
+  \text{Precision} = \frac{\text{TP}}{\text{TP} + \text{FP}}
+  \qquad
+  F_1 = \frac{2 \times \text{Sensitivity} \times \text{Precision}}{\text{Sensitivity} + \text{Precision}}
+\end{equation}
+
+The detection threshold is $n_a \ge 2$ supporting molecules for SNVs and indels (the default \texttt{--min-alt-molecules} setting).
+SV calls use $n_a \ge 1$ with the confidence threshold relaxed to 0.95, as described in Section~\ref{sec:sv-detection}.
+
+Per-variant concordance analysis records, for each variant in the truth set, whether it was detected by kam, by the alignment-based baseline, by both, or by neither.
+This identifies variants where the two approaches systematically disagree and provides the evidence for any claimed sensitivity advantage.
+
+Runtime is measured as wall-clock time for the full kam pipeline (parse through output) on a single machine.
+
+\subsubsection{Comparison Strategy}
+
+The primary comparison is kam in tumour-informed mode versus the alignment-based baseline (HUMID\,+\,RASCALL) on the titration dataset.
+Both pipelines receive identical input FASTQ files and the same truth variant list.
+Sensitivity and precision are computed at each of the 8 VAF levels and 3 input amounts.
+Discovery mode (no target variant list) is evaluated separately on the same samples and reported as a secondary result.
+
+For the public datasets, alignment-based comparisons use published results from the original benchmark papers where available, rather than re-running additional pipelines.
+
+\subsection{Configuration}
+\label{sec:method:config}
+
+All pipeline parameters are controlled via a TOML configuration file (\texttt{config.toml}). CLI flags take precedence over config file values, which take precedence over hard-coded defaults. This three-layer precedence allows a common per-project config file while permitting per-run overrides.
+
+The configuration is divided into sections: \texttt{[input]} (file paths including R1, R2, targets, SV junctions, fusion targets, and a monitoring VCF), \texttt{[output]} (output directory and format), \texttt{[chemistry]} (UMI length, skip length, duplex flag, and quality thresholds), \texttt{[assembly]} (minimum family size), \texttt{[indexing]} (k-mer size, default $k = 31$), \texttt{[calling]} (confidence thresholds, strand bias threshold, molecule count requirements, SV-specific thresholds, and monitoring position tolerance), \texttt{[logging]}, and \texttt{[runtime]} (thread count).
+
+Chemistry presets cover Twist duplex (default), and the \texttt{[chemistry]} section accepts arbitrary UMI and skip lengths for other chemistries. The pipeline is not hard-coded to any specific adapter design.

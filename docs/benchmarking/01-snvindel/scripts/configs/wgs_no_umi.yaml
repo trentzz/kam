@@ -1,0 +1,60 @@
+# wgs_no_umi.yaml — Standard 30x WGS without UMI
+#
+# Models a standard whole-genome sequencing run with no UMI error correction.
+# At 30x coverage, the effective sensitivity floor is roughly 1-5% VAF.
+# Sub-1% variants are not reliably detectable without UMI deduplication.
+#
+# Key characteristics:
+#   - No UMI: duplicates cannot be collapsed, PCR errors accumulate
+#   - 30x coverage: standard clinical/research WGS depth
+#   - 1% VAF minimum: reflects the practical detection limit at this depth
+#   - 100 mutations for adequate statistical evaluation of recall/precision
+#   - Normal fragment model: germline or fresh tumour tissue input
+#
+# Reference: chr22 (~51 Mbp) from GRCh38 for portability.
+#
+# Run:
+#   varforge simulate --config benchmarking/scripts/configs/wgs_no_umi.yaml
+
+reference: /path/to/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna  # set to your local GRCh38 reference
+
+output:
+  directory: benchmarking/synthetic_data/wgs_no_umi
+  fastq: true
+  bam: true
+  truth_vcf: true
+  manifest: true
+
+sample:
+  name: WGS_NO_UMI
+  read_length: 150
+  coverage: 30.0
+  platform: illumina
+
+fragment:
+  model: normal
+  mean: 300.0
+  sd: 50.0
+
+quality:
+  mean_quality: 36
+  tail_decay: 0.003
+
+tumour:
+  purity: 0.70
+  ploidy: 2
+
+mutations:
+  random:
+    count: 100
+    vaf_min: 0.01
+    vaf_max: 0.02
+    snv_fraction: 0.80
+    indel_fraction: 0.15
+    mnv_fraction: 0.05
+
+chromosomes:
+  - chr22
+
+seed: 42
+threads: 8

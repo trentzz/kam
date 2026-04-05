@@ -1,0 +1,18 @@
+# LaTeX build artefacts
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.log
+*.out
+*.run.xml
+*.toc
+*.fls
+*.fdb_latexmk
+
+# Build-output PDFs in the paper root — ignored because versioned copies
+# are committed to pdfs/ with the kam_v0.1_* naming convention.
+/main.pdf
+/main_normal.pdf
+/main_normal_2col.pdf
+/main_2p.pdf

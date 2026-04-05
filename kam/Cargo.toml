@@ -1,0 +1,31 @@
+[package]
+name = "kam-bio"
+version.workspace = true
+edition.workspace = true
+description = "Alignment-free variant detection for duplex UMI sequencing"
+license.workspace = true
+repository.workspace = true
+readme = "../README.md"
+keywords.workspace = true
+categories.workspace = true
+exclude = ["docs/", "examples/", "benchmarking/"]
+
+[[bin]]
+name = "kam"
+path = "src/main.rs"
+
+[dependencies]
+kam-core = { workspace = true }
+kam-assemble = { workspace = true }
+kam-index = { workspace = true }
+kam-pathfind = { workspace = true }
+kam-call = { workspace = true, features = ["ml"] }
+log = { workspace = true }
+clap = { workspace = true }
+needletail = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

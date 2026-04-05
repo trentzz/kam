@@ -1,0 +1,125 @@
+\section*{Appendix A: Algorithm Details}
+% TODO: detailed pseudocode for DFS walk, UMI grouping, confidence scoring
+
+\newpage
+\section*{Supplementary Tables}
+
+% ── Table S1: Per-variant detection concordance ──────────────────────────────
+
+\begin{table}[h]
+  \centering
+  \caption{Table S1: Per-variant detection concordance at 2\% VAF.
+    Each row is one of the 375 truth variants.
+    Columns indicate whether each pipeline detected the variant across the
+    three input masses (5\,ng, 15\,ng, 30\,ng) at 2\% VAF with tumour-informed
+    monitoring.
+    ``kam\_5ng'', ``kam\_15ng'', ``kam\_30ng'': 1 = detected (TP), 0 = missed (FN).
+    ``aln\_5ng'', ``aln\_15ng'', ``aln\_30ng'': detection by the
+    HUMID\,+\,RASCALL alignment-based pipeline.
+    Alignment-based columns are \placeholder{pending final extraction}.}
+  \label{tab:s1-concordance}
+  \small
+  \begin{tabular}{lllllllllll}
+    \toprule
+    Chr & Pos & Ref & Alt & Type
+      & kam\_5ng & kam\_15ng & kam\_30ng
+      & aln\_5ng & aln\_15ng & aln\_30ng \\
+    \midrule
+    \multicolumn{11}{c}{\textit{Table S1 contains 375 rows.
+      Full data at \texttt{docs/benchmarking/comparison/alignment\_baseline.csv}
+      and kam benchmark outputs.
+      This placeholder shows the column structure only.}} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+% ── Table S2: SV detection by type and VAF ───────────────────────────────────
+
+\begin{table}[h]
+  \centering
+  \caption{Table S2: SV detection results by type and VAF level in discovery
+    mode and monitoring mode.
+    $n_\text{alt}$: supporting alt molecules.
+    VAF\textsubscript{obs}: observed VAF in kam output.
+    Conf: posterior confidence score.
+    Mode: D = discovery, M = monitoring.}
+  \label{tab:s2-sv}
+  \small
+  \begin{tabular}{lllcccll}
+    \toprule
+    VAF & SV type & Mode & $n_\text{alt}$ & VAF\textsubscript{obs} & Conf & Result & Notes \\
+    \midrule
+    0.5\% & LargeDeletion     & D & 14 & 1.2\%  & 1.000 & PASS    & VAF$\approx$2$\times$sim; deleted segment absent \\
+    0.5\% & TandemDuplication & D & 2  & 0.19\% & 0.982 & PASS    & SV threshold 0.95 \\
+    0.5\% & Inversion         & D & 3  & 0.26\% & 0.999 & PASS    & Partial-inversion fix required \\
+    0.5\% & LargeDeletion     & M & 14 & 1.2\%  & 1.000 & PASS    & \\
+    0.5\% & TandemDuplication & M & 2  & 0.19\% & 0.982 & PASS    & \\
+    0.5\% & Inversion         & M & 3  & 0.26\% & 0.999 & PASS    & \\
+    \midrule
+    1\%   & LargeDeletion     & D & 16 & 1.5\%  & 1.000 & PASS    & \\
+    1\%   & TandemDuplication & D & 1  & 0.09\% & 0.791 & LowConf & Single junction molecule \\
+    1\%   & Inversion         & D & 6  & 0.54\% & 1.000 & PASS    & \\
+    1\%   & LargeDeletion     & M & 16 & 1.5\%  & 1.000 & PASS    & \\
+    1\%   & TandemDuplication & M & 1  & 0.09\% & 0.791 & LowConf & \\
+    1\%   & Inversion         & M & 6  & 0.54\% & 1.000 & PASS    & \\
+    \midrule
+    2\%   & LargeDeletion     & D & 43 & 3.7\%  & 1.000 & PASS    & \\
+    2\%   & TandemDuplication & D & 4  & 0.42\% & 1.000 & PASS    & \\
+    2\%   & Inversion         & D & 6  & 0.54\% & 1.000 & PASS    & \\
+    2\%   & LargeDeletion     & M & 43 & 3.7\%  & 1.000 & PASS    & \\
+    2\%   & TandemDuplication & M & 4  & 0.42\% & 1.000 & PASS    & \\
+    2\%   & Inversion         & M & 6  & 0.54\% & 1.000 & PASS    & \\
+    \midrule
+    5\%   & LargeDeletion     & D & 98 & 9.3\%  & 1.000 & PASS    & \\
+    5\%   & TandemDuplication & D & 16 & 1.8\%  & 1.000 & PASS    & \\
+    5\%   & Inversion         & D & 23 & 2.1\%  & 1.000 & PASS    & \\
+    5\%   & LargeDeletion     & M & 98 & 9.3\%  & 1.000 & PASS    & \\
+    5\%   & TandemDuplication & M & 16 & 1.8\%  & 1.000 & PASS    & \\
+    5\%   & Inversion         & M & 23 & 2.1\%  & 1.000 & PASS    & \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+% ── Table S3: Runtime breakdown by stage ─────────────────────────────────────
+
+\begin{table}[h]
+  \centering
+  \caption{Table S3: Per-stage wall-clock time (milliseconds) for all 24
+    titration samples at 2M read pairs. Columns: assemble, index, pathfind,
+    call, total wall time, peak RSS. Samples ordered by input mass then
+    ascending VAF.}
+  \label{tab:s3-runtime}
+  \small
+  \begin{tabular}{llrccccrr}
+    \toprule
+    Sample & Input & VAF & Assemble (ms) & Index (ms) & Pathfind (ms) & Call (ms) & Total (s) & RSS (MB) \\
+    \midrule
+    5ng 0\%     & 5\,ng  & 0.000\% & 16797 & 3234 & 378  & 1 & 21.0 & 1896 \\
+    5ng 0.001\% & 5\,ng  & 0.001\% & 16427 & 3340 & 484  & 1 & 20.8 & 1884 \\
+    5ng 0.01\%  & 5\,ng  & 0.010\% & 17717 & 3593 & 440  & 1 & 22.3 & 1935 \\
+    5ng 0.1\%   & 5\,ng  & 0.100\% & 17361 & 3621 & 563  & 2 & 22.2 & 1967 \\
+    5ng 0.25\%  & 5\,ng  & 0.250\% & 16846 & 3788 & 510  & 2 & 21.7 & 1912 \\
+    5ng 0.5\%   & 5\,ng  & 0.500\% & 17059 & 3565 & 476  & 2 & 21.7 & 1955 \\
+    5ng 1\%     & 5\,ng  & 1.000\% & 16297 & 3512 & 512  & 2 & 20.9 & 1927 \\
+    5ng 2\%     & 5\,ng  & 2.000\% & 15786 & 3264 & 434  & 2 & 20.1 & 1906 \\
+    \midrule
+    15ng 0\%    & 15\,ng & 0.000\% & 10654 & 4213 & 1004 & 2 & 16.4 & 1858 \\
+    15ng 0.001\%& 15\,ng & 0.001\% & 10941 & 4300 & 1014 & 2 & 16.8 & 1893 \\
+    15ng 0.01\% & 15\,ng & 0.010\% & 11568 & 4823 & 1147 & 2 & 18.1 & 1956 \\
+    15ng 0.1\%  & 15\,ng & 0.100\% & 10789 & 4109 &  918 & 2 & 16.4 & 1842 \\
+    15ng 0.25\% & 15\,ng & 0.250\% & 11780 & 4966 & 1215 & 3 & 18.6 & 1964 \\
+    15ng 0.5\%  & 15\,ng & 0.500\% & 10733 & 4264 & 1155 & 3 & 16.7 & 1836 \\
+    15ng 1\%    & 15\,ng & 1.000\% & 10938 & 4420 & 1028 & 3 & 16.9 & 1902 \\
+    15ng 2\%    & 15\,ng & 2.000\% & 12144 & 5047 & 1675 & 4 & 19.5 & 2014 \\
+    \midrule
+    30ng 0\%    & 30\,ng & 0.000\% & 10978 & 5224 & 1061 & 2 & 17.8 & 1900 \\
+    30ng 0.001\%& 30\,ng & 0.001\% & 10807 & 4937 & 1040 & 2 & 17.4 & 1848 \\
+    30ng 0.01\% & 30\,ng & 0.010\% & 12701 & 6428 & 2137 & 3 & 22.0 & 2031 \\
+    30ng 0.1\%  & 30\,ng & 0.100\% & 11200 & 5158 & 1112 & 2 & 18.1 & 1905 \\
+    30ng 0.25\% & 30\,ng & 0.250\% & 10655 & 4734 &  969 & 2 & 16.9 & 1857 \\
+    30ng 0.5\%  & 30\,ng & 0.500\% & 11287 & 5575 & 1471 & 3 & 18.9 & 1939 \\
+    30ng 1\%    & 30\,ng & 1.000\% & 11050 & 4993 & 1128 & 3 & 17.8 & 1916 \\
+    30ng 2\%    & 30\,ng & 2.000\% & 11139 & 5070 & 1130 & 3 & 17.9 & 1933 \\
+    \bottomrule
+  \end{tabular}
+\end{table}

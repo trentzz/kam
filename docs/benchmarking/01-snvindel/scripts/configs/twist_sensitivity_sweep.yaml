@@ -1,0 +1,134 @@
+# twist_sensitivity_sweep.yaml — Twist duplex UMI fine-grained VAF sensitivity sweep
+#
+# Fine-grained VAF sweep across 12 levels for sensitivity analysis.  Uses 50
+# random mutations (for speed) rather than the full truth VCF set.  Intended
+# to generate the sensitivity vs VAF curve for kam and comparison tools.
+#
+# VAF range: 0.0005% to 2%, with denser sampling in the sub-0.1% regime where
+# duplex consensus performance degrades.
+#
+# Same Twist duplex UMI parameters as twist_titration_series.yaml:
+#   - 5-mer inline duplex UMI
+#   - cfDNA nucleosomal fragment model
+#   - 1000x raw coverage
+#   - Twist panel BED targeting
+#
+# tumour_fraction = 2 × target_VAF (purity=1.0, ploidy=2, CCF=1.0):
+#   0.0005% → 0.00001
+#   0.001%  → 0.00002
+#   0.002%  → 0.00004
+#   0.005%  → 0.0001
+#   0.01%   → 0.0002
+#   0.02%   → 0.0004
+#   0.05%   → 0.001
+#   0.1%    → 0.002
+#   0.25%   → 0.005
+#   0.5%    → 0.01
+#   1%      → 0.02
+#   2%      → 0.04
+#
+# Run:
+#   varforge simulate --config benchmarking/scripts/configs/twist_sensitivity_sweep.yaml
+
+reference: /path/to/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna  # set to your local GRCh38 reference
+
+output:
+  directory: benchmarking/synthetic_data/twist_sensitivity
+  fastq: true
+  bam: false
+  truth_vcf: true
+  manifest: true
+
+fragment:
+  model: cfda
+  mean: 167.0
+  sd: 20.0
+
+quality:
+  mean_quality: 37
+  tail_decay: 0.002
+
+tumour:
+  purity: 1.0
+  ploidy: 2
+  clones:
+    - id: founding
+      ccf: 1.0
+
+# 50 random mutations restricted to SNVs and small indels, spanning the panel
+# region.  SNV-heavy to match the somatic mutation spectrum in liquid biopsy.
+mutations:
+  random:
+    count: 50
+    vaf_min: 0.000005  # floor kept low; actual VAF is set per-sample via tumour_fraction
+    vaf_max: 0.04
+    snv_fraction: 0.80
+    indel_fraction: 0.15
+    mnv_fraction: 0.05
+
+umi:
+  length: 5
+  duplex: true
+  pcr_cycles: 10
+  family_size_mean: 4.0
+  family_size_sd: 1.5
+  inline: true
+
+capture:
+  enabled: true
+  targets_bed: /path/to/panel.bed  # set to your capture panel BED file
+  off_target_fraction: 0.03
+  coverage_uniformity: 0.25
+  edge_dropoff_bases: 30
+
+samples:
+  - name: vaf_0.0005pct
+    coverage: 1000.0
+    tumour_fraction: 0.00001
+
+  - name: vaf_0.001pct
+    coverage: 1000.0
+    tumour_fraction: 0.00002
+
+  - name: vaf_0.002pct
+    coverage: 1000.0
+    tumour_fraction: 0.00004
+
+  - name: vaf_0.005pct
+    coverage: 1000.0
+    tumour_fraction: 0.0001
+
+  - name: vaf_0.01pct
+    coverage: 1000.0
+    tumour_fraction: 0.0002
+
+  - name: vaf_0.02pct
+    coverage: 1000.0
+    tumour_fraction: 0.0004
+
+  - name: vaf_0.05pct
+    coverage: 1000.0
+    tumour_fraction: 0.001
+
+  - name: vaf_0.1pct
+    coverage: 1000.0
+    tumour_fraction: 0.002
+
+  - name: vaf_0.25pct
+    coverage: 1000.0
+    tumour_fraction: 0.005
+
+  - name: vaf_0.5pct
+    coverage: 1000.0
+    tumour_fraction: 0.01
+
+  - name: vaf_1pct
+    coverage: 1000.0
+    tumour_fraction: 0.02
+
+  - name: vaf_2pct
+    coverage: 1000.0
+    tumour_fraction: 0.04
+
+seed: 42
+threads: 16

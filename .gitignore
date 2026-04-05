@@ -1,0 +1,9 @@
+target/
+.env
+__pycache__/
+*.pyc
+
+# Large generated files — see bigdata/
+bigdata/
+
+scripts/ml/__pycache__/

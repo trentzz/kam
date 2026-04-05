@@ -1,0 +1,68 @@
+# kam run configuration — ctDNA liquid biopsy monitoring
+#
+# Production-grade configuration for serial ctDNA monitoring in a clinical
+# research setting. Combines tumour-informed filtering with strict calling
+# thresholds and duplex confirmation to achieve near-zero false positives.
+#
+# Assumes the Twist UMI duplex chemistry and a target panel of < 200 genes.
+# Run this config at each plasma time point with the same tumour_mutations.vcf.
+#
+# Expected output: a small set of PASS calls (typically 2–15 mutations) that
+# represent tracked somatic variants, plus a qc.json for pipeline validation.
+#
+# Usage:
+#   kam run --config examples/ctdna-monitoring.toml \
+#           --r1 plasma_T1_R1.fq.gz \
+#           --r2 plasma_T1_R2.fq.gz \
+#           --output-dir results/plasma_T1/
+
+[input]
+r1              = "plasma_R1.fq.gz"
+r2              = "plasma_R2.fq.gz"
+targets         = "panel.fa"
+# VCF from matched tumour biopsy — defines the trackable mutation set.
+target_variants = "tumour_mutations.vcf"
+
+[output]
+output_dir    = "results/"
+output_format = "tsv,vcf"
+qc_output     = "results/qc.json"
+
+[chemistry]
+umi_length      = 5
+skip_length     = 2
+duplex          = true
+min_umi_quality = 20
+# Drop very short templates — likely adapter dimers at low input.
+min_template_length = 30
+
+[assembly]
+# Require at least 2 reads per family to eliminate PCR singletons.
+min_family_size = 2
+
+[indexing]
+kmer_size = 31
+
+[calling]
+# High-confidence threshold appropriate for clinical reporting.
+min_confidence        = 0.999
+strand_bias_threshold = 0.05
+min_alt_molecules     = 3
+# Require duplex evidence on the alt allele.
+min_alt_duplex        = 1
+
+# Block germline-compatible calls.
+max_vaf = 0.35
+
+sv_min_confidence        = 0.99
+sv_min_alt_molecules     = 2
+sv_strand_bias_threshold = 1.0
+
+# Exact position matching for tumour-informed mode.
+ti_position_tolerance = 0
+
+[logging]
+log_dir = "results/logs/"
+
+[runtime]
+threads = 8

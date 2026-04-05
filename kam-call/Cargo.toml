@@ -1,0 +1,28 @@
+[package]
+name = "kam-call"
+version.workspace = true
+edition.workspace = true
+description = "Statistical variant calling with confidence intervals"
+license.workspace = true
+repository.workspace = true
+readme = "../README.md"
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+kam-core = { workspace = true }
+kam-pathfind = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+statrs = { workspace = true }
+log = { workspace = true }
+needletail = { workspace = true }
+ort = { workspace = true, optional = true, features = [] }
+ndarray = { workspace = true, optional = true }
+
+[features]
+ml = ["dep:ort", "dep:ndarray"]
+
+[dev-dependencies]
+tempfile = "3"

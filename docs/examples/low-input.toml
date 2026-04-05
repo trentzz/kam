@@ -1,0 +1,65 @@
+# kam run configuration — low DNA input (≈ 5 ng)
+#
+# Adjusted for low-input samples where total DNA is limited (5–10 ng).
+# At low input:
+#   - UMI family sizes are smaller (fewer reads per molecule)
+#   - PCR amplification is higher (more duplicate molecules)
+#   - Short adapter-dimer fragments are more common
+#
+# Key adjustments:
+#   - min_family_size = 1 (singletons must be accepted — few families > 1)
+#   - min_template_length = 40 (drop adapter dimers more aggressively)
+#   - min_umi_quality lowered slightly to recover more reads
+#   - min_alt_molecules = 2 (still require 2 independent molecules)
+#
+# Usage:
+#   kam run --config examples/low-input.toml \
+#           --r1 sample_R1.fq.gz \
+#           --r2 sample_R2.fq.gz \
+#           --targets panel.fa \
+#           --output-dir results/
+
+[input]
+r1      = "sample_R1.fq.gz"
+r2      = "sample_R2.fq.gz"
+targets = "panel.fa"
+
+[output]
+output_dir    = "results/"
+output_format = "tsv,vcf"
+qc_output     = "results/qc.json"
+
+[chemistry]
+umi_length  = 5
+skip_length = 2
+duplex      = true
+# Slightly relaxed UMI quality to recover more reads from low-yield libraries.
+min_umi_quality = 15
+# Aggressively drop very short templates (adapter dimers inflate molecule counts
+# and contaminate the k-mer index).
+min_template_length = 40
+
+[assembly]
+# Must accept singletons — at 5 ng input, most UMI families have 1–2 reads.
+min_family_size = 1
+
+[indexing]
+kmer_size = 31
+
+[calling]
+min_confidence        = 0.99
+strand_bias_threshold = 0.01
+# Still require 2 independent molecules to guard against PCR artefacts.
+min_alt_molecules = 2
+min_alt_duplex    = 0
+
+sv_min_confidence        = 0.95
+sv_min_alt_molecules     = 1
+sv_strand_bias_threshold = 1.0
+
+ti_position_tolerance = 0
+
+[logging]
+log_dir = "results/logs/"
+# Log dropped reads to monitor how much of the library is lost to adapter dimers.
+log = ["reads_dropped", "families"]

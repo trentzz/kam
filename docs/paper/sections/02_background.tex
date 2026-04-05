@@ -1,0 +1,112 @@
+\section{Background}
+\label{sec:background}
+
+\subsection{Duplex UMI sequencing}
+\label{sec:bg-duplex}
+
+Standard next-generation sequencing produces per-base error rates of $10^{-2}$ to $10^{-3}$, set by the accuracy of the sequencing chemistry.
+Detecting a variant at 0.1\% VAF requires distinguishing a true signal from errors that occur at 10 to 100 times the signal frequency.
+Duplex UMI sequencing solves this through two layers of error correction\autocite{Schmitt12duplex}.
+
+Before PCR amplification, each original DNA molecule receives a pair of UMI tags, one ligated to each strand.
+All PCR copies of that molecule carry the same UMI pair.
+After sequencing, reads sharing a UMI pair are grouped into a \emph{molecule family}.
+The first error correction step collapses all reads from one strand of a family into a \emph{single-strand consensus sequence} (SSC) by majority vote weighted by base quality.
+Positions where most reads agree are called with high confidence; positions where reads disagree are flagged or masked.
+This reduces the error rate to approximately $10^{-3}$ to $10^{-4}$, limited by systematic errors that affect all copies of one strand identically.
+
+The second step compares the forward-strand SSC to the reverse-strand SSC.
+A sequencing or PCR error on one strand is unlikely to produce the identical error on the complementary strand independently.
+Positions where both SSCs agree form the \emph{duplex consensus sequence} (DCS), with an effective error rate of approximately $10^{-7}$: the product of the two independent per-strand error rates\autocite{Kennedy14duplex}.
+This three-order-of-magnitude improvement over single-strand consensus is what makes sub-0.1\% VAF detection feasible.
+
+The Twist Biosciences UMI adapter system\autocite{Twist22cfdna} uses the read structure \texttt{5M2S+T} on both R1 and R2: 5 bases of random UMI, 2 bases of skip sequence (a fixed monotemplate spacer from the ligation chemistry), and the remaining template sequence.
+The 5-base UMI provides $4^5 = 1{,}024$ possible UMI values.
+Duplex strand pairing uses a canonical form: given UMI pair $(A, B)$ from R1 and R2, the canonical identifier is $\min(A{+}B,\; B{+}A)$ by lexicographic order.
+Reads with UMI pair $(A, B)$ and reads with UMI pair $(B, A)$ map to the same molecule on opposite strands.
+
+The small UMI space creates a collision problem at high sequencing depth.
+At 10{,}000$\times$ coverage, two unrelated molecules at the same genomic locus can share a UMI pair by chance.
+Collisions merge distinct molecules into one family, masking real variants (false negatives) or averaging unrelated sequences (consensus errors).
+Collision detection requires a secondary signal beyond the UMI itself, such as the genomic endpoints of the sequenced fragment.
+
+\subsection{K-mer approaches to variant detection}
+\label{sec:bg-kmer}
+
+A k-mer is a subsequence of length $k$ extracted from a read or reference.
+For $k = 31$, a 150-base read yields 120 overlapping 31-mers.
+K-mer counting tools such as Jellyfish\autocite{Marcais11jellyfish} build a hash table mapping each distinct k-mer to its occurrence count across all input reads.
+This index supports alignment-free analyses: any query about sequence content can be answered by looking up k-mer counts without aligning reads to a reference genome.
+
+K-mer variant detection works by constructing a de Bruijn graph from the k-mer index and walking paths through it.
+Each node in the graph is a k-mer; edges connect k-mers that overlap by $k{-}1$ bases.
+Given a target reference sequence (for example, exon 7 of \emph{TP53}), the tool anchors the walk at the first and last k-mers of the reference, then enumerates all paths between these anchors that are supported by k-mer evidence in the index.
+The reference path represents the wild-type allele.
+Any alternative path represents a variant: a single-nucleotide substitution adds one divergent node, an insertion adds extra nodes, and a deletion skips nodes.
+The ratio of variant-path k-mer counts to reference-path k-mer counts estimates the VAF.
+
+km\autocite{Bourgey19km} implements this approach using Jellyfish k-mer databases.
+It was designed for RNA-seq mutation detection and calls variants when the count ratio exceeds a user-specified threshold (the \texttt{-{}-ratio} parameter).
+This threshold is a global cutoff with no statistical model: the same ratio at 100$\times$ and 10{,}000$\times$ coverage receives the same call, despite representing very different levels of evidence.
+kmtools adds parallelisation (chunking targets across processes) and post-hoc filtering against known variant databases.
+
+The fundamental limitation of this pipeline is that k-mer counts are integers with no provenance.
+Jellyfish's canonical mode (\texttt{-C}) collapses forward and reverse-complement k-mers into a single count, erasing strand information entirely.
+There is no per-k-mer record of how many molecules contributed the count, whether those molecules had duplex support, or what the base qualities were at the variant position.
+
+\subsection{The information loss problem}
+\label{sec:bg-information-loss}
+
+The existing pipeline processes data through four stages, losing information at each transition.
+Figure~\ref{fig:info-loss} illustrates the two pipelines side by side.
+
+\begin{figure}[htbp]
+\centering
+\small
+\begin{verbatim}
+Existing pipeline:
+  Raw reads --> HUMID (dedup) --> Jellyfish (count) --> km (call)
+  [duplex       [one read        [integer              [ratio
+   families,     per family,      counts,               threshold,
+   strand info,  no consensus,    no strand,            no statistics,
+   base quality] no metadata]     no molecules]         no confidence]
+
+kam pipeline:
+  Raw reads --> molecule assembly --> k-mer index --> variant calling
+  [duplex       [SSC + DCS           [MoleculeEvidence  [molecule-count
+   families,     consensus,           per k-mer:          statistics,
+   strand info,  quality scores,      n_molecules,        duplex-aware
+   base quality] family metadata]     n_duplex,           weighting,
+                                      strand counts,      confidence
+                                      error probs]        intervals]
+\end{verbatim}
+\caption{Information flow in the existing pipeline (top) and kam (bottom).
+Each arrow represents a processing step.
+Brackets list the information available at that stage.
+The existing pipeline reduces duplex molecule families to integer k-mer counts by the second step.
+kam preserves molecule identity and quality metadata through to variant calling.}
+\label{fig:info-loss}
+\end{figure}
+
+Three specific losses matter for low-VAF variant detection.
+
+\textbf{Loss of molecule identity.}
+HUMID selects one representative read per UMI group and discards the rest.
+Jellyfish then counts k-mers across all surviving reads.
+A k-mer count of 500 could represent 500 independent molecules (strong evidence) or 5 molecules with 100 PCR copies each (weak evidence).
+The distinction is critical at 0.1\% VAF, where a true variant may be supported by only 5 to 10 molecules out of 5{,}000 to 10{,}000 total.
+
+\textbf{Loss of strand information.}
+Jellyfish's canonical k-mer mode merges forward and reverse-complement k-mers.
+A variant supported by molecules on only one strand is a hallmark of systematic artefact (oxidative damage, deamination), not a true somatic mutation.
+Without strand information, the variant caller cannot apply strand bias filters.
+
+\textbf{Loss of error correction quality.}
+Duplex consensus bases have error rates of ${\sim}10^{-7}$.
+Simplex consensus bases have error rates of ${\sim}10^{-3}$.
+Singleton reads have error rates of ${\sim}10^{-2}$.
+When all are collapsed into a single k-mer count, the variant caller treats evidence from a duplex-confirmed molecule identically to evidence from an uncorrected singleton.
+A principled statistical model should weight these differently.
+
+kam addresses all three losses by storing \texttt{MoleculeEvidence} per k-mer: distinct molecule count, duplex molecule count, per-strand simplex counts, and aggregate error probabilities.
+The variant caller uses these fields directly, calling variants based on the number of independent molecules (not reads) and weighting duplex evidence above simplex evidence.

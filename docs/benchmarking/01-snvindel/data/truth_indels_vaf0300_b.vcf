@@ -1,0 +1,11 @@
+##fileformat=VCFv4.2
+##contig=<ID=chr1,length=2000>
+##INFO=<ID=TYPE,Number=1,Type=String,Description="Variant type: SNP or INDEL">
+##INFO=<ID=SVLEN,Number=1,Type=Integer,Description="Indel length (negative=deletion)">
+##INFO=<ID=VAF,Number=1,Type=Float,Description="Variant allele frequency">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	100	.	TTTG	T	.	PASS	TYPE=INDEL;SVLEN=-3;VAF=0.03
+chr1	300	.	A	AGACGT	.	PASS	TYPE=INDEL;SVLEN=5;VAF=0.03
+chr1	550	.	GTGA	G	.	PASS	TYPE=INDEL;SVLEN=-3;VAF=0.03
+chr1	750	.	T	TGCTAG	.	PASS	TYPE=INDEL;SVLEN=5;VAF=0.03
+chr1	1000	.	TACA	T	.	PASS	TYPE=INDEL;SVLEN=-3;VAF=0.03

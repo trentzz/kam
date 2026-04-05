@@ -1,0 +1,57 @@
+# kam run configuration — high sensitivity
+#
+# Relaxed thresholds designed to maximise variant detection at the cost of
+# a higher false-positive rate. Suitable for initial discovery in research
+# samples, wet-lab validation experiments, or cases where downstream filtering
+# will handle FP removal.
+#
+# Key relaxations:
+#   - min_confidence lowered to 0.90 (accepts weaker statistical support)
+#   - min_alt_molecules = 1 (accepts single-molecule calls)
+#   - min_alt_duplex = 0 (no duplex confirmation required)
+#   - strand_bias_threshold raised (fewer calls filtered by strand bias)
+#   - sv thresholds similarly relaxed
+#
+# Usage:
+#   kam run --config examples/high-sensitivity.toml
+
+[input]
+r1      = "sample_R1.fq.gz"
+r2      = "sample_R2.fq.gz"
+targets = "panel.fa"
+
+[output]
+output_dir    = "results/"
+output_format = "tsv,vcf"
+qc_output     = "results/qc.json"
+
+[chemistry]
+umi_length  = 5
+skip_length = 2
+duplex      = true
+# Accept reads with lower UMI quality to recover more molecules.
+min_umi_quality = 15
+
+[assembly]
+# Accept singleton families to maximise read utilisation.
+min_family_size = 1
+
+[indexing]
+kmer_size = 31
+
+[calling]
+# Reduced confidence threshold — expect more low-support calls in output.
+min_confidence        = 0.90
+# Relaxed strand bias filter — fewer calls flagged as strand-biased.
+strand_bias_threshold = 0.001
+# Accept single-molecule evidence.
+min_alt_molecules = 1
+min_alt_duplex    = 0
+
+# SV thresholds — very permissive.
+sv_min_confidence        = 0.80
+sv_min_alt_molecules     = 1
+sv_strand_bias_threshold = 1.0
+
+[logging]
+log_dir = "results/logs/"

@@ -1,0 +1,17 @@
+[package]
+name = "kam-pathfind"
+version.workspace = true
+edition.workspace = true
+description = "De Bruijn graph construction and variant path walking"
+license.workspace = true
+repository.workspace = true
+readme = "../README.md"
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+kam-core = { workspace = true }
+kam-index = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+log = { workspace = true }

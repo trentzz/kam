@@ -1,0 +1,8 @@
+##fileformat=VCFv4.2
+##contig=<ID=chr1,length=2000>
+##INFO=<ID=SVTYPE,Number=1,Type=String,Description="SV type">
+##INFO=<ID=MATEID,Number=1,Type=String,Description="Mate BND record ID">
+##INFO=<ID=VAF,Number=1,Type=Float,Description="Variant allele frequency">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	200	BCR_ABL1_1	A	A]chr1:900]	.	PASS	SVTYPE=BND;MATEID=BCR_ABL1_2;VAF=0.025
+chr1	900	BCR_ABL1_2	T	]chr1:200]T	.	PASS	SVTYPE=BND;MATEID=BCR_ABL1_1;VAF=0.025

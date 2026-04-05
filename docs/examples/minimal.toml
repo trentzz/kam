@@ -1,0 +1,18 @@
+# kam run configuration — minimal
+#
+# The smallest valid config. Provide just the required fields and let kam
+# use its defaults for everything else.
+#
+# All chemistry, assembly, indexing, calling, and logging settings fall back
+# to the built-in defaults (Twist UMI duplex chemistry, k=31, confidence=0.99).
+#
+# Usage:
+#   kam run --config examples/minimal.toml
+
+[input]
+r1      = "sample_R1.fq.gz"
+r2      = "sample_R2.fq.gz"
+targets = "panel.fa"
+
+[output]
+output_dir = "results/"

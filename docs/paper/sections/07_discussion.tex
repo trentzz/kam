@@ -1,0 +1,170 @@
+\section{Discussion}
+\label{sec:discussion}
+
+kam is a proof of concept that alignment-free variant detection is feasible for
+Twist duplex UMI panel sequencing.
+The pipeline preserves molecule-level information from raw FASTQ to variant call
+without any alignment step, detecting 52--61\% of truth variants at 2\% VAF
+with precision 1.0 in tumour-informed monitoring mode using 2M read pairs per
+sample, running in 16--22 seconds on a single core.
+
+Evaluation identified and fixed two implementation bugs: a strand
+bias overcounting bug that inflated the Fisher exact test sample size
+approximately 70-fold, and a duplex orientation comparison bug that prevented
+genuine duplex pairs from being grouped correctly.
+With both fixes applied, sensitivity extends to the 0.25--0.5\% VAF range at
+15--30\,ng input.
+
+\paragraph{Tumour-informed monitoring mode.}
+The \texttt{--target-variants} flag converts kam from a somatic discovery tool
+to a confirmatory monitoring tool.
+In discovery mode, a background noise floor of 35--72 false positives per sample
+remains after applying germline VAF and singleton molecule filters.
+These are real biological cfDNA variants indistinguishable from spike-in calls
+without external annotation.
+In monitoring mode, this entire class of false positives is eliminated: the
+noise floor drops to zero because background biological variants do not match
+the expected somatic alleles.
+Sensitivity is unchanged because true positive calls, by definition, match the
+target set.
+
+This mode is directly applicable to serial ctDNA monitoring: given a set of
+somatic variants identified from a tissue biopsy, kam confirms whether each
+variant is detectable in a subsequent liquid biopsy sample.
+Precision 1.0 at all VAF levels means every reported call is a confirmed target
+variant; sensitivity 52--61\% at 2\% VAF means that roughly half of all target
+variants with sufficient sequencing depth are recovered.
+
+\paragraph{SNV and indel calling.}
+Indel sensitivity at 2M reads ranges from 32\% to 39\% at 2\% VAF, compared to
+69--80\% for SNVs. The gap is expected: insertions and deletions shift the
+position of end-anchor k-mers relative to the reference, requiring those
+shifted k-mers to be covered by sequencing reads for a walk to complete. This
+anchor coverage requirement is more likely to be satisfied as depth increases.
+The left-normalisation step ensures that called indel positions match the
+convention used by GATK, bcftools, and standard truth sets~\autocite{tan2015},
+enabling direct comparison against VCF truth files.
+
+\paragraph{Depth scaling.}
+Sensitivity grows with read depth across the full 250K--2M range tested.
+Gains are largest from 250K to 1M reads; returns diminish above 1M at the
+high-VAF end. This is consistent with a model where the most abundant variant
+molecules are covered first, and rarer variants require proportionally more
+reads. Sub-0.1\% VAF detection requires deeper sequencing; this is feasible
+once the O($n^2$) UMI grouping bottleneck is resolved by hash partitioning
+(Section~\ref{sec:future}).
+
+\paragraph{Comparison to alignment-based approaches.}
+Alignment-based pipelines for ctDNA variant calling typically report sensitivity
+of 80--95\% at 1--2\% VAF with comparable panel sizes, using millions of
+read pairs~\autocite{Twist22cfdna}. The gap between those numbers and the
+52--61\% reported here has two primary components: the anchor coverage
+limitation for indels (SNV sensitivity at 2\% VAF reaches 69--80\%, narrowing
+the gap considerably), and the conservative minimum alt molecule threshold.
+A direct head-to-head comparison on the same samples against GATK Mutect2,
+Sentieon TNscope, or fgbio\,+\,bwa is not included in this work; such a
+comparison requires running alignment-based callers on matched read sets, which
+is deferred to future evaluation (Section~\ref{sec:future}).
+
+\paragraph{Information preservation.}
+The key architectural advantage of kam over the km/Jellyfish pipeline is that
+every k-mer in the graph retains a pointer to the molecule that contributed it.
+This means strand bias, duplex support, and per-molecule error probability are
+available at the scoring stage without a separate alignment pass. Current calling
+uses only molecule counts and strand counts; the full posterior over molecule
+quality (incorporating per-cycle error probability from base quality scores)
+is implemented but not yet tuned.
+
+\paragraph{Reproducibility.}
+All RNG in the pipeline uses seeded deterministic generators, ensuring that
+runs on the same input produce identical output. This is a requirement for
+Nextflow cache compatibility and for scientific reproducibility. The pipeline
+does not use the system clock, process ID, or any other non-deterministic
+seed source.
+
+\paragraph{When alignment-free is the right choice.}
+The results point to three settings where an alignment-free approach is
+preferable to alignment-based calling.
+
+First, tumour-informed serial monitoring.
+When the somatic variant panel is fixed from a prior biopsy, monitoring mode
+eliminates the false positive floor at zero sensitivity cost.
+This property is structural: no alignment-based filter can achieve it without
+an equivalent target-matching step, at which point the reference alignment
+contributes only runtime overhead.
+
+Second, speed-critical or resource-constrained deployments.
+kam runs each sample in under 30\,s on a single core without a reference
+index loaded into memory.
+Alignment-based pipelines must coordinate reference download, index
+construction, BAM generation, and coordinate sorting before calling begins.
+For routine clinical monitoring at scale, this difference compounds across
+thousands of samples per day.
+
+Third, panel-based assays with stable chemistry.
+The \texttt{config.toml} approach means adapting to a new UMI chemistry
+requires no code change, only a configuration file.
+Alignment-based tools that embed chemistry assumptions in pre-processing
+scripts require engineering changes for each chemistry variation.
+
+\paragraph{Limitations.}
+
+\textit{Discovery mode sensitivity gap.}
+At 2\% VAF, kam discovery mode sensitivity of 52--61\% is lower than
+published alignment-based figures of 80--95\% for comparable panels.
+Two structural causes account for most of the gap.
+The anchor coverage constraint means indels are harder to detect than SNVs;
+at 2\% VAF indel sensitivity is 31--39\% vs.\ 69--80\% for SNVs.
+The O($n^2$) UMI clustering step limits practical sequencing depth to 2M
+read pairs, below the depths used in some alignment-based evaluations.
+Neither limitation is fundamental to the alignment-free approach; both have
+concrete fixes in the development plan (Section~\ref{sec:future}).
+
+\textit{No direct head-to-head comparison on matched reads.}
+The alignment-based sensitivity numbers cited here come from the same physical
+samples processed with a different pipeline; they are not re-runs of identical
+FASTQ files.
+Differences in read depth, subsampling, and preprocessing mean the comparison
+is indicative rather than controlled.
+A controlled comparison on identical read subsets is deferred until the
+hash-partition UMI grouping fix is in place, which will allow both pipelines
+to run at comparable depths.
+
+\textit{Synthetic SV evaluation.}
+The SV results use a 2000\,bp synthetic reference.
+Real somatic SVs occur in complex genomic contexts with repetitive sequences,
+GC extremes, and mapping ambiguity.
+Evaluating on the COLO829 truth set (68 experimentally confirmed somatic SVs
+across five technologies~\autocite{vanDijk22colo829}) is planned but blocked on
+implementing no-UMI mode for whole-genome data.
+
+\textit{UMI collision rate.}
+With a 5\,bp UMI providing 1024 possible sequences, the collision probability
+at high library complexity is non-negligible.
+At 350K unique molecules per sample, the expected fraction of UMI collisions
+(two distinct molecules sharing the same canonical UMI pair) is
+\placeholder{X.X}\% under a uniform collision model.
+These collisions merge distinct molecules, reducing effective depth and
+potentially confusing the strand bias signal.
+A collision reporting module is planned (\texttt{kam-assemble} QC output) but
+is not included in the current version.
+
+\paragraph{Cross-chemistry outlook.}
+The three public datasets selected for cross-chemistry validation
+(Section~\ref{sec:results-crosschem}) test molecule assembly on a 12\,bp
+read-name UMI, SNV/indel calling without UMI deduplication, and SV calling on
+a WGS truth set.
+Running these will require implementing no-UMI mode (treating each read pair as
+a single molecule) and validating that the FASTQ parser correctly extracts
+non-inline UMIs.
+Both are engineering tasks with no algorithmic uncertainty; they are scheduled
+for the next development sprint.
+
+\paragraph{Figure availability.}
+Figures~\ref{fig:sensitivity}--\ref{fig:runtime_comparison} are generated by
+scripts in \texttt{docs/benchmarking/*/scripts/} and reproduced from committed
+benchmark outputs.
+The comparison figures (\autoref{fig:comparison}, \autoref{fig:comparison_fp},
+\autoref{fig:runtime_comparison}) require alignment-baseline results; those
+scripts exist but the figures contain placeholder data pending final extraction
+of the thesis alignment pipeline numbers.

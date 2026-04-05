@@ -1,0 +1,242 @@
+% BibTeX references for kam paper.
+% Citation style: Vancouver (numbered, as used in biomedical/bioinformatics journals).
+% Cite key convention: AuthorYYkeyword (e.g., Marcais11jellyfish, Smith17umitools).
+% Include DOI where known. Mark uncertain DOIs with a comment.
+
+@article{Marcais11jellyfish,
+  author    = {Mar{\c{c}}ais, Guillaume and Kingsford, Carl},
+  title     = {A fast, lock-free approach for efficient parallel counting of occurrences of k-mers},
+  journal   = {Bioinformatics},
+  year      = {2011},
+  volume    = {27},
+  number    = {6},
+  pages     = {764--770},
+  doi       = {10.1093/bioinformatics/btr011}
+}
+
+@article{Smith17umitools,
+  author    = {Smith, Tom and Heger, Andreas and Sudbery, Ian},
+  title     = {{UMI-tools}: modeling sequencing errors in Unique Molecular Identifiers to improve quantification accuracy},
+  journal   = {Genome Research},
+  year      = {2017},
+  volume    = {27},
+  number    = {3},
+  pages     = {491--499},
+  doi       = {10.1101/gr.209601.116}
+}
+
+% needletail: check https://github.com/onecodex/needletail for any associated publication.
+% As of the paper draft, needletail does not have a dedicated journal publication.
+% Cite the software repository directly if no paper is available.
+@misc{needletail,
+  author    = {Pierce, N. T. and others},
+  title     = {needletail: fast {FASTQ/A} parsing and k-mer methods in {Rust}},
+  year      = {2021},
+  howpublished = {\url{https://github.com/onecodex/needletail}},
+  note      = {Software. No DOI assigned; verify before submission.}
+}
+
+% de Bruijn graphs for variant detection.
+% Iqbal et al. 2012 introduced Cortex, the canonical de Bruijn graph variant caller.
+@article{Iqbal12cortex,
+  author    = {Iqbal, Zamin and Caccamo, Mario and Turner, Isaac and Flicek, Paul and McVean, Gil},
+  title     = {De novo assembly and genotyping of variants using colored de {Bruijn} graphs},
+  journal   = {Nature Genetics},
+  year      = {2012},
+  volume    = {44},
+  number    = {2},
+  pages     = {226--232},
+  doi       = {10.1038/ng.1028}
+}
+
+% Twist Biosciences cfDNA UMI chemistry.
+% No single peer-reviewed paper covers the chemistry; cite their technical documentation
+% or a validation paper using their panel if one is available.
+@misc{Twist22cfdna,
+  author    = {{Twist Biosciences}},
+  title     = {Twist Alliance {cfDNA} Reference Standard and {UMI} Adapter System technical documentation},
+  year      = {2022},
+  howpublished = {\url{https://www.twistbioscience.com/}},
+  note      = {Technical white paper. No DOI assigned; verify before submission.}
+}
+
+% Bourgey et al. km: find-mutation via k-mer graph walking.
+@misc{Bourgey19km,
+  author    = {Bourgey, Mathieu and others},
+  title     = {km: a k-mer based approach for classifying and quantifying genomic mutations at the nucleotide level},
+  year      = {2019},
+  howpublished = {\url{https://github.com/iric-soft/km}},
+  note      = {Software. No DOI assigned; verify before submission.}
+}
+
+% ctDNA liquid biopsy review.
+% Wan et al. 2017 is a widely cited review of ctDNA detection approaches.
+@article{Wan17ctdna,
+  author    = {Wan, Jonathan C M and Massie, Charles and Garcia-Corbacho, Javier and Mouliere, Florent and Brenton, James D and Caldas, Carlos and Pacey, Simon and Baird, Richard and Rosenfeld, Nitzan},
+  title     = {Liquid biopsies come of age: towards implementation of circulating tumour {DNA}},
+  journal   = {Nature Reviews Cancer},
+  year      = {2017},
+  volume    = {17},
+  number    = {4},
+  pages     = {223--238},
+  doi       = {10.1038/nrc.2017.7}
+}
+
+% Schmitt et al. 2012 — foundational duplex sequencing paper.
+@article{Schmitt12duplex,
+  author    = {Schmitt, Michael W and Kennedy, Scott R and Salk, Jesse J and Fox, Edward J and Hiatt, Joseph B and Loeb, Lawrence A},
+  title     = {Detection of ultra-rare mutations by next-generation sequencing},
+  journal   = {Proceedings of the National Academy of Sciences},
+  year      = {2012},
+  volume    = {109},
+  number    = {36},
+  pages     = {14508--14513},
+  doi       = {10.1073/pnas.1208715109}
+}
+
+% Kennedy et al. 2014 — duplex sequencing protocol and error rate analysis.
+@article{Kennedy14duplex,
+  author    = {Kennedy, Scott R and Schmitt, Michael W and Fox, Edward J and Kohrn, Brendan F and Salk, Jesse J and Ahn, Eun Hyun and Prindle, Marc J and Kuong, Kawai J and Shen, Jiang-Cheng and Risques, Rosa-Ana and Loeb, Lawrence A},
+  title     = {Detecting ultralow-frequency mutations by Duplex Sequencing},
+  journal   = {Nature Protocols},
+  year      = {2014},
+  volume    = {9},
+  number    = {11},
+  pages     = {2586--2606},
+  doi       = {10.1038/nprot.2014.170}
+}
+
+% fgbio duplex consensus calling toolkit.
+@misc{fgbio,
+  author    = {{Fulcrum Genomics}},
+  title     = {fgbio: tools for working with genomic and high throughput sequencing data},
+  year      = {2024},
+  howpublished = {\url{https://github.com/fulcrumgenomics/fgbio}},
+  note      = {Software.}
+}
+
+% HUMID — reference-free FASTQ deduplication.
+@misc{Langedijk22humid,
+  author    = {Langedijk, Redmar and others},
+  title     = {{HUMID}: fast reference-free duplicate removal for {FASTQ} files with {UMIs}},
+  year      = {2022},
+  howpublished = {\url{https://github.com/fengsong77/HUMID}},
+  note      = {Software. No DOI assigned; verify before submission.}
+}
+
+% Liu 2019 — UMICollapse.
+@article{Liu19umicollapse,
+  author    = {Liu, Daniel},
+  title     = {Algorithms for efficiently collapsing reads with Unique Molecular Identifiers},
+  journal   = {PeerJ},
+  year      = {2019},
+  volume    = {7},
+  pages     = {e8275},
+  doi       = {10.7717/peerj.8275}
+}
+
+@article{Lai16vardict,
+  author    = {Lai, Zhongwu and Markovets, Aleksander and Ahdesmaki, Miika and Chapman, Brad and Hofmann, Oliver and McEwen, Robert and Johnson, Jake and Dougherty, Brian and Barrett, J. Carl and Dry, Jonathan R.},
+  title     = {{VarDict}: a novel and versatile variant caller for next-generation sequencing in cancer research},
+  journal   = {Nucleic Acids Res.},
+  year      = {2016},
+  volume    = {44},
+  number    = {11},
+  pages     = {e108},
+  doi       = {10.1093/nar/gkw227}
+}
+
+@article{McKenna10gatk,
+  author    = {McKenna, Aaron and Hanna, Matthew and Banks, Eric and Sivachenko, Andrey and Cibulskis, Kristian and Kernytsky, Andrew and Garimella, Kiran and Altshuler, David and Gabriel, Stacey and Daly, Mark and DePristo, Mark A.},
+  title     = {The {Genome Analysis Toolkit}: a {MapReduce} framework for analyzing next-generation {DNA} sequencing data},
+  journal   = {Genome Res.},
+  year      = {2010},
+  volume    = {20},
+  number    = {9},
+  pages     = {1297--1303},
+  doi       = {10.1101/gr.107524.110}
+}
+
+@article{Wilm12lofreq,
+  author    = {Wilm, Andreas and Aw, Pauline Poh Sze and Bertrand, Denis and Yeo, Grace Hui Ting and Ong, Swee Hoe and Wong, Chang Hua and Khor, Chiea Chuen and Petric, Radomir and Hibberd, Martin Lloyd and Nagarajan, Niranjan},
+  title     = {{LoFreq}: a sequence-quality aware, ultra-sensitive variant caller for uncovering cell-population heterogeneity from high-throughput sequencing datasets},
+  journal   = {Nucleic Acids Res.},
+  year      = {2012},
+  volume    = {40},
+  number    = {22},
+  pages     = {11189--11201},
+  doi       = {10.1093/nar/gks918}
+}
+
+@article{Poplin18deepvariant,
+  author    = {Poplin, Ryan and Chang, Pi-Chuan and Alexander, David and Schwartz, Scott and Colthurst, Thomas and Ku, Alexander and Newburger, Dan and Dijamco, Jojo and Nguyen, Nam and Afshar, Pegah T. and Gross, Sam S. and Dorfman, Lizzie and McLean, Cory Y. and DePristo, Mark A.},
+  title     = {A universal {SNP} and small-indel variant caller using deep neural networks},
+  journal   = {Nat. Biotechnol.},
+  year      = {2018},
+  volume    = {36},
+  number    = {10},
+  pages     = {983--987},
+  doi       = {10.1038/nbt.4235}
+}
+
+@article{tan2015,
+  author    = {Tan, Adrian and Abecasis, Gon{\c{c}}alo R and Kang, Hyun Min},
+  title     = {Unified representation of genetic variants},
+  journal   = {Bioinformatics},
+  year      = {2015},
+  volume    = {31},
+  number    = {13},
+  pages     = {2202--2204},
+  doi       = {10.1093/bioinformatics/btv112}
+}
+
+@misc{thesis2025,
+  author    = {Zeng, Trent},
+  title     = {Alignment-Based Variant Detection for Duplex {UMI} Sequencing: A Thesis Evaluation},
+  year      = {2025},
+  note      = {Unpublished thesis, University of New South Wales}
+}
+
+@misc{ZengThesis,
+  author    = {Zeng, Trent},
+  title     = {Alignment-Based Variant Detection for Duplex {UMI} Sequencing},
+  year      = {2025},
+  note      = {Unpublished thesis, University of New South Wales}
+}
+
+@article{Calib25umi,
+  author    = {Calib and others},
+  title     = {Benchmarking {UMI} clustering tools for accurate detection of low-frequency variants from deep sequencing},
+  journal   = {Scientific Reports},
+  year      = {2025},
+  volume    = {45},
+  pages     = {11773},
+  doi       = {10.1038/s41598-025-33128-x}
+}
+
+@article{Xiao21seqc2,
+  author    = {Xiao, Wenming and others},
+  title     = {Achieving robust somatic mutation detection with deep learning models derived from reference data sets of a cancer sample},
+  journal   = {Genome Biology},
+  year      = {2021},
+  volume    = {22},
+  pages     = {235},
+  doi       = {10.1186/s13059-021-02592-9}
+}
+
+@article{vanDijk22colo829,
+  author    = {van Dijk, Freerk and others},
+  title     = {A multi-platform reference for somatic structural variation detection},
+  journal   = {Cell Genomics},
+  year      = {2022},
+  volume    = {2},
+  pages     = {100082},
+  doi       = {10.1016/j.xgen.2022.100082}
+}
+
+@misc{varforge,
+  author    = {Zeng, Trent},
+  title     = {varforge: Synthetic variant read simulator for {UMI} sequencing},
+  year      = {2025},
+  note      = {Internal tool}
+}

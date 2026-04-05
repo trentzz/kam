@@ -1,0 +1,52 @@
+# kam run configuration — simplex 9bp UMI chemistry
+#
+# For protocols using a 9bp UMI with no skip/spacer region and simplex
+# (single-strand) sequencing. Common in some commercial amplicon panel kits.
+#
+# A 9bp UMI has 4^9 = 262,144 possible values. Collision probability is low
+# at typical sequencing depths, but the assembler uses Hamming-1 clustering
+# so single-base UMI errors are corrected at grouping time.
+#
+# Usage:
+#   kam run --config examples/simplex-umi-9bp.toml \
+#           --r1 sample_R1.fq.gz \
+#           --r2 sample_R2.fq.gz \
+#           --targets panel.fa \
+#           --output-dir results/
+
+[input]
+r1      = "sample_R1.fq.gz"
+r2      = "sample_R2.fq.gz"
+targets = "panel.fa"
+
+[output]
+output_dir    = "results/"
+output_format = "tsv,vcf"
+
+[chemistry]
+umi_length  = 9
+skip_length = 0
+duplex      = false
+min_umi_quality = 20
+
+[assembly]
+min_family_size = 1
+
+[indexing]
+kmer_size = 31
+
+[calling]
+min_confidence        = 0.99
+# Simplex: relax strand bias threshold.
+strand_bias_threshold = 0.001
+min_alt_molecules     = 2
+min_alt_duplex        = 0
+
+sv_min_confidence        = 0.95
+sv_min_alt_molecules     = 1
+sv_strand_bias_threshold = 1.0
+
+ti_position_tolerance = 0
+
+[logging]
+log_dir = "results/logs/"

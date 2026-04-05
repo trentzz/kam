@@ -1,0 +1,244 @@
+\section{Evaluation}
+\label{sec:evaluation}
+
+We identified two implementation bugs by code review and fixed them.
+We describe each and their impact on sensitivity.
+
+% ── Strand bias overcounting ──────────────────────────────────────────────────
+\subsection{Strand bias overcounting}
+\label{sec:eval:strandbias}
+
+The original implementation computed strand bias counts as the sum of
+\texttt{n\_simplex\_fwd} and \texttt{n\_simplex\_rev} across all k-mers in
+the alt path.
+For a 100\,bp target with $k = 31$, the alt path contains approximately 70
+k-mers.
+A real variant supported by 5 forward-strand molecules and 0 reverse-strand
+molecules therefore appears as 350 forward reads vs.\ 0 reverse reads in the
+Fisher exact test, giving $p \approx 10^{-50}$ instead of $p \approx 0.5$.
+
+This inflated sample size made the strand bias filter approximately 70$\times$
+more sensitive than intended.
+Any low-VAF variant where all supporting molecules happened to come from one
+strand (common at 2 alt molecules) was filtered regardless of the true
+per-molecule strand balance.
+
+The fix is to use the per-path minimum rather than the sum: the minimum of
+\texttt{n\_simplex\_fwd} across all k-mers approximates the number of
+forward-strand molecules covering the full path.
+This gives a calibrated per-molecule count as input to the Fisher test.
+
+% ── Duplex orientation comparison ─────────────────────────────────────────────
+\subsection{Duplex orientation comparison}
+\label{sec:eval:duplex}
+
+For a genuine duplex pair, the forward and reverse reads carry fingerprints
+related by a 32-bit rotation:
+
+\begin{equation*}
+  \text{fp}_\text{rev} = \text{rotate\_left}(\text{fp}_\text{fwd},\; 32)
+\end{equation*}
+
+The original \texttt{fingerprints\_compatible} function computes
+$(fp_1 \oplus fp_2).{\rm popcount()} \le 4$.
+For a genuine duplex pair, this XOR has approximately 32 bits set (the upper
+and lower 32-bit halves encode different sequence regions), so the test always
+returns false.
+Forward and reverse reads from the same molecule were split into separate
+fingerprint groups and never combined into a duplex molecule.
+
+The fix adds a rotation check:
+\texttt{fingerprints\_duplex\_compatible} returns true if either the direct
+comparison or the 32-bit-rotated comparison passes the threshold.
+This correctly groups genuine duplex pairs while keeping the collision detection
+logic unchanged for same-strand reads.
+
+At shallower depths (200K--500K reads) the duplex rate was near zero because
+duplex pairs require both strands of the same fragment to be sampled.
+Duplex yield grows with depth until fragment saturation.
+
+% ── Tumour-informed monitoring mode ──────────────────────────────────────────
+\subsection{Tumour-informed monitoring mode}
+\label{sec:eval:targeting}
+
+Discovery mode --- the default --- finds all alternative paths within each
+100\,bp target window and reports every path passing statistical quality filters.
+This produces 50--169 false positives per sample before post-calling filters
+(Section~\ref{sec:eval:fp}) and 35--72 after applying \texttt{--max-vaf 0.35}
+and \texttt{--min-family-size 2}.
+These residual false positives are real biological variants in the cfDNA fraction
+(germline variants at reduced allele balance, somatic mutations in normal tissue,
+clonal haematopoiesis) and cannot be removed by additional statistical filters
+without also removing true spike-in calls at the same VAF.
+
+Monitoring mode addresses this by restricting output to calls matching a
+pre-specified target VCF.
+For each PASS call, kam extracts the actual (CHROM, POS, REF, ALT) from the
+called path sequences and checks for an exact match in the target set.
+Calls that do not match any target entry are relabelled \texttt{NotTargeted}.
+Background biological variants are eliminated because they essentially never
+share the exact allele with a target variant at the same position.
+
+With the 375-variant truth VCF supplied as \texttt{--target-variants}, the
+false positive count drops to zero at every VAF level and input mass.
+Sensitivity is unchanged: the target filter retains all true positive calls
+(which by definition match an entry in the truth set) while removing only
+non-truth calls.
+
+This operating mode is appropriate for serial ctDNA monitoring where the
+somatic variant panel is known from a prior tissue biopsy.
+Discovery mode remains appropriate for de novo somatic profiling, paired with
+a matched normal or population allele frequency database for false positive
+annotation.
+
+% ── Sensitivity at sub-0.1\% VAF ─────────────────────────────────────────────
+\subsection{Sensitivity at sub-0.1\% VAF}
+\label{sec:eval:sensitivity}
+
+Sensitivity is near zero at 0.001\% and 0.01\% VAF across all depths and
+concentrations. At 0.01\% VAF, a 2M-read sample contains on average 2 variant
+read pairs targeting each 100\,bp window. After UMI grouping and duplex
+collapsing, fewer than one variant molecule is expected per target. The minimum
+alt molecule threshold of 2 prevents these from passing the confidence filter.
+
+Detecting at sub-0.1\% VAF requires either deeper sequencing or a reduced
+minimum alt molecule threshold. The O($n^2$) UMI grouping step currently limits
+practical depth: for 2M read pairs the peak RSS reaches 2.0\,GB; scaling
+further would require switching to a hash-partition strategy (group reads by
+UMI prefix, then compare within partitions), which would reduce expected
+complexity to O($n$) and allow tens of millions of read pairs within a 4\,GB
+budget.
+
+% ── Analysis of missed variants ────────────────────────────────────────────────
+\subsection{Analysis of missed variants}
+\label{sec:eval:fn}
+
+Figure~\ref{fig:fn_analysis} shows the count of missed truth variants (false
+negatives) broken down by type across the VAF titration at 2M reads.
+At every VAF level, indels account for the majority of missed variants.
+At 2\% VAF, 104--116 of the 170 truth indels are missed (61--68\%) compared
+to 41--63 of the 205 truth SNVs (20--31\%).
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/fn_analysis.pdf}
+  \caption{Missed truth variants (false negatives) by type averaged across
+    three concentrations. Indels account for the majority of missed variants at
+    every VAF level. The gap narrows at 2\% VAF but remains substantial.}
+  \label{fig:fn_analysis}
+\end{figure}
+
+Missed SNVs arise from two causes. First, stochastic molecule dropout: at
+0.1\% VAF with 2M reads, a target is expected to contain roughly 2 variant
+molecules after UMI grouping. Duplex collapsing can reduce this to zero or
+one, failing the minimum alt molecule threshold of 2. Second, coverage
+imbalance: some 100\,bp targets have lower effective molecule coverage due
+to GC content or PCR amplification bias, leaving fewer molecules to support
+any variant call.
+
+Missed indels arise from all the same causes, plus one structural limitation.
+For an indel of length $\ell$, the variant path through the de~Bruijn graph
+is $\ell$ k-mers longer (insertion) or shorter (deletion) than the reference
+path. The end-anchor k-mer of the reference path shifts by $\ell$ positions
+relative to the genomic sequence. Reads must cover that shifted anchor
+position for the DFS walk to reach the end anchor. At low VAF, variant reads
+may not cover the shifted anchor, so the walk cannot complete and no call is
+made. Larger indels require wider anchor displacement, compounding the
+coverage requirement. This is why indel sensitivity is consistently lower than
+SNV sensitivity and why it recovers less steeply with increasing VAF.
+
+% ── False positive analysis ────────────────────────────────────────────────────
+\subsection{False positive analysis}
+\label{sec:eval:fp}
+
+In discovery mode at 2M reads, the caller produces 50--169 false positives per
+sample before any post-calling filter. False positives fall into three categories.
+
+First, germline heterozygous variants at VAF $\approx 0.5$. Filtering calls with
+$\text{VAF} > 0.35$ (the \texttt{--max-vaf} flag) removes approximately 8--11
+of these per sample.
+
+Second, singleton molecule artefacts. Setting \texttt{--min-family-size 2}
+requires at least two reads per UMI family before a molecule enters the k-mer
+index. This reduces the FP count by 13--27 per sample (29--30\%) with a
+sensitivity cost of only 1.6--2.2 percentage points at 0.5\% VAF and negligible
+cost at $\ge 1\%$ VAF.
+
+Third, background biological variants in the cfDNA fraction. After both filters,
+the 0\% VAF negative controls in discovery mode produce 35--72 false positive
+calls per sample. These calls pass all quality filters (strand balance, posterior
+confidence $\ge 0.99$, $\ge 2$ alt molecules) and represent real biological
+variants: somatic mutations in normal tissue, clonal haematopoiesis, or common
+SNPs with reduced allele balance. These cannot be removed by additional calling
+filters without also removing true spike-in variants at similar VAF, as the two
+populations overlap in all measured evidence dimensions.
+
+Monitoring mode (\texttt{--target-variants}) eliminates this entire class of
+false positives. The 0\% VAF negative controls produce zero calls in monitoring
+mode because none of the background biological variants coincide with the
+375-variant target set.
+
+% ── Effect of target window length ────────────────────────────────────────────
+\subsection{Effect of target window length}
+\label{sec:eval:targetlength}
+
+We benchmarked sensitivity across target window lengths of 50--200\,bp to
+understand whether the current 100\,bp panel design is optimal.
+
+\paragraph{Minimum usable length.}
+For the anchored DFS walk to detect a variant, both start and end anchor
+k-mers must be shared between the reference and variant read paths. This
+requires the variant position to fall more than $k=31$ bases from both ends
+of the target window. For a centred variant in a window of length $L$ (actual
+sequence: $L+1$\,bp), the detectable range is non-empty only when $L > 2k = 62$.
+The 50\,bp and 60\,bp target files (51\,bp and 61\,bp actual sequences) fail
+this condition: all 375 targets return zero sensitivity regardless of VAF
+because no variant position can produce a path sharing both anchor k-mers
+with the reference.
+
+\paragraph{Sensitivity plateau at 80--100\,bp.}
+From 70\,bp upward, sensitivity rises steeply then plateaus.
+At 2\% VAF, 15\,ng input, sensitivity at 70\,bp is 0.603 (SNV 0.805, indel 0.359).
+At 80\,bp this rises to 0.616 (SNV 0.805, indel 0.388).
+From 80\,bp to 90\,bp to 100\,bp, sensitivity is unchanged: 0.613--0.616
+(SNV 0.800, indel 0.388).
+The indel gain from 70\,bp to 80\,bp reflects the wider window giving reads
+more room to reach the shifted end-anchor k-mer position.
+
+\paragraph{Decline at longer windows.}
+Counterintuitively, sensitivity falls for targets longer than 100\,bp.
+At 120\,bp sensitivity drops to 0.600; at 150\,bp to 0.584; at 200\,bp to 0.483.
+Pathfind time grows super-linearly: 1.7\,s at 100\,bp, 3.1\,s at 120\,bp,
+9.2\,s at 150\,bp, and 27\,s at 200\,bp.
+
+The cause is graph complexity and the walk budget. Longer targets contain more
+k-mers in the de~Bruijn graph, increasing the number of alternative paths.
+The DFS walker stops after finding 100 paths; for longer targets, the budget
+fills with spurious variant paths before the true variant path is reached.
+A pathfind diagnostic confirms this: 100\,bp targets produce 273 alt-path
+successes of which 230 (84\%) match the truth, while 120\,bp targets produce
+277 alt-path successes of which only 225 (81\%) match the truth.
+
+Additionally, for 200\,bp targets (201\,bp actual sequences), anchor coverage
+fails for 88 targets (vs.\ 67 at 100\,bp) because the anchor k-mers at the
+target boundaries lie beyond the reach of a single 150\,bp read.
+
+\paragraph{Recommendation.}
+The current 100\,bp panel is near the centre of the plateau.
+Shortening to 80\,bp would give a marginal indel improvement and faster
+pathfind; lengthening would hurt both sensitivity and runtime.
+Future work: increasing the walk budget (\texttt{max\_paths}) adaptively or
+using reference-first path prioritisation would extend the usable window to
+120--150\,bp without sensitivity loss.
+
+% ── Overall assessment ────────────────────────────────────────────────────────
+\subsection{Overall assessment}
+
+With both implementation fixes applied and the recommended configuration
+(\texttt{--max-vaf 0.35 --min-family-size 2 --target-variants}), kam achieves
+precision 1.0 across all VAF levels and input concentrations.
+Sensitivity at 2\% VAF is 52--61\% overall (69--80\% for SNVs, 31--39\% for
+indels).
+The remaining false negative rate reflects coverage limitations and structural
+indel constraints, not false positive contamination.
+Increasing depth further would improve sensitivity for both SNVs and indels.

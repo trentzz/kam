@@ -1,0 +1,20 @@
+[package]
+name = "kam-assemble"
+version.workspace = true
+edition.workspace = true
+description = "Molecule assembly from duplex UMI sequencing reads"
+license.workspace = true
+repository.workspace = true
+readme = "../README.md"
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+kam-core = { workspace = true }
+needletail = "0.6"
+thiserror = { workspace = true }
+serde = { workspace = true }
+log = { workspace = true }
+
+[dev-dependencies]
+flate2 = "1"

@@ -1,0 +1,51 @@
+\documentclass[10pt, twocolumn]{article}
+\usepackage[margin=2cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[protrusion=true,expansion=true,final]{microtype}
+\usepackage[hidelinks]{hyperref}
+\usepackage[style=vancouver, backend=biber]{biblatex}
+\usepackage{booktabs}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{amsmath}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta}
+\captionsetup{font=small, labelfont=bf}
+\setlength{\columnsep}{0.6cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{4pt}
+
+% Placeholder command for missing numbers/figures in draft
+\newcommand{\placeholder}[1]{\textcolor{red}{\textbf{[#1]}}}
+
+\addbibresource{references.bib}
+
+\title{kam: Alignment-Free Variant Detection for Duplex UMI Sequencing\\
+\large v0.1 --- Draft}
+\author{Trent Zeng}
+\date{March 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\input{sections/00_abstract}
+\end{abstract}
+
+\input{sections/01_introduction}
+\input{sections/02_background}
+\input{sections/03_related_work}
+\input{sections/04_method}
+\input{sections/05_results}
+\input{sections/06_evaluation}
+\input{sections/07_discussion}
+\input{sections/08_future_work}
+
+\printbibliography
+
+\end{document}

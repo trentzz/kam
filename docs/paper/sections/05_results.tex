@@ -1,0 +1,293 @@
+\section{Results}
+\label{sec:results}
+
+We evaluated kam on the Twist cfDNA Pan-Cancer Reference Standard v2 titration
+series, a set of 24 samples spanning three input masses (5\,ng, 15\,ng, 30\,ng)
+and eight VAF levels (0\%, 0.001\%, 0.01\%, 0.1\%, 0.25\%, 0.5\%, 1\%, 2\%).
+The truth set contains 375 validated somatic variants (205 SNVs, 170 indels)
+across 84 cancer genes on GRCh38. We benchmarked at four read depths: 250K,
+500K, 1M, and 2M read pairs, to characterise sensitivity and memory scaling.
+All results reported below use the recommended configuration:
+\texttt{--max-vaf 0.35 --min-family-size 2 --target-variants truth.vcf}.
+
+% ── Molecule assembly ─────────────────────────────────────────────────────────
+\subsection{Molecule assembly}
+
+At 2M read pairs the assembly stage produced 293K--416K molecules per sample,
+giving a raw-to-molecule compression ratio of 4.8--6.8:1. The variation reflects
+input mass: 5\,ng samples yield fewer PCR duplicates per molecule than 30\,ng
+samples, so the collapse ratio is lower. Molecule counts scale approximately
+linearly with read depth at all three concentrations.
+
+Duplex identification at 2M reads ranged from 4.6\% to 15.5\% of molecules
+after fixing a duplex orientation comparison bug (Section~\ref{sec:evaluation}).
+The variation across samples reflects a depth and input mass effect: duplex
+molecules require both strands of the same fragment to be sampled, so duplex
+yield grows with sequencing depth and with higher-mass samples that contain more
+starting fragments. These rates are consistent with the 4--15\% range expected
+for this chemistry.
+
+% ── Variant detection ─────────────────────────────────────────────────────────
+\subsection{Variant detection}
+
+Figure~\ref{fig:sensitivity} shows sensitivity at 2M read pairs across the VAF
+titration series for each input concentration, with tumour-informed filtering applied.
+At the lowest VAF levels (0.001\% and 0.01\%), sensitivity is near zero for all
+concentrations, consistent with the expectation that even at 2M read pairs fewer
+than one variant molecule is expected per target at these dilutions.
+Sensitivity rises from 0.1\% VAF and reaches 52\%--61\% at 2\% VAF.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/sensitivity_vs_vaf.pdf}
+  \caption{Sensitivity by VAF and input mass at 2M read pairs with tumour-informed
+    filtering. Each point shows sensitivity against the 375-variant truth set.
+    Sensitivity increases monotonically with VAF at all three input masses;
+    5\,ng input consistently yields lower sensitivity than 15\,ng and 30\,ng.}
+  \label{fig:sensitivity}
+\end{figure}
+
+At 2\% VAF, the 15\,ng and 30\,ng samples achieve sensitivity of 61.3\% and
+59.2\%, respectively.
+The 5\,ng sample achieves 51.7\%.
+The difference between concentrations is most pronounced at 0.25\%--1\% VAF,
+where lower input mass produces fewer starting molecules and increases stochastic
+dropout. At 0.5\% VAF, 15\,ng and 30\,ng samples reach 40.0\% and 46.1\%
+sensitivity, respectively; 5\,ng drops to 16.8\%.
+
+Precision is 1.0 at all VAF levels and concentrations when tumour-informed
+filtering is applied (Figure~\ref{fig:precision_recall}).
+Zero false positives are produced for any sample.
+The 0\% VAF negative controls produce zero calls, confirming that no background
+biological cfDNA variants are reported in monitoring mode.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/precision_recall.pdf}
+  \caption{Precision vs sensitivity across all VAF/concentration combinations
+    where at least one true positive was called. Each point is annotated with
+    its VAF level. With tumour-informed filtering, precision is 1.0 at all
+    points.}
+  \label{fig:precision_recall}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/confusion_matrix.pdf}
+  \caption{True positives and false negatives at 2\% VAF for each input
+    concentration with tumour-informed filtering. False positives are zero
+    across all conditions. The dashed line marks the 375-variant truth set.}
+  \label{fig:confusion}
+\end{figure}
+
+% ── SNV vs indel sensitivity ──────────────────────────────────────────────────
+\subsection{SNV and indel sensitivity}
+
+Figure~\ref{fig:sensitivity_by_type} shows sensitivity broken down by variant
+type at 2M read pairs. At 2\% VAF, SNV sensitivity ranges from 69\% to 80\%
+across the three concentrations. Indel sensitivity is lower, ranging from 31\%
+to 39\%. The gap reflects a structural limitation: indels require a variant
+graph path of different length from the reference path. Anchor k-mers at the
+start and end of the target window must both be present in the graph for a walk
+to complete. At lower sequencing depths, anchor k-mers may be missing for some
+targets, preventing any path from being found.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/sensitivity_by_type.pdf}
+  \caption{SNV sensitivity (left) and indel sensitivity (right) by VAF and
+    input mass at 2M read pairs. Indel sensitivity is consistently lower than
+    SNV sensitivity; the gap narrows at higher VAF levels where more variant
+    molecules provide anchor k-mer coverage.}
+  \label{fig:sensitivity_by_type}
+\end{figure}
+
+% ── Effect of read depth ───────────────────────────────────────────────────────
+\subsection{Effect of read depth}
+
+Figure~\ref{fig:compare_sensitivity} shows how sensitivity scales with read
+depth from 250K to 2M pairs. Sensitivity gains are largest moving from 250K to
+500K reads. Beyond 1M reads, returns diminish: at 2\% VAF the mean sensitivity
+gain from 1M to 2M is less than one percentage point. This reflects two
+saturation effects: first, the most abundant variant molecules are already
+covered at 1M reads; second, the O($n^2$) UMI grouping step introduces
+backpressure that limits effective depth (Section~\ref{sec:evaluation}).
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/compare_sensitivity_vs_vaf.pdf}
+  \caption{Overall sensitivity (mean across three concentrations) at four read
+    depths. Each line represents one read depth. Sensitivity gains diminish
+    above 1M read pairs at the high-VAF end of the titration.}
+  \label{fig:compare_sensitivity}
+\end{figure}
+
+% ── Negative control ──────────────────────────────────────────────────────────
+\subsection{Negative control}
+
+The 0\% VAF samples (no spike-in variants present) produced zero calls in
+tumour-informed monitoring mode.
+No background biological cfDNA variants, germline SNPs, or clonal
+haematopoiesis events are reported because none match the 375-variant target set.
+This is the key property of monitoring mode: the noise floor is zero by
+construction when none of the expected alleles happen to be present in the sample.
+
+% ── Structural variant detection ──────────────────────────────────────────────
+\subsection{Structural variant detection}
+\label{sec:sv-results}
+
+We evaluated targeted SV detection on a 2000\,bp synthetic reference with three embedded SV types: a 100\,bp deletion (chr1:200--299), a 100\,bp tandem duplication (chr1:500--599), and a 100\,bp inversion (chr1:900--999). Each SV was simulated at four VAF levels (0.5\%, 1\%, 2\%, 5\%) with 5000$\times$ raw read depth ($\approx$1000 molecule families per target), using Twist duplex UMI chemistry. SV junction k-mers were provided via \texttt{--sv-junctions}.
+
+Table~\ref{tab:sv-results} shows detection results in discovery mode (no \texttt{--target-variants}).
+
+\begin{table}[h]
+  \centering
+  \caption{SV detection sensitivity in discovery mode. ``PASS'' indicates the variant passed all filters; ``LowConf'' indicates LowConfidence filter. $n_\text{alt}$: supporting alt molecules.}
+  \label{tab:sv-results}
+  \small
+  \begin{tabular}{lccccc}
+    \toprule
+    VAF & SV type & Result & $n_\text{alt}$ & VAF obs. & Confidence \\
+    \midrule
+    0.5\% & LargeDeletion    & PASS    & 14 & 1.2\% & 1.000 \\
+    0.5\% & TandemDuplication & PASS    & 2  & 0.19\% & 0.982 \\
+    0.5\% & Inversion        & PASS    & 3  & 0.26\% & 0.999 \\
+    1\%   & LargeDeletion    & PASS    & 16 & 1.5\% & 1.000 \\
+    1\%   & TandemDuplication & LowConf & 1  & 0.09\% & 0.791 \\
+    1\%   & Inversion        & PASS    & 6  & 0.54\% & 1.000 \\
+    2\%   & LargeDeletion    & PASS    & 43 & 3.7\% & 1.000 \\
+    2\%   & TandemDuplication & PASS   & 4  & 0.42\% & 1.000 \\
+    2\%   & Inversion        & PASS    & 6  & 0.54\% & 1.000 \\
+    5\%   & LargeDeletion    & PASS    & 98 & 9.3\% & 1.000 \\
+    5\%   & TandemDuplication & PASS   & 16 & 1.8\% & 1.000 \\
+    5\%   & Inversion        & PASS    & 23 & 2.1\% & 1.000 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Large deletions are detected at all four VAF levels with PASS confidence. The observed VAF is approximately $2\times$ the simulated VAF because the deleted segment is absent from the alt path, creating a higher relative molecule count in the shorter window. Inversions are detected at all four VAF levels, including 0.5\% with 3 supporting molecules. Prior to the partial-inversion fix (Section~\ref{sec:sv-detection}), inversions were misclassified as MNVs at all VAFs because the classifier checked the full-path reverse complement rather than the central inverted segment. Tandem duplications use an SV-specific confidence threshold of 0.95 (compared to 0.99 for SNVs and indels). A 100\,bp structural event with even 2 supporting molecules carries qualitatively stronger signal than 2 molecules of a single-base change — background errors cannot produce a 100\,bp insertion signature. With this threshold, duplications reach PASS at $\ge 0.5\%$ VAF (2 molecules, confidence 0.98). At 1\% VAF only 1 molecule spans the head-to-tail junction (confidence 0.79), remaining below the SV threshold.
+
+Discovery mode produces 2--7 false positives per VAF level, all low-molecule SNV or MNV calls arising from sequencing errors in the SV target windows. In monitoring mode, a truth VCF derived from the discovery PASS SV calls is provided via \texttt{--target-variants}. Monitoring mode eliminates all false positives at every VAF level: only the true SV calls remain labelled PASS; all other calls are relabelled NotTargeted.
+
+% ── Comparison to alignment-based pipeline ────────────────────────────────────
+\subsection{Comparison to alignment-based pipeline}
+\label{sec:results-comparison}
+
+The alignment-based baseline uses HUMID v2 deduplication followed by RASCALL v3
+calling on the same 24-sample titration series, as reported in~\autocite{thesis2025}.
+\autoref{fig:comparison} shows sensitivity for both pipelines at the same VAF
+levels and input masses.
+
+At 2\% VAF the alignment-based pipeline achieves sensitivity of
+\placeholder{XX.X}\% (5\,ng), \placeholder{XX.X}\% (15\,ng), and
+\placeholder{XX.X}\% (30\,ng), compared to 51.7\%, 61.3\%, and 59.2\%
+for kam.
+At 0.5\% VAF the alignment-based pipeline reaches \placeholder{XX.X}\%
+(15\,ng) vs.\ 40.0\% for kam.
+The sensitivity gap narrows for SNVs alone: at 2\% VAF, kam SNV sensitivity
+of 69--80\% approaches the alignment-based figure of \placeholder{XX.X}\%,
+with most of the overall gap attributable to indels.
+
+Precision differs sharply.
+In tumour-informed monitoring mode, kam produces zero false positives at every
+VAF level and input mass.
+In discovery mode, the alignment-based pipeline reports
+\placeholder{XX} false positives per sample in the 0\% VAF negative controls
+(\autoref{fig:comparison_fp}).
+These represent germline variants, clonal haematopoiesis events, and other
+background biology that pass the alignment-based caller's quality filters.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/comparison_sensitivity.pdf}
+  \caption{Sensitivity at 2M read pairs: kam (tumour-informed monitoring) vs.\
+    alignment-based pipeline (HUMID\,+\,RASCALL). Each panel shows one input
+    mass. Points are annotated with VAF level. Alignment-based numbers are
+    \placeholder{pending final extraction from thesis data}.}
+  \label{fig:comparison}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/comparison_fp.pdf}
+  \caption{False positive rate in the 0\% VAF negative controls: kam
+    (monitoring mode) vs.\ alignment-based pipeline. kam produces zero false
+    positives; alignment-based numbers are \placeholder{pending}.}
+  \label{fig:comparison_fp}
+\end{figure}
+
+% ── Cross-chemistry generalisation ────────────────────────────────────────────
+\subsection{Cross-chemistry generalisation}
+\label{sec:results-crosschem}
+
+kam's chemistry is specified entirely via \texttt{config.toml}: UMI length,
+skip length, and read structure are configurable without code changes.
+Three public datasets are planned to demonstrate generalisation beyond the
+Twist 5M2S+T chemistry used in the primary evaluation.
+
+\paragraph{UMI Clustering Benchmark (SRR6794144).}
+A cfDNA panel with 12\,bp simplex read-name UMIs~\autocite{Calib25umi}.
+This dataset validates that kam's molecule assembly correctly groups reads by
+UMI on real cfDNA data.
+Results: \placeholder{pending — data not yet processed}.
+
+\paragraph{SEQC2 HCC1395.}
+Multi-centre somatic benchmark using the HCC1395 breast cancer cell line and
+matched normal, with a majority-vote truth set from 63 tumour-normal pairs
+across six callers~\autocite{Xiao21seqc2}.
+This dataset has no UMI; each read pair is treated as a single molecule, testing
+the variant-calling component in isolation.
+Results: \placeholder{pending — no-UMI mode not yet implemented}.
+
+\paragraph{COLO829 SV truth set (PRJEB27698).}
+Illumina HiSeq X Ten whole-genome data for the COLO829 melanoma cell line, with
+68 somatic SVs confirmed across five sequencing technologies~\autocite{vanDijk22colo829}.
+This dataset has no UMI and tests kam's SV detection without molecule-level
+evidence.
+Results: \placeholder{pending — no-UMI mode and WGS-scale compute not yet in place}.
+
+% ── Runtime and memory ────────────────────────────────────────────────────────
+\subsection{Runtime and memory}
+
+Figure~\ref{fig:runtime} shows per-sample wall-clock time broken down by
+pipeline stage at 2M read pairs.
+Molecule assembly dominates runtime: it accounts for 46--76\% of total wall
+time and ranges from 11.4\,s to 20.1\,s depending on input mass.
+Index construction takes 4.6--8.3\,s; path finding 0.6--8.3\,s; variant
+calling and output are negligible ($<$5\,ms combined).
+The bottom panel shows molecules assembled per sample, which drives runtime:
+30\,ng samples assemble 327--417K molecules vs.\ 346--371K for 5\,ng due to
+different PCR duplication rates.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/runtime_per_sample.pdf}
+  \caption{Per-sample runtime at 2M read pairs. Top: wall-clock time stacked
+    by pipeline stage. Bottom: molecules assembled per sample. Samples are
+    ordered by input mass (5\,ng, 15\,ng, 30\,ng) then ascending VAF. Molecule
+    assembly dominates runtime across all conditions.}
+  \label{fig:runtime}
+\end{figure}
+
+Total wall-clock time ranged from 18.1\,s to 30.5\,s per sample on
+a single core. Peak RSS ranged from 1.8\,GB to 2.0\,GB, with all samples
+well within a 4\,GB budget.
+
+The alignment-based baseline (HUMID\,+\,BWA\,+\,RASCALL) requires
+\placeholder{XX--XX}\,s per sample on comparable hardware, including reference
+alignment.
+\autoref{fig:runtime_comparison} shows per-stage wall time for both pipelines
+on matched samples; kam runs in \placeholder{X.X}$\times$ less wall time on
+average.
+The primary speed advantage is that kam processes a single streaming FASTQ pass
+per stage with no coordinate sort step and no reference alignment.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/runtime_comparison.pdf}
+  \caption{Per-stage wall-clock time for kam vs.\ alignment-based pipeline on
+    the 15\,ng 2\% VAF sample at 2M read pairs. Stage labels differ between
+    pipelines; stages are grouped by functional equivalence where possible.
+    Alignment-based numbers are \placeholder{pending}.}
+  \label{fig:runtime_comparison}
+\end{figure}

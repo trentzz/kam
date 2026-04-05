@@ -1,0 +1,73 @@
+\section{Future Work}
+\label{sec:future}
+
+\paragraph{Hash-partition UMI grouping for deeper sequencing.}
+The UMI read-grouping step has two complexity terms.
+The O($n \times u$) linear-scan lookup of read pairs against unique UMI entries has
+been replaced with a hash-map giving O($n$) total.
+The remaining Hamming-distance clustering step scales as O($u^2$) where $u$ is
+the number of unique canonical UMI pairs.
+At 2\,M reads this term does not dominate; at 10\,M reads, $u$ approaches the
+theoretical maximum of 524\,K pairs for 5-base duplex UMIs and clustering would
+become a hard wall.
+Partitioning UMIs by their first 3-base prefix (64 buckets) before clustering
+reduces this term by 64$\times$ to O($u^2/64$).
+These two changes together enable processing of 10--20\,M read pairs, giving
+5--10$\times$ more molecules per target and substantially reducing coverage-gap
+walk failures at low VAF.
+
+\paragraph{Relaxed end-anchor matching for indels.}
+The DFS walk requires an exact k-mer match at the reference end anchor. For an
+indel of length $\ell$, the variant path is $\ell$ k-mers shorter or longer than
+the reference path, and reads must span from the variant junction to the shifted
+anchor position. An investigation of missed variants confirms that end-anchor
+coverage is the primary cause of the 61--68\% indel false-negative rate.
+Relaxing the end-anchor requirement to allow termination within a $\pm \ell$-kmer
+window would recover the majority of missed indels without affecting SNV calls.
+
+\paragraph{Adaptive walk budget and reference-first path prioritisation.}
+For target windows longer than 100\,bp, the DFS walk fills its path budget
+(currently 100 paths) with spurious variant paths before finding the true
+variant path.
+Two complementary fixes would extend the usable window to 120--150\,bp: first,
+increase \texttt{max\_paths} proportionally to the reference path length
+(rather than a fixed cap); second, prioritise the reference path during DFS
+so that the true variant, which diverges from reference at only one or a few
+positions, is explored early.
+These changes are straightforward but require validation that they do not
+introduce false positives through excessive path enumeration.
+
+Beyond algorithm fixes, the following extensions are planned.
+
+\paragraph{Extended structural variant types.}
+Targeted SV detection is implemented for large deletions, tandem duplications,
+and inversions via junction k-mer injection (Section~\ref{sec:sv-detection}).
+Two extensions would improve sensitivity at low VAF. First, a synthetic path
+construction fallback for inversions: at very low VAF, the junction k-mers for
+a partial inversion may be absent from the graph; constructing a synthetic
+alt path from the reference by reverse-complementing the central segment
+would recover these cases. Second, for tandem duplications below 2\% VAF,
+the duplicated junction k-mers share sequence with the original segment, making
+the alt path ambiguous; augmenting the allowlist with a synthetic head-to-tail
+junction path would boost the supporting molecule count. Translocations and
+foreign insertions require cross-target junction detection and are deferred to
+a later phase.
+
+\paragraph{De novo variant discovery.}
+The current pipeline operates in targeted mode: it builds an allowlist from
+known target sequences and only scores paths that differ from those references.
+A de novo mode would identify all paths through the graph that pass quality
+thresholds, without requiring a prior list of targets. This would detect
+fusion breakpoints and variants in regions not covered by the panel design.
+
+\paragraph{Nextflow integration.}
+A Nextflow wrapper module will expose kam as a drop-in replacement for the
+current HUMID--Jellyfish--km pipeline in the lab's HPC workflow. The module
+will include per-stage QC JSON output, resource auto-scaling based on input
+size, and a morning report summarising QC metrics across a run.
+
+\paragraph{Head-to-head comparison.}
+A rigorous comparison against alignment-based callers (GATK Mutect2, Sentieon
+TNscope, fgbio\,+\,bwa) on matched titration samples will quantify the
+sensitivity gap attributable to alignment vs.\ the gap attributable to depth.
+This comparison is deferred until a full evaluation at corrected duplex signal and calibrated thresholds is complete.

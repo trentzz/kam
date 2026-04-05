@@ -1,0 +1,64 @@
+# kam run configuration — research discovery mode
+#
+# Full-verbosity configuration for research use: discovery mode with all
+# output formats enabled, detailed logging of every pipeline decision, and
+# QC output for downstream analysis.
+#
+# Use this config when validating a new panel, investigating unexpected results,
+# or producing data for a paper. The detailed logs (reads_dropped, families,
+# variants_filtered) allow reconstruction of every pipeline decision.
+#
+# Note: detailed logging increases runtime and disk usage significantly.
+# Disable individual log channels once the investigation is complete.
+#
+# Usage:
+#   kam run --config examples/research-discovery.toml
+
+[input]
+r1      = "sample_R1.fq.gz"
+r2      = "sample_R2.fq.gz"
+targets = "panel.fa"
+
+[output]
+output_dir    = "results/"
+# All four output formats for maximum downstream compatibility.
+output_format = "tsv,vcf,csv,json"
+qc_output     = "results/qc.json"
+
+[chemistry]
+umi_length      = 5
+skip_length     = 2
+duplex          = true
+min_umi_quality = 20
+
+[assembly]
+min_family_size = 1
+
+[indexing]
+kmer_size = 31
+
+[calling]
+min_confidence        = 0.95
+strand_bias_threshold = 0.01
+min_alt_molecules     = 2
+min_alt_duplex        = 0
+
+sv_min_confidence        = 0.90
+sv_min_alt_molecules     = 1
+sv_strand_bias_threshold = 1.0
+
+ti_position_tolerance = 0
+
+[logging]
+log_dir = "results/logs/"
+# Enable all detailed log channels for full pipeline transparency.
+log = [
+    "reads_dropped",
+    "umi_clustering",
+    "families",
+    "consensus_conflicts",
+    "variants_filtered",
+]
+
+[runtime]
+threads = 16
