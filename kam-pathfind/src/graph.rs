@@ -8,7 +8,7 @@
 //! - prefix of B (k-1 bases) = `B >> 2` (shift right by 2 to drop last base)
 //! - Edge exists when suffix(A) == prefix(B)
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use kam_core::kmer::KmerIndex;
 
@@ -42,8 +42,12 @@ use kam_core::kmer::KmerIndex;
 #[derive(Debug)]
 pub struct DeBruijnGraph {
     k: usize,
-    /// Adjacency list: kmer → list of successor kmers
+    /// Forward adjacency list: kmer → list of successor kmers
     successors: HashMap<u64, Vec<u64>>,
+    /// Reverse adjacency list: kmer → list of predecessor kmers.
+    /// Built once at construction time so backward BFS does not need to
+    /// rebuild it on every `backward_reachable` call.
+    predecessors: HashMap<u64, Vec<u64>>,
     /// Number of nodes
     n_nodes: usize,
     /// Number of edges
@@ -133,9 +137,20 @@ impl DeBruijnGraph {
             }
         }
 
+        // Build reverse adjacency (predecessor) map once at construction time
+        // so that backward_reachable can BFS without rebuilding it on every call.
+        let mut predecessors: HashMap<u64, Vec<u64>> =
+            nodes.iter().map(|&km| (km, Vec::new())).collect();
+        for (&a, succs) in &successors {
+            for &b in succs {
+                predecessors.entry(b).or_default().push(a);
+            }
+        }
+
         DeBruijnGraph {
             k,
             successors,
+            predecessors,
             n_nodes: nodes.len(),
             n_edges,
         }
@@ -223,6 +238,7 @@ impl DeBruijnGraph {
         DeBruijnGraph {
             k,
             successors: HashMap::new(),
+            predecessors: HashMap::new(),
             n_nodes: 0,
             n_edges: 0,
         }
@@ -246,6 +262,68 @@ impl DeBruijnGraph {
     /// ```
     ///
     /// [`from_index`]: DeBruijnGraph::from_index
+    /// Compute the set of nodes reachable from `start` via forward edges within
+    /// `max_hops` steps.
+    ///
+    /// Used together with [`backward_reachable`] to identify nodes that lie on
+    /// at least one valid start→end path, enabling aggressive DFS pruning.
+    ///
+    /// [`backward_reachable`]: DeBruijnGraph::backward_reachable
+    pub fn forward_reachable(&self, start: u64, max_hops: usize) -> HashSet<u64> {
+        let mut reachable: HashSet<u64> = HashSet::new();
+        let mut queue: VecDeque<(u64, usize)> = VecDeque::new();
+        reachable.insert(start);
+        queue.push_back((start, 0));
+
+        while let Some((node, depth)) = queue.pop_front() {
+            if depth >= max_hops {
+                continue;
+            }
+            for &succ in self.successors(node) {
+                if reachable.insert(succ) {
+                    queue.push_back((succ, depth + 1));
+                }
+            }
+        }
+
+        reachable
+    }
+
+    /// Compute the set of nodes from which `end` is reachable within `max_hops`
+    /// forward steps.
+    ///
+    /// This is a backward BFS: it traverses predecessor edges (computed on the
+    /// fly from the forward adjacency list) starting from `end`. The resulting
+    /// set is used together with [`forward_reachable`] to identify nodes that
+    /// lie on at least one valid start→end path.
+    ///
+    /// Runs in O(n_edges) time. Building the predecessor map is O(n_edges);
+    /// BFS is O(n_nodes + n_edges).
+    ///
+    /// [`forward_reachable`]: DeBruijnGraph::forward_reachable
+    pub fn backward_reachable(&self, end: u64, max_hops: usize) -> HashSet<u64> {
+        // BFS backward from `end` using the pre-built predecessor map.
+        let mut reachable: HashSet<u64> = HashSet::new();
+        let mut queue: VecDeque<(u64, usize)> = VecDeque::new();
+        reachable.insert(end);
+        queue.push_back((end, 0));
+
+        while let Some((node, depth)) = queue.pop_front() {
+            if depth >= max_hops {
+                continue;
+            }
+            if let Some(preds) = self.predecessors.get(&node) {
+                for &pred in preds {
+                    if reachable.insert(pred) {
+                        queue.push_back((pred, depth + 1));
+                    }
+                }
+            }
+        }
+
+        reachable
+    }
+
     pub fn add_edge(&mut self, from: u64, to: u64) {
         use std::collections::hash_map::Entry;
         if let Entry::Vacant(e) = self.successors.entry(from) {
@@ -257,6 +335,7 @@ impl DeBruijnGraph {
             self.n_nodes += 1;
         }
         self.successors.entry(from).or_default().push(to);
+        self.predecessors.entry(to).or_default().push(from);
         self.n_edges += 1;
     }
 }

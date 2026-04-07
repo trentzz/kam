@@ -85,6 +85,24 @@ where
     let k = graph.k();
     let mut completed: Vec<GraphPath> = Vec::new();
 
+    // Pre-compute the intersection of forward-reachable (from start) and
+    // backward-reachable (from end) within max_path_length hops.  Only nodes in
+    // BOTH sets can lie on a valid start→end path.  The DFS skips any successor
+    // not in this intersection, preventing exponential exploration of:
+    //   - dead-end subgraphs (nodes that cannot reach end_kmer)
+    //   - upstream-only subgraphs (nodes not reachable from start_kmer)
+    //   - flanking-region k-mers that enter and exit the target window
+    //
+    // Each BFS runs in O(n_edges).  The DFS then explores only the pruned
+    // subgraph, reducing complexity from O(B^L) to O(useful_nodes * B) in
+    // typical cases.
+    let forward_reachable = graph.forward_reachable(start_kmer, config.max_path_length);
+    let backward_reachable = graph.backward_reachable(end_kmer, config.max_path_length);
+    let useful_nodes: HashSet<u64> = forward_reachable
+        .intersection(&backward_reachable)
+        .copied()
+        .collect();
+
     // Special case: start == end (single k-mer path).
     if start_kmer == end_kmer {
         if graph.contains(start_kmer) {
@@ -131,14 +149,8 @@ where
         let next = succs[*succ_idx];
         *succ_idx += 1;
 
-        // Skip cycles and paths that are already too long.
-        if visited.contains(&next) {
-            continue;
-        }
-        if current_path.len() >= config.max_path_length {
-            continue;
-        }
-
+        // Always check for the goal first, regardless of path length — the end
+        // k-mer must remain reachable even at the path length boundary.
         if next == end_kmer {
             // Complete path found — record it without pushing to the DFS stack.
             let mut path_kmers = current_path.clone();
@@ -149,6 +161,16 @@ where
                 kmers: path_kmers,
                 sequence,
             });
+        } else if !useful_nodes.contains(&next) {
+            // This node cannot lie on any valid start→end path within the
+            // path length budget.  Skip without exploring.
+            continue;
+        } else if visited.contains(&next) {
+            // Skip cycles.
+            continue;
+        } else if current_path.len() >= config.max_path_length {
+            // Path is too long to extend further — abandon this branch.
+            continue;
         } else {
             // Extend the current path and push a new DFS frame.
             visited.insert(next);
@@ -215,16 +237,21 @@ pub fn walk_paths(
 /// - `max_path_length`: maximum k-mers in a sub-path (same as `WalkConfig`).
 /// - `max_alt_paths_per_branch`: `max_paths` for each sub-DFS. 3–5 is enough
 ///   for most SV alt paths.
+/// - `max_total_alt_paths`: stop the entire search once this many distinct alt
+///   paths have been found. Prevents exhaustive sub-DFS over all reference
+///   positions when the alt path is found early (e.g. large insertions).
 /// - `branch_filter`: closure that returns `true` for non-reference successors
 ///   that should be explored. Use this to require junction k-mer membership
 ///   (preventing error-bubble DFS runs) and/or a minimum evidence threshold.
 /// - `molecule_count`: closure returning molecule count for a raw k-mer.
+#[allow(clippy::too_many_arguments)]
 pub fn find_alt_paths_from_reference(
     graph: &DeBruijnGraph,
     reference_kmers: &[u64],
     end_kmer: u64,
     max_path_length: usize,
     max_alt_paths_per_branch: usize,
+    max_total_alt_paths: usize,
     branch_filter: impl Fn(u64) -> bool,
     molecule_count: impl Fn(u64) -> u32 + Copy,
 ) -> Vec<GraphPath> {
@@ -238,8 +265,15 @@ pub fn find_alt_paths_from_reference(
     // produce the same alt sequence.
     let mut seen_sequences: std::collections::HashSet<Vec<u8>> = std::collections::HashSet::new();
 
-    for (i, &ref_kmer) in reference_kmers.iter().enumerate() {
+    'outer: for (i, &ref_kmer) in reference_kmers.iter().enumerate() {
         for &successor in graph.successors(ref_kmer) {
+            // Stop once we have enough distinct alt paths — avoids running
+            // hundreds of sub-DFS calls after the SV path has already been
+            // found, which causes 4-minute runtimes for large insertions.
+            if alt_paths.len() >= max_total_alt_paths {
+                break 'outer;
+            }
+
             // Skip k-mers already on the reference path.
             if ref_kmer_set.contains(&successor) {
                 continue;

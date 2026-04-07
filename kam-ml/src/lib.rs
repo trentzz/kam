@@ -32,9 +32,9 @@ use ort::{
 use std::collections::HashMap;
 use std::path::Path;
 
+use kam_call::caller::VariantCall;
 #[cfg(feature = "ml")]
 use kam_call::caller::VariantType;
-use kam_call::caller::VariantCall;
 
 /// Metadata loaded alongside the ONNX model.
 #[derive(Debug, serde::Deserialize)]
