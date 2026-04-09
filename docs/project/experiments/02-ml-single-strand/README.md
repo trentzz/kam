@@ -10,9 +10,10 @@ spurious low-evidence calls are common.
 
 ## Status
 
-v1 and v2 models trained and evaluated. v3 model trained on the ML3 dataset (indel_ml2,
-4.85M rows, AUPRC 0.920). ONNX export complete. Rust integration added via `--ml-model`
-flag in `kam run`.
+v1 and v2 models trained and evaluated. v2b model trained on the v2 dataset (training_data_v2.csv,
+888k rows, AUPRC 0.920). ONNX export complete. Rust integration added via `--ml-model`
+flag in `kam run`. Note: v2b was mislabelled "v3" at training time. The v3 name is reserved
+for future training on the ML3 train/test split (training_data_v3.csv).
 
 ## Models
 
@@ -20,8 +21,8 @@ flag in `kam run`.
 |---|---|---|---|
 | v1 | `models/lightgbm_model.txt` | — | v1 (240k rows) |
 | v2 | `models/lightgbm_v2.txt`, `models/xgboost_v2.json` | ~0.85 | v2 |
-| v3 | `models/lightgbm_v3.txt`, `models/xgboost_v3.json` | 0.920 | ML3 (4.85M rows) |
-| v3 ONNX | `models/lightgbm_rust.onnx` | 0.920 | ML3 |
+| v2b | `models/lightgbm_v2b.txt`, `models/xgboost_v2b.json` | 0.920 | v2 (888k rows, legacy + ML2 param sweep) |
+| v2b ONNX | `models/lightgbm_v2b.onnx` | 0.920 | v2 |
 
 Model files are excluded from git (see `.gitignore`). They live in
 `bigdata/experiments/02-ml-single-strand/models/` and on Nextcloud under
@@ -58,7 +59,7 @@ Training metrics (committed small files):
 |---|---|
 | `results/cv_results.csv` | v1 cross-validation metrics |
 | `results/cv_results_v2.csv` | v2 cross-validation metrics |
-| `results/cv_results_v3.csv` | v3 cross-validation metrics |
+| `results/cv_results_v2b.csv` | v2b cross-validation metrics |
 | `results/feature_importance*.csv` | Feature importance by version |
 | `results/figures/` | AUPRC/AUROC curves and feature importance plots |
 | `results_summary.md` | Narrative summary of v1 training run |
@@ -70,6 +71,35 @@ Large training/test feature CSVs and raw simulation outputs live in
 
 Stored under `experiments/02-ml-single-strand/`. See
 `docs/project/devmanual/nextcloud.md` for upload/download instructions.
+
+## ML3 Train Pipeline — Monitoring
+
+The ML3 train pipeline runs in the background via `nohup`. It survives closing the terminal or Claude session. Use these commands to check progress:
+
+```bash
+# How many kam runs are complete (target: 10,000)
+ls bigdata/experiments/02-ml-single-strand/results/train/ | grep "^kam_" | wc -l
+
+# Breakdown by variant type
+ls bigdata/experiments/02-ml-single-strand/results/train/ | grep "^kam_" | \
+  sed 's/_ml3_.*//' | sed 's/^kam_//' | sort | uniq -c
+
+# How many sample dirs are built (target: 10,000 — happens after all kam done)
+ls bigdata/experiments/02-ml-single-strand/samples/train/ | wc -l
+
+# Live log tail
+tail -f ~/tmp/ml3_train_pipeline_final.log
+
+# Check if pipeline process is still running
+ps aux | grep run_ml3_train_pipeline | grep -v grep
+```
+
+Once `samples/train/` reaches 10,000, run in order:
+
+```bash
+python3 scripts/ml/build_training_data_v3.py
+python3 scripts/ml/train_eval_v3.py
+```
 
 ## Scripts
 

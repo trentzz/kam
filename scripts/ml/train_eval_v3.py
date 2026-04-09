@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Train and evaluate ML models on the ML3 dataset with an explicit train/test split.
 
-This script uses training_data_v3.csv, which combines data from all three
+This script requires training_data_v3.csv, which combines data from all four
 generations of varforge configs (original 250 + ML1 433 + ML2 3433 + ML3 train 10000).
 The ML3 test split (1000 configs) is held out entirely until final evaluation.
 
+If training_data_v3.csv does not exist, the script exits with an error. It does not
+fall back to v2 data. Use run_ml3_train_pipeline.py to generate the v3 dataset.
+
 Workflow:
-  1. Load training data, filter to the ML3 train split.
+  1. Load training_data_v3.csv, filter to the ML3 train split.
   2. Train LightGBM and XGBoost on the rust-safe 33-feature set.
   3. Evaluate on the held-out ML3 test split.
   4. Export the best model to ONNX via export_model.py.
@@ -188,18 +191,16 @@ def cross_validate(X, y, groups, model_name: str, clf) -> list[dict]:
 
 def main() -> None:
     """Main training and evaluation loop."""
-    # Try loading v3 data first; fall back to v2.
     data_v3 = REPO / "bigdata/experiments/02-ml-single-strand/training_data_v3.csv"
-    data_v2 = REPO / "bigdata/experiments/02-ml-single-strand/training_data_v2.csv"
-    if data_v3.exists():
-        print(f"Loading {data_v3}...")
-        df = load_data(data_v3)
-    elif data_v2.exists():
-        print(f"training_data_v3.csv not found; loading {data_v2}...")
-        df = load_data(data_v2)
-    else:
-        print("No training data found. Run build_training_data_v2.py first.")
+    if not data_v3.exists():
+        print(
+            f"ERROR: {data_v3} not found.\n"
+            "Run build_training_data_v3.py (via run_ml3_train_pipeline.py) to generate it.\n"
+            "Do not run this script on v2 data — that produces a mislabelled model."
+        )
         return
+    print(f"Loading {data_v3}...")
+    df = load_data(data_v3)
 
     df = add_derived_features(df)
 
