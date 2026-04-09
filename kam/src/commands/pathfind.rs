@@ -70,6 +70,7 @@ pub fn run_pathfind(args: PathfindArgs) -> Result<(), Box<dyn std::error::Error>
     let mut n_targets_queried: u64 = 0;
     let mut n_targets_with_variants: u64 = 0;
     let mut n_anchors_non_unique: u64 = 0;
+    let mut n_walk_budget_exceeded: u64 = 0;
 
     for (target_id, target_seq) in &targets {
         n_targets_queried += 1;
@@ -120,16 +121,20 @@ pub fn run_pathfind(args: PathfindArgs) -> Result<(), Box<dyn std::error::Error>
         let target_max_path = parse_maxpath_from_id(target_id).unwrap_or(default_max_path);
         let walk_config = kam_pathfind::walk::WalkConfig {
             max_path_length: target_max_path,
+            max_expansions: 2_000_000,
             ..Default::default()
         };
 
         // Walk paths.
-        let paths = kam_pathfind::walk::walk_paths(
+        let (paths, walk_budget_hit) = kam_pathfind::walk::walk_paths(
             &graph,
             anchors.start_kmer,
             anchors.end_kmer,
             &walk_config,
         );
+        if walk_budget_hit {
+            n_walk_budget_exceeded += 1;
+        }
 
         // Score and rank paths.
         let scored: Vec<ScoredPath> = score_and_rank_paths(paths, &index, target_seq, k);
@@ -170,6 +175,7 @@ pub fn run_pathfind(args: PathfindArgs) -> Result<(), Box<dyn std::error::Error>
         n_targets_queried,
         n_targets_with_variants,
         n_anchors_non_unique,
+        n_targets_walk_budget_exceeded: n_walk_budget_exceeded,
         passed: true,
     };
 

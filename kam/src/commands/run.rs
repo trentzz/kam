@@ -205,24 +205,35 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     // The raw index stores k-mers in the original orientation AND their reverse
     // complements so that every read direction is represented.  The graph is
     // then built from this raw index; scoring still uses the canonical index.
-    // raw_graph_index is a presence map: stores raw (non-canonical) k-mers with
-    // n_molecules=1 as a presence indicator.  HashKmerIndex::insert overwrites on
-    // duplicate, so repeated insertions leave n_molecules=1.  This index is used
-    // only for de Bruijn graph topology — evidence comes from the canonical index.
-    let mut raw_graph_index = HashKmerIndex::new();
-    let present = kam_core::kmer::MoleculeEvidence {
-        n_molecules: 1,
-        ..Default::default()
-    };
+    //
+    // Pass 1: count how many on-target molecules each raw k-mer (and its
+    // reverse complement) appears in.  Using real molecule counts rather than a
+    // sentinel 1 allows the graph to later filter low-evidence k-mers by
+    // molecule support.
+    let mut raw_kmer_counts: HashMap<u64, u32> = HashMap::new();
     for read in &reads {
         let overlaps_target = KmerIterator::new(&read.sequence, k)
             .any(|(_, km)| allowlist.contains(&canonical(km, k)));
         if overlaps_target {
             for (_, raw_km) in KmerIterator::new(&read.sequence, k) {
-                raw_graph_index.insert(raw_km, present.clone());
-                raw_graph_index.insert(reverse_complement(raw_km, k), present.clone());
+                *raw_kmer_counts.entry(raw_km).or_insert(0) += 1;
+                *raw_kmer_counts
+                    .entry(reverse_complement(raw_km, k))
+                    .or_insert(0) += 1;
             }
         }
+    }
+
+    // Pass 2: build the raw graph index from the counted k-mers.
+    let mut raw_graph_index = HashKmerIndex::new();
+    for (raw_km, count) in raw_kmer_counts {
+        raw_graph_index.insert(
+            raw_km,
+            kam_core::kmer::MoleculeEvidence {
+                n_molecules: count,
+                ..Default::default()
+            },
+        );
     }
 
     let index_qc = IndexQc {
@@ -256,6 +267,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     let mut n_targets_queried: u64 = 0;
     let mut n_targets_with_variants: u64 = 0;
     let mut n_anchors_non_unique: u64 = 0;
+    let mut n_walk_budget_exceeded: u64 = 0;
     let mut n_walk_no_paths: u64 = 0;
     let mut n_walk_ref_only: u64 = 0;
     let mut n_walk_alt_found: u64 = 0;
@@ -356,18 +368,23 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
         };
         let walk_config = WalkConfig {
             max_path_length: target_max_path,
+            max_expansions: 2_000_000,
             ..Default::default()
         };
 
         // Use evidence-biased DFS: sort successors by molecule count descending
         // so the high-evidence reference path is found before max_paths is
         // exhausted by low-evidence error-k-mer branches.
-        let raw_paths = walk_paths_biased(&graph, start_raw, end_raw, &walk_config, |raw_km| {
-            index
-                .get(canonical(raw_km, k))
-                .map(|e| e.n_molecules)
-                .unwrap_or(0)
-        });
+        let (raw_paths, walk_budget_hit) =
+            walk_paths_biased(&graph, start_raw, end_raw, &walk_config, |raw_km| {
+                index
+                    .get(canonical(raw_km, k))
+                    .map(|e| e.n_molecules)
+                    .unwrap_or(0)
+            });
+        if walk_budget_hit {
+            n_walk_budget_exceeded += 1;
+        }
 
         // Categorise walk outcome.
         if raw_paths.is_empty() {
@@ -511,6 +528,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
         n_targets_queried,
         n_targets_with_variants,
         n_anchors_non_unique,
+        n_targets_walk_budget_exceeded: n_walk_budget_exceeded,
         passed: true,
     };
     write_qc(&output_dir.join("pathfind_qc.json"), &pathfind_qc)?;
@@ -619,15 +637,17 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             };
             let walk_config = WalkConfig {
                 max_path_length: max_path,
+                max_expansions: 2_000_000,
                 ..Default::default()
             };
 
-            let raw_paths = walk_paths_biased(&graph, start_raw, end_raw, &walk_config, |raw_km| {
-                index
-                    .get(canonical(raw_km, k))
-                    .map(|e| e.n_molecules)
-                    .unwrap_or(0)
-            });
+            let (raw_paths, _) =
+                walk_paths_biased(&graph, start_raw, end_raw, &walk_config, |raw_km| {
+                    index
+                        .get(canonical(raw_km, k))
+                        .map(|e| e.n_molecules)
+                        .unwrap_or(0)
+                });
 
             if raw_paths.is_empty() {
                 eprintln!("[run/fusion] {}: no paths found (fusion absent)", ft.name);

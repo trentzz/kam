@@ -88,6 +88,8 @@ pub struct PathfindQc {
     pub n_targets_with_variants: u64,
     /// Targets whose anchors were not unique in the graph
     pub n_anchors_non_unique: u64,
+    /// Number of targets where the DFS walk hit the expansion budget and terminated early.
+    pub n_targets_walk_budget_exceeded: u64,
     /// Whether this stage passed its QC thresholds
     pub passed: bool,
 }
