@@ -1,25 +1,24 @@
-"""Export a LightGBM classifier to ONNX for use with the Rust ML scorer.
+"""Export a trained LightGBM model to ONNX for use with the Rust ML scorer.
 
-Trains on the rust-safe 33-feature set derived from VariantCall fields,
-then exports the model and companion metadata to bigdata/experiments/02-ml-single-strand/models/.
+Loads the pre-trained lightgbm_v3.txt model produced by train_eval_v3.py
+and exports it to ONNX. Does not retrain.
 
 Usage:
     python scripts/ml/export_model.py
 
-Requires: lightgbm, onnxmltools, skl2onnx, pandas, scikit-learn
+Requires: lightgbm, onnxmltools, skl2onnx
 """
 
 from __future__ import annotations
 
 import json
-import os
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-TRAINING_DATA = REPO_ROOT / "bigdata" / "experiments" / "02-ml-single-strand" / "training_data_v2.csv"
 MODEL_DIR = REPO_ROOT / "bigdata" / "experiments" / "02-ml-single-strand" / "models"
-MODEL_PATH = MODEL_DIR / "lightgbm_v2b.onnx"
+SOURCE_MODEL = MODEL_DIR / "lightgbm_v3.txt"
+MODEL_PATH = MODEL_DIR / "lightgbm_rust.onnx"
 META_PATH = MODEL_DIR / "model_meta.json"
 
 # Features computable from VariantCall at inference time (no pipeline state needed).
@@ -55,65 +54,38 @@ ML_PASS_THRESHOLD = 0.5
 
 
 def main() -> None:
-    if not TRAINING_DATA.exists():
+    if not SOURCE_MODEL.exists():
         print(
-            f"Training data not found at {TRAINING_DATA}. "
-            "No model exported — rerun after generating training data."
+            f"Trained model not found at {SOURCE_MODEL}. "
+            "Run train_eval_v3.py first to produce it."
         )
-        sys.exit(0)
+        sys.exit(1)
 
     try:
         import lightgbm as lgb
-        import numpy as np
-        import pandas as pd
         from onnxmltools import convert_lightgbm
         from onnxmltools.convert.common.data_types import FloatTensorType
     except ImportError as exc:
         print(f"Missing dependency: {exc}. Install lightgbm, onnxmltools, and skl2onnx.")
         sys.exit(1)
 
-    print(f"Loading training data from {TRAINING_DATA} ...")
-    df = pd.read_csv(TRAINING_DATA)
+    print(f"Loading trained model from {SOURCE_MODEL} ...")
+    booster = lgb.Booster(model_file=str(SOURCE_MODEL))
 
-    # Keep only rows that have all required feature columns.
-    available = [c for c in RUST_FEATURES if c in df.columns]
-    missing = [c for c in RUST_FEATURES if c not in df.columns]
-    if missing:
-        print(f"WARNING: {len(missing)} feature(s) not in training data: {missing}")
-        print("Proceeding with available features only.")
-
-    if "label" not in df.columns:
-        print("ERROR: 'label' column not found in training data.")
-        sys.exit(1)
-
-    df = df.dropna(subset=available + ["label"])
-    X = df[available].values.astype(np.float32)
-    y = df["label"].values.astype(int)
-
-    print(f"Training on {len(X)} samples, {len(available)} features ...")
-
-    clf = lgb.LGBMClassifier(
-        is_unbalance=True,
-        n_estimators=200,
-        max_depth=6,
-        num_leaves=31,
-        random_state=42,
-    )
-    clf.fit(X, y)
-
-    print("Exporting to ONNX ...")
+    n_features = len(RUST_FEATURES)
+    print(f"Exporting {n_features}-feature model to ONNX ...")
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
-    initial_types = [("X", FloatTensorType([None, len(available)]))]
-    onnx_model = convert_lightgbm(clf.booster_, initial_types=initial_types)
+    initial_types = [("X", FloatTensorType([None, n_features]))]
+    onnx_model = convert_lightgbm(booster, initial_types=initial_types)
 
     with open(MODEL_PATH, "wb") as f:
         f.write(onnx_model.SerializeToString())
     print(f"ONNX model saved to {MODEL_PATH}")
 
     meta = {
-        "version": "1",
-        "feature_names": available,
+        "version": "3",
+        "feature_names": RUST_FEATURES,
         "ml_pass_threshold": ML_PASS_THRESHOLD,
         "variant_class_map": VARIANT_CLASS_MAP,
     }
