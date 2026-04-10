@@ -795,10 +795,18 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Optional ML scoring.
-    #[cfg(feature = "ml")]
-    if let Some(ref model_path) = args.ml_model {
-        let meta_path = model_path.with_extension("meta.json");
-        match kam_ml::MlScorer::load(model_path, &meta_path) {
+    let scorer_result: Option<Result<kam_call::ml::MlScorer, _>> =
+        if let Some(ref name) = args.ml_model {
+            Some(crate::models::resolve(name))
+        } else if let Some(ref path) = args.custom_ml_model {
+            let meta_path = path.with_extension("json");
+            Some(kam_call::ml::MlScorer::load(path, &meta_path))
+        } else {
+            None
+        };
+
+    if let Some(scorer_result) = scorer_result {
+        match scorer_result {
             Ok(mut scorer) => {
                 for call in &mut all_calls {
                     call.ml_prob = scorer.score(call);
@@ -812,13 +820,6 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
                 eprintln!("[run/call] WARNING: failed to load ML model: {}", e);
             }
         }
-    }
-    #[cfg(not(feature = "ml"))]
-    if args.ml_model.is_some() {
-        eprintln!(
-            "[run/call] WARNING: --ml-model was passed but this binary was compiled without the \
-             'ml' feature. Recompile with --features ml to enable ML scoring."
-        );
     }
 
     for call in &all_calls {
@@ -1268,6 +1269,7 @@ mod tests {
             log: vec![],
             threads: None,
             ml_model: None,
+            custom_ml_model: None,
         }
     }
 
@@ -1491,6 +1493,7 @@ min_umi_quality = 0
             log: vec![],
             threads: None,
             ml_model: None,
+            custom_ml_model: None,
         };
 
         run_pipeline(args).expect("config file mode should succeed");
@@ -1581,6 +1584,7 @@ min_umi_quality = 0
             log: vec![],
             threads: None,
             ml_model: None,
+            custom_ml_model: None,
         };
 
         run_pipeline(args).expect("CLI override mode should succeed");

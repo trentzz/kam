@@ -162,7 +162,7 @@ upload_dir_batches() {
             name="$(printf 'batch_%03d' "$batch_idx")"
             local tarball="${HOME}/tmp/${batch_tag}_${name}.tar.gz"
             echo "[TAR] ${name} (${#batch_dirs[@]} dirs)"
-            tar -czf "$tarball" -C "$base_dir" "${batch_dirs[@]}"
+            tar -czf "$tarball" --exclude='*.fastq.gz' --exclude='*.log' -C "$base_dir" "${batch_dirs[@]}"
             chunked_upload "$tarball" "${nc_prefix}/${name}.tar.gz"
             rm -f "$tarball"
             batch_dirs=()
@@ -175,7 +175,7 @@ upload_dir_batches() {
         name="$(printf 'batch_%03d' "$batch_idx")"
         local tarball="${HOME}/tmp/${batch_tag}_${name}.tar.gz"
         echo "[TAR] ${name} (${#batch_dirs[@]} dirs)"
-        tar -czf "$tarball" -C "$base_dir" "${batch_dirs[@]}"
+        tar -czf "$tarball" --exclude='*.fastq.gz' --exclude='*.log' -C "$base_dir" "${batch_dirs[@]}"
         chunked_upload "$tarball" "${nc_prefix}/${name}.tar.gz"
         rm -f "$tarball"
     fi
@@ -198,7 +198,7 @@ upload_configs() {
     # Upload as a single tarball — configs are small YAML files.
     local tarball="${HOME}/tmp/ss_configs.tar.gz"
     echo "[TAR] configs"
-    tar -czf "$tarball" -C "${BIGDATA}" configs/
+    tar -czf "$tarball" --exclude='*.fastq.gz' --exclude='*.log' -C "${BIGDATA}" configs/
     chunked_upload "$tarball" "${NC_PREFIX}/configs.tar.gz"
     rm -f "$tarball"
 }
@@ -224,7 +224,7 @@ upload_samples() {
             bname="$(printf 'batch_%03d' "$batch_idx")"
             local tarball="${HOME}/tmp/ss_samples_${bname}.tar.gz"
             echo "[TAR] samples/${bname} (${#batch_dirs[@]} dirs)"
-            tar -czf "$tarball" -C "$base" "${batch_dirs[@]}"
+            tar -czf "$tarball" --exclude='*.fastq.gz' --exclude='*.log' -C "$base" "${batch_dirs[@]}"
             chunked_upload "$tarball" "${nc_p}/${bname}.tar.gz"
             rm -f "$tarball"
             batch_dirs=(); batch_idx=$(( batch_idx + 1 ))
@@ -235,7 +235,7 @@ upload_samples() {
         bname="$(printf 'batch_%03d' "$batch_idx")"
         local tarball="${HOME}/tmp/ss_samples_${bname}.tar.gz"
         echo "[TAR] samples/${bname} (${#batch_dirs[@]} dirs)"
-        tar -czf "$tarball" -C "$base" "${batch_dirs[@]}"
+        tar -czf "$tarball" --exclude='*.fastq.gz' --exclude='*.log' -C "$base" "${batch_dirs[@]}"
         chunked_upload "$tarball" "${nc_p}/${bname}.tar.gz"
         rm -f "$tarball"
     fi
@@ -262,7 +262,7 @@ upload_results() {
             bname="$(printf 'batch_%03d' "$batch_idx")"
             local tarball="${HOME}/tmp/ss_results_${bname}.tar.gz"
             echo "[TAR] results/${bname} (${#batch_dirs[@]} dirs)"
-            tar -czf "$tarball" -C "$base" "${batch_dirs[@]}"
+            tar -czf "$tarball" --exclude='*.fastq.gz' --exclude='*.log' -C "$base" "${batch_dirs[@]}"
             chunked_upload "$tarball" "${nc_p}/${bname}.tar.gz"
             rm -f "$tarball"
             batch_dirs=(); batch_idx=$(( batch_idx + 1 ))
@@ -273,17 +273,26 @@ upload_results() {
         bname="$(printf 'batch_%03d' "$batch_idx")"
         local tarball="${HOME}/tmp/ss_results_${bname}.tar.gz"
         echo "[TAR] results/${bname} (${#batch_dirs[@]} dirs)"
-        tar -czf "$tarball" -C "$base" "${batch_dirs[@]}"
+        tar -czf "$tarball" --exclude='*.fastq.gz' --exclude='*.log' -C "$base" "${batch_dirs[@]}"
         chunked_upload "$tarball" "${nc_p}/${bname}.tar.gz"
         rm -f "$tarball"
     fi
 }
 
 upload_training() {
-    local f="${BIGDATA}/training_data_v2.csv"
-    [[ -f "$f" ]] || { echo "[WARN] training_data_v2.csv not found" >&2; return; }
     nc_mkdir_p "${NC_PREFIX}"
-    chunked_upload "$f" "${NC_PREFIX}/training_data_v2.csv"
+    local f2="${BIGDATA}/training_data_v2.csv"
+    local f3="${BIGDATA}/training_data_v3.csv"
+    if [[ -f "$f2" ]]; then
+        chunked_upload "$f2" "${NC_PREFIX}/training_data_v2.csv"
+    else
+        echo "[WARN] training_data_v2.csv not found" >&2
+    fi
+    if [[ -f "$f3" ]]; then
+        chunked_upload "$f3" "${NC_PREFIX}/training_data_v3.csv"
+    else
+        echo "[WARN] training_data_v3.csv not found" >&2
+    fi
 }
 
 # ─── Main ────────────────────────────────────────────────────────────────────

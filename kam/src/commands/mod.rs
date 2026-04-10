@@ -6,5 +6,6 @@
 pub mod assemble;
 pub mod call;
 pub mod index;
+pub mod models;
 pub mod pathfind;
 pub mod run;
