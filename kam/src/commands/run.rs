@@ -255,12 +255,31 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     // ── Stage 3: Pathfind ─────────────────────────────────────────────────────
     let t_pathfind = std::time::Instant::now();
 
-    // Build a single de Bruijn graph from all on-target raw k-mers.
-    // The graph must include variant k-mers (which differ from the reference),
-    // so it is built from ALL k-mers in raw_graph_index, not just reference k-mers.
-    // min_molecules=1 accepts every k-mer observed in at least one molecule.
-    // The walk is bounded per-target by max_path_length to prevent cross-target paths.
-    let all_raw_kmers: Vec<u64> = raw_graph_index.iter().map(|(&km, _)| km).collect();
+    // Build a single de Bruijn graph from on-target raw k-mers with sufficient
+    // canonical evidence.
+    //
+    // raw_graph_index is a topology map (all n_molecules=1), so min_molecules
+    // filtering on it is meaningless.  Instead we filter the node list against
+    // the canonical evidence index, keeping only raw k-mers whose canonical
+    // form is supported by ≥2 molecules.  This eliminates singleton sequencing-
+    // error k-mers (which appear in exactly 1 molecule per error event) that
+    // otherwise inflate the graph to 50k+ nodes and cause the DFS to explore
+    // an exponentially large space of dead-end branches.
+    //
+    // Genuine reference k-mers survive (mean depth ~45).  Variant k-mers at
+    // ≥2 supporting molecules also survive.  At very low VAF where the variant
+    // is undetectable (<2 molecules), the graph simply has no alt path — the
+    // correct result.
+    let all_raw_kmers: Vec<u64> = raw_graph_index
+        .iter()
+        .filter(|(&km, _)| {
+            index
+                .get(canonical(km, k))
+                .map(|e| e.n_molecules >= 2)
+                .unwrap_or(false)
+        })
+        .map(|(&km, _)| km)
+        .collect();
     let graph = DeBruijnGraph::from_index(&raw_graph_index, k, &all_raw_kmers, 1);
 
     let mut all_scored: Vec<(String, Vec<ScoredPath>)> = Vec::new();
@@ -442,6 +461,13 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
                 end_raw,
                 alt_max_path,
                 1,
+                // Stop the guided search once 20 distinct alt paths have been
+                // found. Without this limit, the loop runs sub-DFS from every
+                // high-evidence branch across all ~270 reference k-mers, even
+                // after the SV alt path has been found — causing 4-minute
+                // runtimes for large insertions where ~800 branches pass the
+                // evidence filter.
+                20,
                 |raw_km| {
                     let can_km = canonical(raw_km, k);
                     if use_junction_filter {

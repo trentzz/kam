@@ -1,8 +1,8 @@
 # varforge config: invdel_t0006  — VAF 4.0581%  type=invdel
-reference: docs/benchmarking/sv/data/ref.fa
+reference: docs/benchmarking/02-sv-core/data/ref.fa
 
 output:
-  directory: docs/benchmarking/ml-twist-duplex/simulations/test/invdel_t0006
+  directory: bigdata/experiments/01-ml-twist-duplex/simulations/test/invdel_t0006
   fastq: true
   bam: false
   truth_vcf: true
@@ -28,7 +28,7 @@ tumour:
   ploidy: 2
 
 mutations:
-  vcf: docs/benchmarking/sv/data/truth_invdel_vaf0020_b.vcf
+  vcf: docs/benchmarking/02-sv-core/data/truth_invdel_vaf0020_b.vcf
 
 umi:
   length: 5
