@@ -28,7 +28,9 @@ use ort::{
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::caller::{VariantCall, VariantType};
+use crate::caller::VariantCall;
+#[cfg(feature = "ml")]
+use crate::caller::VariantType;
 
 /// Metadata loaded alongside the ONNX model.
 #[derive(Debug, serde::Deserialize)]
@@ -56,10 +58,10 @@ impl MlScorer {
     /// Returns an error if either file cannot be read or parsed.
     pub fn load(model_path: &Path, meta_path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
         let meta_bytes = std::fs::read(meta_path)?;
-        let meta: ModelMeta = serde_json::from_slice(&meta_bytes)?;
 
         #[cfg(feature = "ml")]
         {
+            let meta: ModelMeta = serde_json::from_slice(&meta_bytes)?;
             let session = Session::builder()?
                 .with_optimization_level(GraphOptimizationLevel::Level3)?
                 .with_intra_threads(1)?
@@ -69,7 +71,7 @@ impl MlScorer {
 
         #[cfg(not(feature = "ml"))]
         {
-            let _ = model_path;
+            let _ = (model_path, meta_bytes);
             Err("kam-call was built without the 'ml' feature — recompile with --features ml".into())
         }
     }
@@ -83,10 +85,9 @@ impl MlScorer {
         model_bytes: &[u8],
         meta_bytes: &[u8],
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let meta: ModelMeta = serde_json::from_slice(meta_bytes)?;
-
         #[cfg(feature = "ml")]
         {
+            let meta: ModelMeta = serde_json::from_slice(meta_bytes)?;
             let session = Session::builder()?
                 .with_optimization_level(GraphOptimizationLevel::Level3)?
                 .with_intra_threads(1)?
@@ -96,7 +97,7 @@ impl MlScorer {
 
         #[cfg(not(feature = "ml"))]
         {
-            let _ = model_bytes;
+            let _ = (model_bytes, meta_bytes);
             Err("kam-call was built without the 'ml' feature — recompile with --features ml".into())
         }
     }
@@ -133,6 +134,7 @@ impl MlScorer {
     }
 
     /// Build the feature vector for a call in the order `meta.feature_names` specifies.
+    #[cfg(feature = "ml")]
     fn extract_features(&self, call: &VariantCall) -> Vec<f32> {
         let vaf = call.vaf as f32;
         let nref = call.n_molecules_ref as f32;
@@ -226,6 +228,7 @@ impl MlScorer {
     }
 }
 
+#[cfg(feature = "ml")]
 fn variant_type_str(vt: VariantType) -> &'static str {
     match vt {
         VariantType::Snv => "SNV",

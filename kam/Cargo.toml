@@ -30,7 +30,7 @@ toml = { workspace = true }
 
 [features]
 default = []
-ml = ["dep:kam-ml"]
+ml = ["dep:kam-ml", "kam-call/ml"]
 
 [dev-dependencies]
 tempfile = "3"

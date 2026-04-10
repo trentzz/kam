@@ -18,6 +18,11 @@ serde_json = { workspace = true }
 statrs = { workspace = true }
 log = { workspace = true }
 needletail = { workspace = true }
+ort = { workspace = true, optional = true }
+ndarray = { workspace = true, optional = true }
+
+[features]
+ml = ["dep:ort", "dep:ndarray"]
 
 [dev-dependencies]
 tempfile = "3"

@@ -22,12 +22,12 @@ import psutil
 from pathlib import Path
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
-REPO = Path(__file__).resolve().parents[2]
+REPO = Path(__file__).resolve().parents[4]
 _DEFAULT_KAM     = REPO / "target/release/kam"
-_DEFAULT_TARGETS = REPO / "benchmarking/scripts/targets_100bp.fa"
-_DEFAULT_TRUTH   = REPO / "benchmarking/scripts/truth_variants.vcf"
+_DEFAULT_TARGETS = REPO / "docs/benchmarking/01-snvindel/scripts/targets_100bp.fa"
+_DEFAULT_TRUTH   = REPO / "docs/benchmarking/01-snvindel/scripts/truth_variants.vcf"
 _DEFAULT_FASTQ   = Path(os.environ.get("KAM_FASTQ_DIR", "/data/titration-nondedup/fastqs"))
-_DEFAULT_RESULTS = REPO / "benchmarking/results/tables"
+_DEFAULT_RESULTS = REPO / "docs/benchmarking/07-snvindel-ml-boost-v1/results"
 
 # These are overridden by parse_args() at startup.
 KAM          = _DEFAULT_KAM
@@ -49,23 +49,17 @@ KAM_MIN_FAMILY_SIZE: int | None = None
 KAM_TARGET_VARIANTS: Path | None = None
 KAM_KMER_SIZE: int | None = None
 KAM_MIN_ALT_DUPLEX: int | None = None
+KAM_ML_MODEL: str | None = None
 
 # When set, save per-sample VCFs to this directory.
-# Each sample produces:
-#   <name>.monitoring.vcf  — calls with tumour-informed filter applied (PASS = truth matches)
-#   <name>.discovery.vcf   — calls in discovery mode (no truth filter; PASS = all quality-passing calls)
-# If --target-variants is not set, only <name>.discovery.vcf is written.
 VCF_SAVE_DIR: Path | None = None
+
+# When set, write per-sample per-target TSV to this directory.
+PER_SAMPLE_DIR: Path | None = None
 
 # ── Truth variants ─────────────────────────────────────────────────────────────
 def load_truth_set(vcf_path):
-    """Load truth variants as (chrom, pos, ref, alt) tuples for positional matching.
-
-    Returns:
-        truth_all:   full set of all truth variants
-        truth_snv:   SNP/MNV variants only
-        truth_indel: insertion/deletion variants only
-    """
+    """Load truth variants as (chrom, pos, ref, alt) tuples for positional matching."""
     truth_all = set()
     truth_snv = set()
     truth_indel = set()
@@ -90,45 +84,45 @@ def load_truth_set(vcf_path):
     return truth_all, truth_snv, truth_indel
 
 
-def extract_called_variants(tsv_path):
-    """Parse kam TSV output; derive (chrom, pos, ref, alt) from target_id and sequences.
+def extract_called_variants_with_ml(tsv_path):
+    """Parse kam TSV; return two sets: standard PASS calls and ML-filtered calls.
 
-    target_id is 'chrN:start-end' (0-based start, end exclusive, matching BED).
-    ref_seq and alt_seq are the full 100bp sequences; the variant is where they
-    first differ (for SNVs) or where a gap/insertion is introduced (for indels).
-    We return only PASS variants.
+    Returns:
+        called_standard: set of (chrom, pos, ref, alt) tuples for PASS calls
+        called_ml: set of (chrom, pos, ref, alt) tuples for PASS + ml_filter=ML_PASS calls
+        call_details: list of dicts with per-call detail for per-target TSV
     """
-    called = set()
+    called_standard = set()
+    called_ml = set()
+    call_details = []
+
     if not tsv_path.exists():
-        return called
+        return called_standard, called_ml, call_details
+
     with open(tsv_path) as f:
         reader = csv.DictReader(f, delimiter="\t")
         for row in reader:
             if row.get("filter") != "PASS":
                 continue
             tid = row["target_id"]
-            # Parse target_id: chrom:start-end (start is 0-based)
             m = re.match(r"^(chr\w+):(\d+)-(\d+)$", tid)
             if not m:
                 continue
             chrom = m.group(1)
-            target_start = int(m.group(2))  # 0-based
+            target_start = int(m.group(2))
             ref_seq = row["ref_seq"]
             alt_seq = row["alt_seq"]
-            # Find the leftmost differing position
             diff_pos = next(
                 (i for i, (r, a) in enumerate(zip(ref_seq, alt_seq)) if r != a),
                 None,
             )
             if diff_pos is None:
                 continue
-            # Trim common suffix to get the minimal differing region.
             common_suffix = 0
             while (common_suffix < len(ref_seq) - diff_pos - 1
                    and common_suffix < len(alt_seq) - diff_pos - 1
                    and ref_seq[-(common_suffix + 1)] == alt_seq[-(common_suffix + 1)]):
                 common_suffix += 1
-
             if common_suffix > 0:
                 ref_trimmed = ref_seq[diff_pos:-common_suffix]
                 alt_trimmed = alt_seq[diff_pos:-common_suffix]
@@ -137,50 +131,30 @@ def extract_called_variants(tsv_path):
                 alt_trimmed = alt_seq[diff_pos:]
 
             if len(ref_seq) == len(alt_seq):
-                # SNV: single-base substitution.
                 ref_allele = ref_trimmed[0] if len(ref_trimmed) == 1 else ref_trimmed
                 alt_allele = alt_trimmed[0] if len(alt_trimmed) == 1 else alt_trimmed
                 genomic_pos = target_start + diff_pos
             else:
-                # Indel: find the minimal allele pair, then left-normalise to
-                # match the VCF convention used in the truth set.
-
-                # Remove any inner common suffix between ref_trimmed and
-                # alt_trimmed (the outer common suffix was already stripped).
-                # Use len() without -1 so alt_min can reach empty (pure deletion).
                 inner_cs = 0
-                while (inner_cs < len(ref_trimmed)
-                       and inner_cs < len(alt_trimmed)
+                while (inner_cs < len(ref_trimmed) and inner_cs < len(alt_trimmed)
                        and ref_trimmed[-(inner_cs + 1)] == alt_trimmed[-(inner_cs + 1)]):
                     inner_cs += 1
                 ref_min = ref_trimmed[:-inner_cs] if inner_cs > 0 else ref_trimmed
                 alt_min = alt_trimmed[:-inner_cs] if inner_cs > 0 else alt_trimmed
-
-                # Remove any inner common prefix as well.
                 inner_cp = 0
-                for r, a in zip(ref_min, alt_min):
-                    if r != a:
+                for rv, av in zip(ref_min, alt_min):
+                    if rv != av:
                         break
                     inner_cp += 1
                 ref_min = ref_min[inner_cp:]
                 alt_min = alt_min[inner_cp:]
-                indel_start = diff_pos + inner_cp  # index of first ins/del base
-
+                indel_start = diff_pos + inner_cp
                 if len(ref_seq) > len(alt_seq):
-                    # Deletion: ref_min is the deleted sequence.
                     del_seq = ref_min
                     anchor_pos = indel_start - 1
-
-                    # Left-normalise: shift anchor left while the preceding
-                    # base matches the last base of the deleted sequence.
-                    # This converts right-aligned deletions in repeat runs to
-                    # the left-aligned representation used by VCF.
-                    while (anchor_pos > 0
-                           and del_seq
-                           and ref_seq[anchor_pos] == del_seq[-1]):
-                        del_seq = del_seq[-1:] + del_seq[:-1]  # rotate right
+                    while anchor_pos > 0 and del_seq and ref_seq[anchor_pos] == del_seq[-1]:
+                        del_seq = del_seq[-1:] + del_seq[:-1]
                         anchor_pos -= 1
-
                     if anchor_pos >= 0:
                         anchor = ref_seq[anchor_pos]
                         ref_allele = anchor + del_seq
@@ -191,17 +165,11 @@ def extract_called_variants(tsv_path):
                         alt_allele = ""
                         genomic_pos = target_start + indel_start
                 else:
-                    # Insertion: alt_min is the inserted sequence.
                     ins_seq = alt_min
                     anchor_pos = indel_start - 1
-
-                    # Left-normalise insertions similarly.
-                    while (anchor_pos > 0
-                           and ins_seq
-                           and ref_seq[anchor_pos] == ins_seq[-1]):
-                        ins_seq = ins_seq[-1:] + ins_seq[:-1]  # rotate right
+                    while anchor_pos > 0 and ins_seq and ref_seq[anchor_pos] == ins_seq[-1]:
+                        ins_seq = ins_seq[-1:] + ins_seq[:-1]
                         anchor_pos -= 1
-
                     if anchor_pos >= 0:
                         anchor = ref_seq[anchor_pos]
                         ref_allele = anchor
@@ -211,8 +179,27 @@ def extract_called_variants(tsv_path):
                         ref_allele = ""
                         alt_allele = ins_seq
                         genomic_pos = target_start + indel_start
-            called.add((chrom, genomic_pos, ref_allele, alt_allele))
-    return called
+
+            key = (chrom, genomic_pos, ref_allele, alt_allele)
+            called_standard.add(key)
+
+            ml_filter_val = row.get("ml_filter", ".")
+            ml_prob_val = row.get("ml_prob", ".")
+            confidence_val = row.get("confidence", ".")
+            vaf_val = row.get("vaf", ".")
+            if ml_filter_val == "ML_PASS":
+                called_ml.add(key)
+
+            call_details.append({
+                "key": key,
+                "ml_filter": ml_filter_val,
+                "ml_prob": ml_prob_val,
+                "confidence": confidence_val,
+                "called_vaf": vaf_val,
+            })
+
+    return called_standard, called_ml, call_details
+
 
 # ── Sample discovery ──────────────────────────────────────────────────────────
 PATTERN = re.compile(
@@ -220,7 +207,6 @@ PATTERN = re.compile(
 )
 
 def vaf_label_to_float(label):
-    # "0p001" -> 0.001, "0" -> 0.0, "1" -> 1.0
     return float(label.replace("p", "."))
 
 def find_samples():
@@ -246,7 +232,6 @@ def find_samples():
 
 # ── Subset FASTQ ─────────────────────────────────────────────────────────────
 def subset_fastq(gz_path, n_reads, out_path):
-    """Stream-decompress and write first n_reads read pairs without loading into memory."""
     n_lines = n_reads * 4
     with open(out_path, "wb") as f_out:
         zcat = subprocess.Popen(["zcat", str(gz_path)], stdout=subprocess.PIPE)
@@ -261,7 +246,6 @@ def subset_fastq(gz_path, n_reads, out_path):
 
 # ── Score variants ────────────────────────────────────────────────────────────
 def _confusion(called, truth_subset, panel_size):
-    """Compute confusion-matrix metrics for one (called, truth) pair."""
     tp = len(called & truth_subset)
     fp = len(called - truth_subset)
     fn = len(truth_subset - called)
@@ -285,17 +269,83 @@ def _confusion(called, truth_subset, panel_size):
 def score_tsv(called_tsv, truth_all, truth_snv, truth_indel):
     """Score called variants; return full confusion-matrix metrics overall and by type.
 
-    For a targeted panel with TRUTH_PANEL_SIZE known variant sites:
-      TP  = called AND in truth
-      FP  = called AND NOT in truth
-      FN  = NOT called AND in truth
-      TN  = panel sites with no FP call and no missed truth call
+    When the TSV contains ml_filter/ml_prob columns (from --ml-model), also computes
+    ML-filtered metrics using only calls where ml_filter=ML_PASS.
     """
-    called = extract_called_variants(called_tsv)
-    overall = _confusion(called, truth_all, TRUTH_PANEL_SIZE)
-    snv     = _confusion(called, truth_snv, len(truth_snv))
-    indel   = _confusion(called, truth_indel, len(truth_indel))
-    return {"overall": overall, "snv": snv, "indel": indel, "n_called": len(called)}
+    called_standard, called_ml, call_details = extract_called_variants_with_ml(called_tsv)
+    has_ml = any(d["ml_filter"] != "." for d in call_details)
+
+    overall = _confusion(called_standard, truth_all, TRUTH_PANEL_SIZE)
+    snv     = _confusion(called_standard, truth_snv, len(truth_snv))
+    indel   = _confusion(called_standard, truth_indel, len(truth_indel))
+
+    if has_ml:
+        ml_overall = _confusion(called_ml, truth_all, TRUTH_PANEL_SIZE)
+        ml_snv     = _confusion(called_ml, truth_snv, len(truth_snv))
+        ml_indel   = _confusion(called_ml, truth_indel, len(truth_indel))
+    else:
+        ml_overall = ml_snv = ml_indel = None
+
+    return {
+        "overall": overall, "snv": snv, "indel": indel,
+        "n_called": len(called_standard),
+        "ml_overall": ml_overall, "ml_snv": ml_snv, "ml_indel": ml_indel,
+        "call_details": call_details,
+        "called_standard": called_standard,
+        "called_ml": called_ml,
+    }
+
+
+def write_per_target_tsv(sample, scores, truth_all, truth_snv, truth_indel, out_path):
+    """Write a per-target TSV with one row per truth variant for this sample.
+
+    Columns: variant_id, chrom, pos, ref, alt, variant_type,
+             sample, ng, vaf,
+             detected, ml_detected, called_vaf, confidence, ml_prob, ml_filter
+    """
+    # Build a lookup from variant key to call detail.
+    detail_by_key = {d["key"]: d for d in scores["call_details"]}
+    called_standard = scores["called_standard"]
+    called_ml = scores["called_ml"]
+    has_ml = scores["ml_overall"] is not None
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = [
+        "variant_id", "chrom", "pos", "ref", "alt", "variant_type",
+        "sample", "ng", "vaf",
+        "detected", "ml_detected", "called_vaf", "confidence", "ml_prob", "ml_filter",
+    ]
+    with open(out_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter="\t")
+        writer.writeheader()
+        # Collect and sort truth variants for deterministic output.
+        all_truth = sorted(
+            [(k, "SNP" if k in truth_snv else "INDEL") for k in truth_all],
+            key=lambda x: (x[0][0], x[0][1]),
+        )
+        for (chrom, pos, ref, alt), vtype in all_truth:
+            key = (chrom, pos, ref, alt)
+            detected = key in called_standard
+            detail = detail_by_key.get(key, {})
+            row = {
+                "variant_id": f"{chrom}:{pos}:{ref}:{alt}",
+                "chrom": chrom,
+                "pos": pos,
+                "ref": ref,
+                "alt": alt,
+                "variant_type": vtype,
+                "sample": sample["name"],
+                "ng": sample["ng"],
+                "vaf": sample["vaf"],
+                "detected": detected,
+                "ml_detected": (key in called_ml) if has_ml else "NA",
+                "called_vaf": detail.get("called_vaf", "NA") if detected else "NA",
+                "confidence": detail.get("confidence", "NA") if detected else "NA",
+                "ml_prob": detail.get("ml_prob", "NA") if detected else "NA",
+                "ml_filter": detail.get("ml_filter", "NA") if detected else "NA",
+            }
+            writer.writerow(row)
+
 
 # Stage tags in the order kam emits them.
 _STAGE_TAGS = [
@@ -340,16 +390,14 @@ def run_sample(sample, truth_set, tmp_dir):
         cmd += ["-k", str(KAM_KMER_SIZE)]
     if KAM_MIN_ALT_DUPLEX is not None:
         cmd += ["--min-alt-duplex", str(KAM_MIN_ALT_DUPLEX)]
+    if KAM_ML_MODEL is not None:
+        cmd += ["--ml-model", KAM_ML_MODEL]
 
     print(f"  [{name}] running kam...", flush=True)
     t0 = time.time()
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, text=True)
 
-    # ── Per-stage RSS/CPU tracking ────────────────────────────────────────────
-    # Read stdout in a background thread; RSS is sampled in the main loop.
-    # When a stage-completion log line arrives, the sampler records peak RSS
-    # and CPU for the stage that just finished.
     stdout_q: queue.Queue[str | None] = queue.Queue()
 
     def _reader():
@@ -359,12 +407,10 @@ def run_sample(sample, truth_set, tmp_dir):
 
     threading.Thread(target=_reader, daemon=True).start()
 
-    # Per-stage accumulators.
     stage_peak_rss  = {s: 0.0 for s, _ in _STAGE_TAGS}
     stage_peak_cpu  = {s: 0.0 for s, _ in _STAGE_TAGS}
-    # Stages complete in order; current_stage is the one we are in now.
     stage_names = [s for s, _ in _STAGE_TAGS]
-    stage_idx   = 0  # index into stage_names; current stage = stage_names[stage_idx]
+    stage_idx   = 0
 
     stdout_lines: list[str] = []
     peak_mb = 0.0
@@ -372,7 +418,6 @@ def run_sample(sample, truth_set, tmp_dir):
     ps_proc = psutil.Process(proc.pid)
 
     while True:
-        # Drain available stdout lines, advancing stage pointer when log tags appear.
         try:
             while True:
                 ln = stdout_q.get_nowait()
@@ -381,12 +426,10 @@ def run_sample(sample, truth_set, tmp_dir):
                 stdout_lines.append(ln)
                 _, tag = _STAGE_TAGS[stage_idx] if stage_idx < len(_STAGE_TAGS) else (None, None)
                 if tag and tag in ln:
-                    # Stage completed; advance to next stage.
                     stage_idx = min(stage_idx + 1, len(stage_names) - 1)
         except queue.Empty:
             pass
 
-        # Sample RSS and CPU.
         try:
             mem  = ps_proc.memory_info().rss / 1024 / 1024
             cpu  = ps_proc.cpu_percent(interval=None)
@@ -403,7 +446,6 @@ def run_sample(sample, truth_set, tmp_dir):
             pass
 
         if proc.poll() is not None:
-            # Process exited; drain remaining lines.
             try:
                 while True:
                     ln = stdout_q.get(timeout=0.2)
@@ -422,11 +464,10 @@ def run_sample(sample, truth_set, tmp_dir):
     if killed_oom:
         print(f"  [{name}] KILLED: exceeded {PEAK_RSS_LIMIT_MB / 1024:.1f} GB RSS at {peak_mb / 1024:.2f} GB",
               flush=True)
-        return None  # caller will write a skipped row
+        return None
 
     stdout = "".join(stdout_lines)
 
-    # Parse stage stats and per-stage timing from stdout.
     molecules = duplex = variants_pass = 0
     stage_ms = {"assemble": 0, "index": 0, "pathfind": 0, "call": 0, "output": 0}
     for line in stdout.splitlines():
@@ -466,6 +507,10 @@ def run_sample(sample, truth_set, tmp_dir):
     ov = scores["overall"]
     sv = scores["snv"]
     ind = scores["indel"]
+    ml_ov  = scores["ml_overall"]
+    ml_sv  = scores["ml_snv"]
+    ml_ind = scores["ml_indel"]
+    has_ml = ml_ov is not None
 
     def r(v): return round(v, 4)
 
@@ -477,26 +522,36 @@ def run_sample(sample, truth_set, tmp_dir):
         "duplex": duplex,
         "duplex_pct": round(100 * duplex / molecules, 3) if molecules else 0,
         "variants_called": variants_pass,
-        # overall
         "tp": ov["tp"], "fp": ov["fp"], "fn": ov["fn"], "tn": ov["tn"],
         "sensitivity": r(ov["sensitivity"]), "precision": r(ov["precision"]),
         "specificity": r(ov["specificity"]), "fpr": r(ov["fpr"]),
         "fdr": r(ov["fdr"]), "fnr": r(ov["fnr"]), "f1": r(ov["f1"]),
-        # SNV subset
         "snv_tp": sv["tp"], "snv_fp": sv["fp"], "snv_fn": sv["fn"],
         "snv_sensitivity": r(sv["sensitivity"]), "snv_precision": r(sv["precision"]),
         "snv_specificity": r(sv["specificity"]), "snv_fpr": r(sv["fpr"]),
-        # indel subset
         "indel_tp": ind["tp"], "indel_fp": ind["fp"], "indel_fn": ind["fn"],
         "indel_sensitivity": r(ind["sensitivity"]), "indel_precision": r(ind["precision"]),
         "indel_specificity": r(ind["specificity"]), "indel_fpr": r(ind["fpr"]),
-        # per-stage timing (ms)
+        # ML-filtered metrics (NA when --ml-model not used)
+        "ml_tp":  ml_ov["tp"]  if has_ml else "NA",
+        "ml_fp":  ml_ov["fp"]  if has_ml else "NA",
+        "ml_fn":  ml_ov["fn"]  if has_ml else "NA",
+        "ml_sensitivity": r(ml_ov["sensitivity"]) if has_ml else "NA",
+        "ml_precision":   r(ml_ov["precision"])   if has_ml else "NA",
+        "ml_f1":          r(ml_ov["f1"])           if has_ml else "NA",
+        "ml_snv_tp":  ml_sv["tp"]  if has_ml else "NA",
+        "ml_snv_fp":  ml_sv["fp"]  if has_ml else "NA",
+        "ml_snv_fn":  ml_sv["fn"]  if has_ml else "NA",
+        "ml_snv_sensitivity": r(ml_sv["sensitivity"]) if has_ml else "NA",
+        "ml_indel_tp":  ml_ind["tp"]  if has_ml else "NA",
+        "ml_indel_fp":  ml_ind["fp"]  if has_ml else "NA",
+        "ml_indel_fn":  ml_ind["fn"]  if has_ml else "NA",
+        "ml_indel_sensitivity": r(ml_ind["sensitivity"]) if has_ml else "NA",
         "t_assemble_ms": stage_ms["assemble"],
         "t_index_ms": stage_ms["index"],
         "t_pathfind_ms": stage_ms["pathfind"],
         "t_call_ms": stage_ms["call"],
         "t_output_ms": stage_ms["output"],
-        # per-stage peak RSS (MB) and peak CPU (%)
         "rss_assemble_mb": round(stage_peak_rss["assemble"], 1),
         "rss_index_mb":    round(stage_peak_rss["index"],    1),
         "rss_pathfind_mb": round(stage_peak_rss["pathfind"], 1),
@@ -507,22 +562,18 @@ def run_sample(sample, truth_set, tmp_dir):
         "cpu_pathfind_pct": round(stage_peak_cpu["pathfind"], 1),
         "cpu_call_pct":     round(stage_peak_cpu["call"],     1),
         "cpu_output_pct":   round(stage_peak_cpu["output"],   1),
-        # runtime
         "peak_rss_mb": round(peak_mb, 1),
         "wall_time_s": round(elapsed, 1),
         "exit_code": proc.returncode,
     }
 
-    # ── Save per-sample VCFs if requested ─────────────────────────────────────
     if VCF_SAVE_DIR is not None and proc.returncode == 0:
         VCF_SAVE_DIR.mkdir(parents=True, exist_ok=True)
         src_vcf = out_dir / "variants.vcf"
         if src_vcf.exists():
             if KAM_TARGET_VARIANTS is not None:
-                # This run used monitoring mode → save as .monitoring.vcf
                 dst = VCF_SAVE_DIR / f"{name}.monitoring.vcf"
                 shutil.copy(src_vcf, dst)
-                # Also run a second pass in discovery mode for the pre-filter view.
                 disc_out = tmp_dir / "kam_disc"
                 disc_out.mkdir()
                 disc_cmd = [
@@ -544,20 +595,24 @@ def run_sample(sample, truth_set, tmp_dir):
                     disc_cmd += ["-k", str(KAM_KMER_SIZE)]
                 if KAM_MIN_ALT_DUPLEX is not None:
                     disc_cmd += ["--min-alt-duplex", str(KAM_MIN_ALT_DUPLEX)]
-                # Deliberately omit --target-variants for discovery mode.
                 disc_proc = subprocess.run(disc_cmd, capture_output=True)
                 disc_vcf = disc_out / "variants.vcf"
                 if disc_vcf.exists():
                     shutil.copy(disc_vcf, VCF_SAVE_DIR / f"{name}.discovery.vcf")
             else:
-                # No monitoring filter — this is already discovery mode.
                 shutil.copy(src_vcf, VCF_SAVE_DIR / f"{name}.discovery.vcf")
 
+    # ── Per-target TSV ───────────────────────────────────────────────────────
+    if PER_SAMPLE_DIR is not None and proc.returncode == 0:
+        per_target_path = PER_SAMPLE_DIR / f"{name}.targets.tsv"
+        write_per_target_tsv(sample, scores, *truth_set, per_target_path)
+
+    ml_sens_str = f" ml_sens={ml_ov['sensitivity']:.3f}" if has_ml else ""
     status = "OK" if proc.returncode == 0 else "FAIL"
     print(f"  [{name}] {status} | "
           f"mols={molecules:,} | "
           f"sens={ov['sensitivity']:.3f} spec={ov['specificity']:.3f} "
-          f"prec={ov['precision']:.3f} | "
+          f"prec={ov['precision']:.3f}{ml_sens_str} | "
           f"snv={sv['sensitivity']:.3f} indel={ind['sensitivity']:.3f} | "
           f"assemble={stage_ms['assemble']}ms({stage_peak_rss['assemble']:.0f}MB) "
           f"index={stage_ms['index']}ms({stage_peak_rss['index']:.0f}MB) "
@@ -572,55 +627,33 @@ def main():
     global READS_PER_SAMPLE, PEAK_RSS_LIMIT_MB
     global KAM_MAX_VAF, KAM_MIN_ALT_MOLECULES, KAM_MIN_CONFIDENCE, KAM_MIN_FAMILY_SIZE
     global KAM_TARGET_VARIANTS, KAM_KMER_SIZE, KAM_MIN_ALT_DUPLEX, VCF_SAVE_DIR
+    global KAM_ML_MODEL, PER_SAMPLE_DIR
 
     parser = argparse.ArgumentParser(
         description="Run kam on all titration samples and score against truth variants."
     )
-    parser.add_argument("--fastq-dir", type=Path, default=_DEFAULT_FASTQ,
-                        help="Directory containing TWIST_STDV2_* FASTQ pairs "
-                             "(default: $KAM_FASTQ_DIR or /data/titration-nondedup/fastqs)")
-    parser.add_argument("--truth-vcf", type=Path, default=_DEFAULT_TRUTH,
-                        help="Truth VCF file (default: benchmarking/scripts/truth_variants.vcf)")
-    parser.add_argument("--targets", type=Path, default=_DEFAULT_TARGETS,
-                        help="Target FASTA file (default: benchmarking/scripts/targets_100bp.fa)")
-    parser.add_argument("--kam-binary", type=Path, default=_DEFAULT_KAM,
-                        help="Path to the kam binary (default: target/release/kam)")
-    parser.add_argument("--results-dir", type=Path, default=_DEFAULT_RESULTS,
-                        help="Directory for output TSV (default: benchmarking/results/tables)")
-    parser.add_argument("--output", type=str, default=None,
-                        help="Output TSV filename within --results-dir "
-                             "(default: titration_results_{N}reads.tsv based on --reads)")
-    parser.add_argument("--reads", type=int, default=READS_PER_SAMPLE,
-                        help=f"Read pairs per sample (default: {READS_PER_SAMPLE:,})")
-    parser.add_argument("--rss-limit-gb", type=float, default=PEAK_RSS_LIMIT_MB / 1024,
-                        help=f"Peak RSS kill threshold in GB (default: {PEAK_RSS_LIMIT_MB / 1024:.0f})")
-    parser.add_argument("--max-vaf", type=float, default=None,
-                        help="Maximum VAF for a PASS call; calls above this are labelled HighVaf. "
-                             "Use 0.35 to exclude germline heterozygous variants.")
-    parser.add_argument("--min-alt-molecules", type=int, default=None,
-                        help="Minimum alt-supporting molecules to emit a call (default: 2).")
-    parser.add_argument("--min-confidence", type=float, default=None,
-                        help="Minimum posterior confidence to emit a call (default: 0.99).")
-    parser.add_argument("--min-family-size", type=int, default=None,
-                        help="Minimum reads per UMI family to keep a molecule (default: 1). "
-                             "Use 2 to replicate HUMID-style singleton filtering.")
-    parser.add_argument("--target-variants", type=Path, default=None,
-                        help="VCF of expected somatic variants for tumour-informed monitoring "
-                             "mode. Only calls matching (CHROM, POS, REF, ALT) in this VCF "
-                             "are marked PASS. Suppresses background biological FPs.")
-    parser.add_argument("--min-alt-duplex", type=int, default=None,
-                        help="Minimum variant-specific duplex molecules for a PASS call "
-                             "(default: 0, disabled). Set to 1 to require duplex confirmation "
-                             "on every call. Calls below threshold are labelled LowDuplex.")
-    parser.add_argument("--save-vcfs", type=Path, default=None,
-                        help="Directory to save per-sample VCF outputs. When set, each sample "
-                             "produces <name>.monitoring.vcf (tumour-informed calls) and "
-                             "<name>.discovery.vcf (all quality-passing calls, no truth filter). "
-                             "If --target-variants is not set, only discovery VCFs are written.")
-    parser.add_argument("--kmer-size", type=int, default=None,
-                        help="K-mer size for indexing and path walking (default: 31). "
-                             "Must satisfy k < read_length/2. Smaller k lowers the minimum "
-                             "detectable target length but increases spurious branching.")
+    parser.add_argument("--fastq-dir", type=Path, default=_DEFAULT_FASTQ)
+    parser.add_argument("--truth-vcf", type=Path, default=_DEFAULT_TRUTH)
+    parser.add_argument("--targets", type=Path, default=_DEFAULT_TARGETS)
+    parser.add_argument("--kam-binary", type=Path, default=_DEFAULT_KAM)
+    parser.add_argument("--results-dir", type=Path, default=_DEFAULT_RESULTS)
+    parser.add_argument("--output", type=str, default=None)
+    parser.add_argument("--reads", type=int, default=READS_PER_SAMPLE)
+    parser.add_argument("--rss-limit-gb", type=float, default=PEAK_RSS_LIMIT_MB / 1024)
+    parser.add_argument("--max-vaf", type=float, default=None)
+    parser.add_argument("--min-alt-molecules", type=int, default=None)
+    parser.add_argument("--min-confidence", type=float, default=None)
+    parser.add_argument("--min-family-size", type=int, default=None)
+    parser.add_argument("--target-variants", type=Path, default=None)
+    parser.add_argument("--min-alt-duplex", type=int, default=None)
+    parser.add_argument("--save-vcfs", type=Path, default=None)
+    parser.add_argument("--kmer-size", type=int, default=None)
+    parser.add_argument("--ml-model", type=str, default=None,
+                        help="Built-in ML model name to pass to kam (e.g. twist-duplex-v1). "
+                             "Adds ml_prob/ml_filter columns to output and computes ML-filtered metrics.")
+    parser.add_argument("--per-sample-dir", type=Path, default=None,
+                        help="Directory for per-sample per-target TSV files. "
+                             "Each sample produces <name>.targets.tsv with one row per truth variant.")
     args = parser.parse_args()
 
     KAM             = args.kam_binary
@@ -638,6 +671,8 @@ def main():
     KAM_MIN_ALT_DUPLEX    = args.min_alt_duplex
     KAM_KMER_SIZE         = args.kmer_size
     VCF_SAVE_DIR          = args.save_vcfs
+    KAM_ML_MODEL          = args.ml_model
+    PER_SAMPLE_DIR        = args.per_sample_dir
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     if args.output:
@@ -662,21 +697,20 @@ def main():
     fieldnames = [
         "sample", "ng", "vaf", "molecules", "duplex", "duplex_pct",
         "variants_called",
-        # overall confusion matrix
         "tp", "fp", "fn", "tn",
         "sensitivity", "precision", "specificity", "fpr", "fdr", "fnr", "f1",
-        # SNV subset
         "snv_tp", "snv_fp", "snv_fn",
         "snv_sensitivity", "snv_precision", "snv_specificity", "snv_fpr",
-        # indel subset
         "indel_tp", "indel_fp", "indel_fn",
         "indel_sensitivity", "indel_precision", "indel_specificity", "indel_fpr",
-        # per-stage timing (ms)
+        # ML-filtered metrics
+        "ml_tp", "ml_fp", "ml_fn",
+        "ml_sensitivity", "ml_precision", "ml_f1",
+        "ml_snv_tp", "ml_snv_fp", "ml_snv_fn", "ml_snv_sensitivity",
+        "ml_indel_tp", "ml_indel_fp", "ml_indel_fn", "ml_indel_sensitivity",
         "t_assemble_ms", "t_index_ms", "t_pathfind_ms", "t_call_ms", "t_output_ms",
-        # per-stage peak RSS (MB) and peak CPU (%)
         "rss_assemble_mb", "rss_index_mb", "rss_pathfind_mb", "rss_call_mb", "rss_output_mb",
         "cpu_assemble_pct", "cpu_index_pct", "cpu_pathfind_pct", "cpu_call_pct", "cpu_output_pct",
-        # overall runtime
         "peak_rss_mb", "wall_time_s", "exit_code",
     ]
 

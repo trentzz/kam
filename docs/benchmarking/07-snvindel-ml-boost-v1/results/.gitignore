@@ -1,0 +1,4 @@
+# Per-sample TSVs and VCFs are large; use bigdata/ for storage.
+# Summary TSVs (small, tracked) are explicitly un-ignored via negation.
+per_sample/
+vcfs/

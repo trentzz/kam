@@ -291,3 +291,55 @@ per stage with no coordinate sort step and no reference alignment.
     Alignment-based numbers are \placeholder{pending}.}
   \label{fig:runtime_comparison}
 \end{figure}
+
+% ── ML-boosted calling ────────────────────────────────────────────────────────
+\subsection{ML-boosted calling}
+\label{sec:results-ml}
+
+kam includes an optional ML filter based on a LightGBM classifier exported to
+ONNX and loaded at runtime via the \texttt{ort} crate.
+The model, \texttt{twist-duplex-v1}, was trained on varforge duplex
+simulations and uses 33 features per call: VAF, molecule counts
+(\texttt{nref}, \texttt{nalt}, \texttt{ndupalt}, \texttt{nsimalt}), strand
+bias $p$-value, posterior confidence, allele lengths, and a set of derived
+features including duplex fraction, confidence interval width, log transforms,
+and interaction terms.
+Training used 1.54\,M rows (2.9\% positives) from held-out test data, yielding
+AUPRC\,=\,0.606.
+Calls with \texttt{ml\_prob} $\ge 0.5$ receive the \texttt{ML\_PASS} filter;
+all others receive \texttt{ML\_FILTER}.
+
+We evaluated the ML filter on the 24-sample titration dataset with
+tumour-informed (TI) mode enabled.
+All PASS calls received \texttt{ML\_PASS} across all 24 samples.
+The \texttt{ml\_prob} scores ranged from 0.9993 to 1.0000 (minimum and maximum
+across all scored calls).
+ML sensitivity equals TI sensitivity exactly for every sample, and precision
+remains 1.000 under ML+TI.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/ml_sensitivity_comparison.pdf}
+  \caption{Sensitivity at each VAF level for three conditions: baseline (no ML, no TI),
+    TI-only, and ML+TI. Left: overall sensitivity. Centre: SNV sensitivity.
+    Right: indel sensitivity. Error bars show the range across three DNA input
+    masses (5\,ng, 15\,ng, 30\,ng). ML+TI and TI-only curves overlap exactly,
+    confirming that the ML filter does not alter any calls in tumour-informed mode.}
+  \label{fig:ml_sensitivity}
+\end{figure}
+
+The result is expected. In TI mode, the TI filter already restricts PASS calls
+to variants that match the target set. These calls carry high molecule counts,
+high duplex support, and high posterior confidence: exactly the feature values
+that distinguish true positives from background noise in the training data.
+The ML model finds no additional signal to act on.
+
+The ML filter adds approximately 16\,ms of overhead per run in the call stage,
+compared to roughly 1\,ms without ML. This is negligible relative to the
+41--55\,s total wall time per sample.
+
+The ML filter is not beneficial in TI mode. Its intended use is non-TI
+discovery mode, where genuine false positives arise from low-confidence calls
+and background sequencing errors. In that setting, the 33-feature model
+can separate high-confidence true positives from low-molecule background
+calls that the statistical filters alone do not suppress.
