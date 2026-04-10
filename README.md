@@ -125,6 +125,28 @@ kam call --paths paths.bin --targets targets.fa --output calls.vcf
 
 ---
 
+## ML Models
+
+kam includes a built-in ML scorer that re-ranks variant calls using a gradient-boosted
+classifier. Enable it with `--ml-model`:
+
+```bash
+kam run --r1 sample_R1.fastq.gz --r2 sample_R2.fastq.gz \
+  --targets panel_targets.fa --output-dir results/ \
+  --ml-model single-strand-v1
+```
+
+| Model | Chemistry | Training data | AUPRC | AUROC | When to use |
+|---|---|---|---|---|---|
+| `single-strand-v1` | Twist UMI duplex | ML3 single-strand consensus, 9,990 samples | 0.9998 | 0.9949 | Standard Twist UMI panels with single-strand consensus calling |
+
+To list all available built-in models: `kam models list`
+
+See [docs/manual/07_ml_models.md](docs/manual/07_ml_models.md) for full model documentation,
+feature descriptions, performance metrics, and custom model instructions.
+
+---
+
 ## Chemistry
 
 kam supports configurable UMI chemistries via `config.toml`. Presets are

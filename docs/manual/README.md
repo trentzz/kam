@@ -67,6 +67,10 @@ Each stage of the pipeline is described in detail:
 - [Call](04_call.md) — VAF estimation, strand bias, filters, fusion calling
 - [Output formats](05_outputs.md) — TSV/CSV/JSON/VCF formats, QC JSON schemas
 
+### ML Scoring
+
+- [ML Models](07_ml_models.md) — built-in models, features, performance metrics, custom models
+
 ### Reference
 
 - [Troubleshooting](troubleshooting.md) — common problems and solutions

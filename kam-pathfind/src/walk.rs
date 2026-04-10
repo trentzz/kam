@@ -19,9 +19,10 @@
 //! g.add_edge(0, 1);
 //! g.add_edge(1, 2);
 //!
-//! let paths = walk_paths(&g, 0, 2, &WalkConfig::default());
+//! let (paths, exceeded) = walk_paths(&g, 0, 2, &WalkConfig::default());
 //! assert_eq!(paths.len(), 1);
 //! assert_eq!(paths[0].kmers, vec![0, 1, 2]);
+//! assert!(!exceeded);
 //! ```
 
 use std::collections::HashSet;
@@ -54,6 +55,8 @@ pub struct WalkConfig {
     /// Maximum total paths to return. Enumeration stops once this many
     /// complete paths have been found.
     pub max_paths: usize,
+    /// Total DFS node expansions before aborting. 0 = unlimited.
+    pub max_expansions: usize,
 }
 
 impl Default for WalkConfig {
@@ -63,6 +66,7 @@ impl Default for WalkConfig {
         Self {
             max_path_length: 150,
             max_paths: 100,
+            max_expansions: 0,
         }
     }
 }
@@ -78,7 +82,7 @@ fn walk_paths_inner<F>(
     end_kmer: u64,
     config: &WalkConfig,
     sort_successors: F,
-) -> Vec<GraphPath>
+) -> (Vec<GraphPath>, bool)
 where
     F: Fn(&mut Vec<u64>),
 {
@@ -114,11 +118,11 @@ where
                 sequence,
             });
         }
-        return completed;
+        return (completed, false);
     }
 
     if !graph.contains(start_kmer) {
-        return completed;
+        return (completed, false);
     }
 
     // Stack stores (node, pre-ordered successors, next index to try).
@@ -132,6 +136,8 @@ where
     let mut stack: Vec<(u64, Vec<u64>, usize)> = vec![(start_kmer, start_succs, 0)];
     let mut current_path: Vec<u64> = vec![start_kmer];
     let mut visited: HashSet<u64> = HashSet::from([start_kmer]);
+    let mut n_expansions: usize = 0;
+    let mut budget_exceeded = false;
 
     while let Some((_node, succs, succ_idx)) = stack.last_mut() {
         if completed.len() >= config.max_paths {
@@ -178,10 +184,15 @@ where
             let mut next_succs = graph.successors(next).to_vec();
             sort_successors(&mut next_succs);
             stack.push((next, next_succs, 0));
+            n_expansions += 1;
+            if config.max_expansions > 0 && n_expansions >= config.max_expansions {
+                budget_exceeded = true;
+                break;
+            }
         }
     }
 
-    completed
+    (completed, budget_exceeded)
 }
 
 /// Find all paths from `start_kmer` to `end_kmer` in the graph.
@@ -202,16 +213,17 @@ where
 /// let mut g = DeBruijnGraph::new(3);
 /// g.add_edge(1, 2);
 /// g.add_edge(2, 3);
-/// let paths = walk_paths(&g, 1, 3, &WalkConfig::default());
+/// let (paths, exceeded) = walk_paths(&g, 1, 3, &WalkConfig::default());
 /// assert_eq!(paths.len(), 1);
 /// assert_eq!(paths[0].length, 3);
+/// assert!(!exceeded);
 /// ```
 pub fn walk_paths(
     graph: &DeBruijnGraph,
     start_kmer: u64,
     end_kmer: u64,
     config: &WalkConfig,
-) -> Vec<GraphPath> {
+) -> (Vec<GraphPath>, bool) {
     walk_paths_inner(graph, start_kmer, end_kmer, config, |_succs| {})
 }
 
@@ -293,10 +305,12 @@ pub fn find_alt_paths_from_reference(
             let walk_config = WalkConfig {
                 max_path_length: sub_budget,
                 max_paths: max_alt_paths_per_branch,
+                max_expansions: 300_000,
             };
 
-            // Walk from `successor` to `end_kmer`.
-            let rest_paths =
+            // Walk from `successor` to `end_kmer`. Budget exceeded flag is
+            // discarded here — sub-walks are small and bounded by design.
+            let (rest_paths, _) =
                 walk_paths_biased(graph, successor, end_kmer, &walk_config, molecule_count);
             for rest in rest_paths {
                 // Stitch: reference_kmers[0..=i] + rest.kmers.
@@ -346,9 +360,10 @@ pub fn find_alt_paths_from_reference(
 /// let mut g = DeBruijnGraph::new(4);
 /// g.add_edge(0, 1);
 /// g.add_edge(1, 2);
-/// let paths = walk_paths_biased(&g, 0, 2, &WalkConfig::default(), |_| 1);
+/// let (paths, exceeded) = walk_paths_biased(&g, 0, 2, &WalkConfig::default(), |_| 1);
 /// assert_eq!(paths.len(), 1);
 /// assert_eq!(paths[0].kmers, vec![0, 1, 2]);
+/// assert!(!exceeded);
 /// ```
 pub fn walk_paths_biased(
     graph: &DeBruijnGraph,
@@ -356,7 +371,7 @@ pub fn walk_paths_biased(
     end_kmer: u64,
     config: &WalkConfig,
     molecule_count: impl Fn(u64) -> u32,
-) -> Vec<GraphPath> {
+) -> (Vec<GraphPath>, bool) {
     walk_paths_inner(graph, start_kmer, end_kmer, config, |succs| {
         succs.sort_by_key(|&km| std::cmp::Reverse(molecule_count(km)));
     })
@@ -432,7 +447,7 @@ mod tests {
             kmers.len(),
             "test sequence must have unique k-mers"
         );
-        let paths = walk_paths(&g, kmers[0], *kmers.last().unwrap(), &WalkConfig::default());
+        let (paths, _) = walk_paths(&g, kmers[0], *kmers.last().unwrap(), &WalkConfig::default());
         assert_eq!(paths.len(), 1);
         assert_eq!(paths[0].kmers, kmers);
     }
@@ -461,7 +476,7 @@ mod tests {
         g.add_edge(aat, att);
         g.add_edge(att, ttt);
 
-        let paths = walk_paths(&g, aaa, ttt, &WalkConfig::default());
+        let (paths, _) = walk_paths(&g, aaa, ttt, &WalkConfig::default());
         assert_eq!(paths.len(), 2);
     }
 
@@ -479,7 +494,7 @@ mod tests {
         g.add_edge(cgt, gta);
         g.add_edge(acg, gta);
 
-        let paths = walk_paths(&g, acg, gta, &WalkConfig::default());
+        let (paths, _) = walk_paths(&g, acg, gta, &WalkConfig::default());
         assert_eq!(paths.len(), 2);
 
         let lengths: std::collections::BTreeSet<usize> = paths.iter().map(|p| p.length).collect();
@@ -505,7 +520,7 @@ mod tests {
         g.add_edge(mid2, mid3);
         g.add_edge(mid3, end);
 
-        let paths = walk_paths(&g, start, end, &WalkConfig::default());
+        let (paths, _) = walk_paths(&g, start, end, &WalkConfig::default());
         assert_eq!(paths.len(), 2);
 
         let lengths: std::collections::BTreeSet<usize> = paths.iter().map(|p| p.length).collect();
@@ -524,7 +539,7 @@ mod tests {
         g.add_edge(a, b);
         g.add_edge(c, a);
 
-        let paths = walk_paths(&g, b, c, &WalkConfig::default());
+        let (paths, _) = walk_paths(&g, b, c, &WalkConfig::default());
         assert!(paths.is_empty());
     }
 
@@ -541,8 +556,9 @@ mod tests {
         let config = WalkConfig {
             max_path_length: 5,
             max_paths: 100,
+            max_expansions: 0,
         };
-        let paths = walk_paths(&g, kmers[0], *kmers.last().unwrap(), &config);
+        let (paths, _) = walk_paths(&g, kmers[0], *kmers.last().unwrap(), &config);
         assert!(paths.is_empty(), "path should be abandoned as too long");
     }
 
@@ -562,8 +578,9 @@ mod tests {
         let config = WalkConfig {
             max_path_length: 150,
             max_paths: 3,
+            max_expansions: 0,
         };
-        let paths = walk_paths(&g, start, end, &config);
+        let (paths, _) = walk_paths(&g, start, end, &config);
         assert_eq!(paths.len(), 3);
     }
 
@@ -583,7 +600,7 @@ mod tests {
         g.add_edge(c, a);
         g.add_edge(a, end);
 
-        let paths = walk_paths(&g, a, end, &WalkConfig::default());
+        let (paths, _) = walk_paths(&g, a, end, &WalkConfig::default());
         assert_eq!(paths.len(), 1);
         assert_eq!(paths[0].kmers, vec![a, end]);
     }
@@ -600,6 +617,45 @@ mod tests {
         assert_eq!(reconstructed, seq.as_ref());
     }
 
+    // Test 9b: Budget exceeded returns partial result and flag.
+    #[test]
+    fn budget_exceeded_returns_partial_and_flag() {
+        // Build a graph where start branches into dead-end paths that never
+        // reach end. The graph has exactly 4 possible node expansions total
+        // (b1, b3, b2, b4), so a budget of 3 fires before all branches are
+        // explored.
+        //
+        // DFS order (biased, all molecule counts equal):
+        //   expand b1 (n=1) → expand b3 (n=2) → b3 dead-ends, backtrack
+        //   → expand b2 (n=3) → budget triggered
+        let k = 3;
+        let mut g = DeBruijnGraph::new(k);
+        let start = encode_kmer(b"AAA").unwrap();
+        let end = encode_kmer(b"TTT").unwrap();
+        let b1 = encode_kmer(b"AAC").unwrap();
+        let b2 = encode_kmer(b"AAG").unwrap();
+        let b3 = encode_kmer(b"ACG").unwrap();
+        let b4 = encode_kmer(b"AGC").unwrap();
+        g.add_edge(start, b1);
+        g.add_edge(start, b2);
+        g.add_edge(b1, b3);
+        g.add_edge(b2, b4);
+        // Add end as an isolated node with no path from start to it.
+        g.add_edge(end, end);
+
+        let cfg = WalkConfig {
+            max_path_length: 50,
+            max_paths: 100,
+            max_expansions: 3,
+        };
+        let (paths, exceeded) = walk_paths_biased(&g, start, end, &cfg, |_| 1);
+        assert!(
+            exceeded,
+            "budget of 3 should be exceeded in this 4-expansion graph"
+        );
+        assert!(paths.is_empty(), "no complete paths reach end");
+    }
+
     // Test 10: Start == end (zero-length variant) → single path of one k-mer.
     #[test]
     fn start_equals_end_single_path() {
@@ -608,7 +664,7 @@ mod tests {
         let kmer = encode_kmer(b"ACG").unwrap();
         g.add_edge(kmer, kmer + 1);
 
-        let paths = walk_paths(&g, kmer, kmer, &WalkConfig::default());
+        let (paths, _) = walk_paths(&g, kmer, kmer, &WalkConfig::default());
         assert_eq!(paths.len(), 1);
         assert_eq!(paths[0].kmers, vec![kmer]);
         assert_eq!(paths[0].length, 1);
