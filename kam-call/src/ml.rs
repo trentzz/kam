@@ -74,6 +74,33 @@ impl MlScorer {
         }
     }
 
+    /// Load an ONNX model and metadata from in-memory bytes (e.g. from `include_bytes!`).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the bytes cannot be parsed.
+    pub fn from_bytes(
+        model_bytes: &[u8],
+        meta_bytes: &[u8],
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let meta: ModelMeta = serde_json::from_slice(meta_bytes)?;
+
+        #[cfg(feature = "ml")]
+        {
+            let session = Session::builder()?
+                .with_optimization_level(GraphOptimizationLevel::Level3)?
+                .with_intra_threads(1)?
+                .commit_from_memory(model_bytes)?;
+            Ok(Self { session, meta })
+        }
+
+        #[cfg(not(feature = "ml"))]
+        {
+            let _ = model_bytes;
+            Err("kam-call was built without the 'ml' feature — recompile with --features ml".into())
+        }
+    }
+
     /// Score a single [`VariantCall`] and return the ML probability (class 1).
     ///
     /// Returns `None` if feature extraction or inference fails.

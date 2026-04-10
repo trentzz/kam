@@ -39,6 +39,8 @@ pub enum Commands {
     Call(CallArgs),
     /// Run the full pipeline end-to-end.
     Run(Box<RunArgs>),
+    /// List and manage built-in ML models.
+    Models(ModelsArgs),
 }
 
 /// Arguments for the `assemble` subcommand.
@@ -221,14 +223,20 @@ pub struct CallArgs {
     #[arg(long, default_value_t = 1.0f64)]
     pub sv_strand_bias_threshold: f64,
 
-    /// Path to an ONNX ML model for optional variant re-scoring.
+    /// Built-in model name for optional variant re-scoring.
     ///
-    /// When provided, each variant call is scored by the ML model and the
-    /// result is appended as `ml_prob` and `ml_filter` columns. Requires a
-    /// companion `<model>.meta.json` file at the same path with `.onnx`
-    /// replaced by `.meta.json`.
+    /// Use a built-in name (e.g. `single-strand-v1`). The model is bundled
+    /// with the binary and works out of the box after `cargo install`.
+    /// The result is appended as `ml_prob` and `ml_filter` columns.
+    /// Mutually exclusive with --custom-ml-model.
     #[arg(long)]
-    pub ml_model: Option<PathBuf>,
+    pub ml_model: Option<String>,
+
+    /// Path to a custom ONNX model file. The companion metadata file must
+    /// exist at the same path with a `.json` extension.
+    /// Mutually exclusive with --ml-model.
+    #[arg(long)]
+    pub custom_ml_model: Option<std::path::PathBuf>,
 }
 
 impl CallerConfigArgs for CallArgs {
@@ -459,14 +467,34 @@ pub struct RunArgs {
     #[arg(long)]
     pub sv_strand_bias_threshold_override: Option<f64>,
 
-    /// Path to an ONNX ML model for optional variant re-scoring.
+    /// Built-in model name for optional variant re-scoring.
     ///
-    /// When provided, each variant call is scored by the ML model and the
-    /// result is appended as `ml_prob` and `ml_filter` columns. Requires a
-    /// companion `<model>.meta.json` file at the same path with `.onnx`
-    /// replaced by `.meta.json`.
+    /// Use a built-in name (e.g. `single-strand-v1`). The model is bundled
+    /// with the binary and works out of the box after `cargo install`.
+    /// The result is appended as `ml_prob` and `ml_filter` columns.
+    /// Mutually exclusive with --custom-ml-model.
     #[arg(long)]
-    pub ml_model: Option<PathBuf>,
+    pub ml_model: Option<String>,
+
+    /// Path to a custom ONNX model file. The companion metadata file must
+    /// exist at the same path with a `.json` extension.
+    /// Mutually exclusive with --ml-model.
+    #[arg(long)]
+    pub custom_ml_model: Option<std::path::PathBuf>,
+}
+
+/// Arguments for the `models` subcommand.
+#[derive(clap::Args, Debug)]
+pub struct ModelsArgs {
+    #[command(subcommand)]
+    pub command: ModelsCommands,
+}
+
+/// Subcommands under `kam models`.
+#[derive(clap::Subcommand, Debug)]
+pub enum ModelsCommands {
+    /// List all built-in ML models.
+    List,
 }
 
 #[cfg(test)]

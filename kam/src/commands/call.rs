@@ -81,9 +81,18 @@ pub fn run_call(args: CallArgs) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // ── 5b. Optional ML scoring ───────────────────────────────────────────────
-    if let Some(ref model_path) = args.ml_model {
-        let meta_path = model_path.with_extension("meta.json");
-        match kam_call::ml::MlScorer::load(model_path, &meta_path) {
+    let scorer_result: Option<Result<kam_call::ml::MlScorer, _>> =
+        if let Some(ref name) = args.ml_model {
+            Some(crate::models::resolve(name))
+        } else if let Some(ref path) = args.custom_ml_model {
+            let meta_path = path.with_extension("json");
+            Some(kam_call::ml::MlScorer::load(path, &meta_path))
+        } else {
+            None
+        };
+
+    if let Some(scorer_result) = scorer_result {
+        match scorer_result {
             Ok(mut scorer) => {
                 for call in &mut all_calls {
                     call.ml_prob = scorer.score(call);
@@ -233,6 +242,7 @@ mod tests {
             ti_position_tolerance: 0,
             sv_strand_bias_threshold: 1.0,
             ml_model: None,
+            custom_ml_model: None,
         }
     }
 
