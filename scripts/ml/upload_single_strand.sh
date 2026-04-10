@@ -283,13 +283,21 @@ upload_training() {
     nc_mkdir_p "${NC_PREFIX}"
     local f2="${BIGDATA}/training_data_v2.csv"
     local f3="${BIGDATA}/training_data_v3.csv"
+    local gz2="${HOME}/tmp/training_data_v2.csv.gz"
+    local gz3="${HOME}/tmp/training_data_v3.csv.gz"
     if [[ -f "$f2" ]]; then
-        chunked_upload "$f2" "${NC_PREFIX}/training_data_v2.csv"
+        echo "[GZIP] training_data_v2.csv"
+        pigz -c "$f2" > "$gz2" || gzip -c "$f2" > "$gz2"
+        chunked_upload "$gz2" "${NC_PREFIX}/training_data_v2.csv.gz"
+        rm -f "$gz2"
     else
         echo "[WARN] training_data_v2.csv not found" >&2
     fi
     if [[ -f "$f3" ]]; then
-        chunked_upload "$f3" "${NC_PREFIX}/training_data_v3.csv"
+        echo "[GZIP] training_data_v3.csv"
+        pigz -c "$f3" > "$gz3" || gzip -c "$f3" > "$gz3"
+        chunked_upload "$gz3" "${NC_PREFIX}/training_data_v3.csv.gz"
+        rm -f "$gz3"
     else
         echo "[WARN] training_data_v3.csv not found" >&2
     fi
