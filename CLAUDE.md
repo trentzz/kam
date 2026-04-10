@@ -103,6 +103,7 @@ Read the relevant guide before starting work in that area.
 | `docs/project/devmanual/benchmarking.md` | Running benchmarks, adding datasets, scoring results |
 | `docs/project/devmanual/task-tracking.md` | Picking up tasks, creating epics, committing work |
 | `docs/project/devmanual/investigation-docs.md` | Writing up a diagnostic investigation |
+| `docs/claudeguide/release.md` | Cutting a release, building the binary, publishing to GitHub Releases |
 
 ## Autonomous Session Behaviour
 
