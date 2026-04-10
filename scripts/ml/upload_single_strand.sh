@@ -280,10 +280,19 @@ upload_results() {
 }
 
 upload_training() {
-    local f="${BIGDATA}/training_data_v2.csv"
-    [[ -f "$f" ]] || { echo "[WARN] training_data_v2.csv not found" >&2; return; }
     nc_mkdir_p "${NC_PREFIX}"
-    chunked_upload "$f" "${NC_PREFIX}/training_data_v2.csv"
+    local f2="${BIGDATA}/training_data_v2.csv"
+    local f3="${BIGDATA}/training_data_v3.csv"
+    if [[ -f "$f2" ]]; then
+        chunked_upload "$f2" "${NC_PREFIX}/training_data_v2.csv"
+    else
+        echo "[WARN] training_data_v2.csv not found" >&2
+    fi
+    if [[ -f "$f3" ]]; then
+        chunked_upload "$f3" "${NC_PREFIX}/training_data_v3.csv"
+    else
+        echo "[WARN] training_data_v3.csv not found" >&2
+    fi
 }
 
 # ─── Main ────────────────────────────────────────────────────────────────────
