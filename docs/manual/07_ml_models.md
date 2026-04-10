@@ -30,6 +30,7 @@ kam models list
 | Name | Chemistry | Training data | AUPRC | AUROC | When to use |
 |---|---|---|---|---|---|
 | `single-strand-v1` | Twist UMI duplex | ML3 single-strand consensus, 9,990 samples | 0.9998 | 0.9949 | Standard Twist UMI panels with single-strand consensus calling |
+| `twist-duplex-v1` | Twist UMI duplex | Duplex-mode calls, 10,000 samples | 0.6062 | 0.9001 | Twist UMI panels run with duplex consensus calling enabled |
 
 ### `single-strand-v1`
 
@@ -75,6 +76,27 @@ kam models list
 | Precision | 0.9978 |
 | Recall | 0.9966 |
 
+### `twist-duplex-v1`
+
+**Architecture**: LightGBM (300 estimators, max depth 6, 31 leaves).
+
+**Training set**: 5,891,908 rows from 10,000 varforge-simulated duplex samples (535,628 positives, 9.1% positive rate after 10:1 negative subsampling). Samples span SNV, insertion, deletion, large deletion, tandem duplication, inversion, and invdel variant classes at VAF 0.03–14%, across a range of coverages, fragment sizes, and PCR cycle counts.
+
+**Test set**: 1,541,242 rows from 1,000 held-out samples (44,852 positives, 2.9% positive rate — unsubsampled, reflecting realistic class imbalance).
+
+**Features**: same 33 features as `single-strand-v1` (see table above), all computable from `VariantCall` at inference time.
+
+**Performance on held-out test split**:
+
+| Metric | Value |
+|---|---|
+| AUPRC | 0.6062 |
+| AUROC | 0.9001 |
+| Precision | 0.1263 |
+| Recall | 0.7978 |
+
+The lower AUPRC compared to `single-strand-v1` reflects the harder setting: duplex-mode calls carry greater intrinsic noise and the test set is evaluated at full class imbalance (97.1% negatives). AUROC remains high at 0.90, showing the model ranks true positives well across the score range. At the default threshold of 0.5, recall is high (0.80) at the cost of precision (0.13); lower the threshold to trade recall for precision.
+
 ---
 
 ## Using a custom model
@@ -115,5 +137,6 @@ includes:
 | Model | ONNX size |
 |---|---|
 | `single-strand-v1` | 656 KB |
+| `twist-duplex-v1` | 668 KB |
 
-Total binary overhead from all bundled models: ~656 KB.
+Total binary overhead from all bundled models: ~1.3 MB.
