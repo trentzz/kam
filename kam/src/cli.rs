@@ -415,6 +415,16 @@ pub struct RunArgs {
     #[arg(long)]
     pub ti_position_tolerance_override: Option<u32>,
 
+    /// Enable rescue probing for TI targets that produce no matching call.
+    ///
+    /// When set alongside `--target-variants`, the k-mer index is queried
+    /// directly for each TI target variant that produces no PASS or
+    /// sub-threshold call. Results appear in the output TSV with
+    /// `call_source=RESCUED` or `call_source=NO_EVIDENCE`. Sub-threshold
+    /// calls that match a TI target are marked `call_source=SUBTHRESHOLD`.
+    #[arg(long, default_value_t = false)]
+    pub ti_rescue: bool,
+
     /// Optional FASTA of SV junction sequences to augment the k-mer allowlist.
     ///
     /// When provided, k-mers from these junction sequences are added to the

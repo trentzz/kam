@@ -50,6 +50,7 @@ KAM_TARGET_VARIANTS: Path | None = None
 KAM_KMER_SIZE: int | None = None
 KAM_MIN_ALT_DUPLEX: int | None = None
 KAM_ML_MODEL: str | None = None
+KAM_TI_RESCUE: bool = False
 
 # When set, save per-sample VCFs to this directory.
 VCF_SAVE_DIR: Path | None = None
@@ -152,6 +153,8 @@ def extract_called_variants_with_ml(tsv_path):
                 if len(ref_seq) > len(alt_seq):
                     del_seq = ref_min
                     anchor_pos = indel_start - 1
+                    # Left-normalise: shift anchor left while the anchor base
+                    # matches the last base of del_seq (standard VCF algorithm).
                     while anchor_pos > 0 and del_seq and ref_seq[anchor_pos] == del_seq[-1]:
                         del_seq = del_seq[-1:] + del_seq[:-1]
                         anchor_pos -= 1
@@ -167,6 +170,7 @@ def extract_called_variants_with_ml(tsv_path):
                 else:
                     ins_seq = alt_min
                     anchor_pos = indel_start - 1
+                    # Same algorithm as deletion.
                     while anchor_pos > 0 and ins_seq and ref_seq[anchor_pos] == ins_seq[-1]:
                         ins_seq = ins_seq[-1:] + ins_seq[:-1]
                         anchor_pos -= 1
@@ -392,6 +396,8 @@ def run_sample(sample, truth_set, tmp_dir):
         cmd += ["--min-alt-duplex", str(KAM_MIN_ALT_DUPLEX)]
     if KAM_ML_MODEL is not None:
         cmd += ["--ml-model", KAM_ML_MODEL]
+    if KAM_TI_RESCUE:
+        cmd += ["--ti-rescue"]
 
     print(f"  [{name}] running kam...", flush=True)
     t0 = time.time()
@@ -595,7 +601,7 @@ def run_sample(sample, truth_set, tmp_dir):
                     disc_cmd += ["-k", str(KAM_KMER_SIZE)]
                 if KAM_MIN_ALT_DUPLEX is not None:
                     disc_cmd += ["--min-alt-duplex", str(KAM_MIN_ALT_DUPLEX)]
-                disc_proc = subprocess.run(disc_cmd, capture_output=True)
+                subprocess.run(disc_cmd, capture_output=True)
                 disc_vcf = disc_out / "variants.vcf"
                 if disc_vcf.exists():
                     shutil.copy(disc_vcf, VCF_SAVE_DIR / f"{name}.discovery.vcf")
@@ -627,7 +633,7 @@ def main():
     global READS_PER_SAMPLE, PEAK_RSS_LIMIT_MB
     global KAM_MAX_VAF, KAM_MIN_ALT_MOLECULES, KAM_MIN_CONFIDENCE, KAM_MIN_FAMILY_SIZE
     global KAM_TARGET_VARIANTS, KAM_KMER_SIZE, KAM_MIN_ALT_DUPLEX, VCF_SAVE_DIR
-    global KAM_ML_MODEL, PER_SAMPLE_DIR
+    global KAM_ML_MODEL, PER_SAMPLE_DIR, KAM_TI_RESCUE
 
     parser = argparse.ArgumentParser(
         description="Run kam on all titration samples and score against truth variants."
@@ -654,6 +660,8 @@ def main():
     parser.add_argument("--per-sample-dir", type=Path, default=None,
                         help="Directory for per-sample per-target TSV files. "
                              "Each sample produces <name>.targets.tsv with one row per truth variant.")
+    parser.add_argument("--ti-rescue", action="store_true", default=False,
+                        help="Pass --ti-rescue to kam. Adds RESCUED/NO_EVIDENCE rows for undetected TI targets.")
     args = parser.parse_args()
 
     KAM             = args.kam_binary
@@ -673,6 +681,7 @@ def main():
     VCF_SAVE_DIR          = args.save_vcfs
     KAM_ML_MODEL          = args.ml_model
     PER_SAMPLE_DIR        = args.per_sample_dir
+    KAM_TI_RESCUE         = args.ti_rescue
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     if args.output:

@@ -6,6 +6,7 @@ Diagnostic investigation writeups. Each document records a problem encountered d
 
 | File | Date | Area | Symptom | Root cause | Resolution |
 |---|---|---|---|---|---|
+| `05-kam-gap-indels.md` | 2026-04-12 | Variant calling, TI matching | 5 INDELs detected by alignment but never by kam | 4/5: left-normalisation off-by-one in `extract_variant_key` produces a shifted anchor base vs truth VCF; 1/5: genuine zero alt k-mer evidence (marginal alignment support) | Fix `deletion_key`/`insertion_key` normalisation; flag chr17:31235638 as marginal in truth set |
 | `dfs_stuck_high_coverage.md` | 2026-04-09 | Pathfind | `ins`/`sv` discovery jobs hang indefinitely at high coverage | DFS lacks expansion budget; `_maxpath400` + branching factor ~4 creates `4^132` dead-zone search | Fix proposed: `max_expansions` in WalkConfig (not yet implemented) |
 | `anchor_missing_investigation.md` | 2026-03-22 | SNV/indel, pathfind | 18% of targets had missing start anchors in the graph | Exact k-mer anchor absent from raw index for many indel targets | Soft anchor fallback implemented |
 | `sensitivity_investigation.md` | 2026-03-21 | SNV/indel, call | Sensitivity 51–61% at 2% VAF | Multiple causes: anchor gaps, family size filtering, low-VAF dropout | Documented; guided subsequent improvements |

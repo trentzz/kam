@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.0] - 2026-04-11
+## [0.2.0] - 2026-04-12
 
 ### Added
 
@@ -15,22 +15,43 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Named ML model resolution: pass a model name (e.g. `twist-duplex-v1`)
   instead of a file path.
 - ML scoring propagates `ml_prob` and `ml_filter` columns to TSV output.
-- Tumour-informed (TI) mode evaluation on 24-sample titration dataset
-  (3 ng × 8 VAF levels, 375-variant truth set).
+- `--ti-rescue` diagnostic flag: probes k-mer evidence for variants not
+  detected in TI mode, reporting alt k-mer coverage and molecule counts for
+  each targeted position.
 - Per-sample per-target TSV output from batch benchmark scripts.
-- Benchmark `07-snvindel-ml-boost-v1`: ML boost evaluation with full report
-  and sensitivity-by-VAF figures.
+- Benchmark `07-snvindel-ml-boost-v1`: ML boost evaluation across 24
+  titration samples (3 ng × 8 VAF), comparing baseline, TI-only, and ML+TI.
+  Full report and sensitivity-by-VAF analysis at
+  `docs/benchmarking/07-snvindel-ml-boost-v1/`.
+- Alignment comparison document: kam versus alignment-based detection on the
+  titration dataset, with per-variant detection table and gap analysis.
+- Benchmarking resources folder (`docs/benchmarking/resources/`) with
+  external reference data including the alignment-based titration results.
 
 ### Fixed
 
+- Indel TI matching regression: an extraneous `+1` in all VCF position
+  formulas in `extract_variant_key`, `deletion_key`, and `insertion_key`
+  (`kam-call/src/targeting.rs`) caused the TI filter to compute positions one
+  higher than the truth VCF, rejecting all INDEL calls as `NotTargeted`. The
+  `+1` was introduced in a squash commit and has been removed. Indel
+  sensitivity at 2% VAF (15 ng) returns from ~23 to ~67 TPs out of 170.
+- Python scoring normalisation: the same off-by-one was present in the
+  `run_titration_batch.py` scoring loop. Normalisation loop condition reverted
+  to match the Rust implementation.
 - ONNX model `ZipMap` node removed from both bundled models; ORT 2.0.0-rc.12
   panicked on the `seq(map(int64, tensor(float)))` output type.
 - ML feature compilation: `kam-call` now correctly gates `ort`/`ndarray` on
   the `ml` feature flag, restoring `#[cfg(feature = "ml")]` guards.
 - Feature propagation: top-level `kam` crate now passes `kam-call/ml` when
   building with `--features ml`.
-- Truth VCF coordinate convention: TI mode now uses 1-based positions
-  consistent with Rust internal representation.
+- DFS budget test: corrected `budget_exceeded_returns_partial_and_flag` in
+  `kam-pathfind` to use a graph with valid paths to end.
+
+### Changed
+
+- `run_titration_batch.py` (benchmark 07): added `--ti-rescue` support and
+  per-sample output. Unused variable removed.
 
 ## [0.1.0] - 2026-04-11
 
