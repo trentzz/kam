@@ -919,7 +919,10 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
                     }
                 };
 
-                let mean_ref = evidence.as_ref().map(|e| e.mean_ref_molecules).unwrap_or(0.0);
+                let mean_ref = evidence
+                    .as_ref()
+                    .map(|e| e.mean_ref_molecules)
+                    .unwrap_or(0.0);
 
                 rescue_calls.push(kam_call::caller::VariantCall {
                     target_id: target_id.to_string(),

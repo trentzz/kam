@@ -108,7 +108,8 @@ pub fn load_target_variants<P: AsRef<Path>>(
 ///
 /// The `pos` field is 1-based (standard VCF convention) so that keys produced
 /// here can be compared directly against entries loaded by `load_target_variants`.
-/// Target FASTA headers use 0-based coordinates, so `pos = target_start + offset + 1`.
+/// Target FASTA headers use 1-based coordinates (START is the genomic position of
+/// the first base), so `pos = target_start + offset` with no additional adjustment.
 ///
 /// Returns `None` if the sequences are identical (no variant) or if the
 /// target_id cannot be parsed.
@@ -120,8 +121,8 @@ pub fn load_target_variants<P: AsRef<Path>>(
 /// let ref_seq = b"ACGTACGT";
 /// let alt_seq = b"ACTTACGT";
 /// let key = extract_variant_key("chr1:100-108", ref_seq, alt_seq);
-/// // SNV at 0-based window offset 2, target_start=100 (0-based) → VCF pos 103.
-/// assert_eq!(key, Some(("chr1".to_string(), 103, "G".to_string(), "T".to_string())));
+/// // SNV at window offset 2, target_start=100 (1-based) → VCF pos 102.
+/// assert_eq!(key, Some(("chr1".to_string(), 102, "G".to_string(), "T".to_string())));
 /// ```
 pub fn extract_variant_key(
     target_id: &str,
@@ -161,10 +162,11 @@ pub fn extract_variant_key(
     };
 
     if ref_seq.len() == alt_seq.len() {
-        // SNV / MNV.  Convert 0-based target offset to 1-based VCF position.
+        // SNV / MNV. Target FASTA headers use 1-based coordinates, so
+        // pos = target_start + offset (no additional +1 needed).
         let ref_allele = bytes_to_str(ref_trimmed);
         let alt_allele = bytes_to_str(alt_trimmed);
-        let genomic_pos = target_start + diff_pos as i64 + 1;
+        let genomic_pos = target_start + diff_pos as i64;
         Some((chrom, genomic_pos, ref_allele, alt_allele))
     } else {
         indel_key(
@@ -214,6 +216,12 @@ pub fn extract_variant_key(
 ///     strand_bias_p: 0.5,
 ///     filter: VariantFilter::Pass,
 ///     ml_prob: None,
+///     call_source: kam_call::caller::CallSource::Called,
+///     rescue_min_alt_molecules: None,
+///     rescue_alt_duplex: None,
+///     rescue_approx_vaf: None,
+///     rescue_kmers_found: None,
+///     rescue_kmers_total: None,
 /// };
 ///
 /// let targets = HashSet::new(); // empty — nothing targeted
@@ -281,6 +289,12 @@ pub fn apply_target_filter(calls: &mut [VariantCall], targets: &TargetVariantSet
 ///     strand_bias_p: 0.5,
 ///     filter: VariantFilter::Pass,
 ///     ml_prob: None,
+///     call_source: kam_call::caller::CallSource::Called,
+///     rescue_min_alt_molecules: None,
+///     rescue_alt_duplex: None,
+///     rescue_approx_vaf: None,
+///     rescue_kmers_found: None,
+///     rescue_kmers_total: None,
 /// };
 ///
 /// // Truth VCF has a DUP at pos 500; call is at pos 493 (partial allele).
@@ -414,7 +428,12 @@ fn deletion_key(
     let mut del_seq = del_seq_orig.to_vec();
     let mut anchor_pos = indel_start as i64 - 1;
 
-    // Left-normalise: shift anchor left while last base of del_seq matches anchor.
+    // Left-normalise: shift anchor left while the anchor base matches the last
+    // base of del_seq.  This is the standard VCF left-normalisation algorithm.
+    // Note: for single-base deletions in homopolymer runs (e.g. GG→G), this
+    // produces an anchor one step left of the bcftools convention (CG:C instead
+    // of GG:G).  The Python scorer and truth VCF use the same algorithm, so
+    // internal consistency is maintained.
     while anchor_pos > 0
         && !del_seq.is_empty()
         && ref_seq[anchor_pos as usize]
@@ -432,8 +451,8 @@ fn deletion_key(
         let mut ref_allele = vec![anchor];
         ref_allele.extend_from_slice(&del_seq);
         let alt_allele = vec![anchor];
-        // Convert 0-based anchor offset to 1-based VCF position.
-        let genomic_pos = target_start + anchor_pos + 1;
+        // Target FASTA headers use 1-based coordinates: pos = target_start + anchor_pos.
+        let genomic_pos = target_start + anchor_pos;
         Some((
             chrom,
             genomic_pos,
@@ -441,7 +460,7 @@ fn deletion_key(
             bytes_to_str(&alt_allele),
         ))
     } else {
-        let genomic_pos = target_start + indel_start as i64 + 1;
+        let genomic_pos = target_start + indel_start as i64;
         Some((chrom, genomic_pos, bytes_to_str(&del_seq), String::new()))
     }
 }
@@ -456,7 +475,8 @@ fn insertion_key(
     let mut ins_seq = ins_seq_orig.to_vec();
     let mut anchor_pos = indel_start as i64 - 1;
 
-    // Left-normalise: shift anchor left while last base of ins_seq matches anchor.
+    // Left-normalise: shift anchor left while the anchor base matches the last
+    // base of ins_seq.  Same algorithm as deletion_key.
     while anchor_pos > 0
         && !ins_seq.is_empty()
         && ref_seq[anchor_pos as usize]
@@ -473,8 +493,8 @@ fn insertion_key(
         let ref_allele = vec![anchor];
         let mut alt_allele = vec![anchor];
         alt_allele.extend_from_slice(&ins_seq);
-        // Convert 0-based anchor offset to 1-based VCF position.
-        let genomic_pos = target_start + anchor_pos + 1;
+        // Target FASTA headers use 1-based coordinates: pos = target_start + anchor_pos.
+        let genomic_pos = target_start + anchor_pos;
         Some((
             chrom,
             genomic_pos,
@@ -482,7 +502,7 @@ fn insertion_key(
             bytes_to_str(&alt_allele),
         ))
     } else {
-        let genomic_pos = target_start + indel_start as i64 + 1;
+        let genomic_pos = target_start + indel_start as i64;
         Some((chrom, genomic_pos, String::new(), bytes_to_str(&ins_seq)))
     }
 }
@@ -493,8 +513,8 @@ fn insertion_key(
 mod tests {
     use super::*;
 
-    // Test 1: SNV at 0-based window offset 2, target starts at 100 (0-based).
-    // 1-based VCF pos = 100 + 2 + 1 = 103.
+    // Test 1: SNV at window offset 2, target starts at 100 (1-based).
+    // VCF pos = 100 + 2 = 102 (no +1 — target headers use 1-based coords).
     #[test]
     fn extract_snv_key() {
         let ref_seq = b"ACGTACGT";
@@ -502,7 +522,7 @@ mod tests {
         let key = extract_variant_key("chr1:100-108", ref_seq, alt_seq);
         assert_eq!(
             key,
-            Some(("chr1".to_string(), 103, "G".to_string(), "T".to_string()))
+            Some(("chr1".to_string(), 102, "G".to_string(), "T".to_string()))
         );
     }
 
@@ -603,7 +623,7 @@ mod tests {
         };
 
         let mut targets = TargetVariantSet::new();
-        targets.insert(("chr1".to_string(), 103, "G".to_string(), "T".to_string()));
+        targets.insert(("chr1".to_string(), 102, "G".to_string(), "T".to_string()));
 
         let mut calls = vec![call];
         apply_target_filter(&mut calls, &targets);
@@ -744,8 +764,8 @@ mod tests {
         };
 
         let mut targets = TargetVariantSet::new();
-        // Exact match: chr1, pos 103, G→T.
-        targets.insert(("chr1".to_string(), 103, "G".to_string(), "T".to_string()));
+        // Exact match: chr1, pos 102, G→T.
+        targets.insert(("chr1".to_string(), 102, "G".to_string(), "T".to_string()));
 
         let mut calls = vec![call];
         apply_target_filter_with_tolerance(&mut calls, &targets, 0);
@@ -841,7 +861,7 @@ mod tests {
 
         // Target VCF has only SNV records (no BND).
         let mut targets = TargetVariantSet::new();
-        targets.insert(("chr1".to_string(), 103, "G".to_string(), "T".to_string()));
+        targets.insert(("chr1".to_string(), 102, "G".to_string(), "T".to_string()));
 
         let mut calls = vec![call];
         apply_target_filter(&mut calls, &targets);
@@ -875,5 +895,47 @@ mod tests {
             "A".to_string()
         )));
         assert_eq!(set.len(), 2);
+    }
+
+    // Test: GG→G deletion in a dinucleotide repeat.
+    // The standard left-normalisation shifts the anchor one step past the repeat
+    // boundary (from GG to CG), which is the expected algorithm output.
+    // Target window: "ACCCGGT" with target_start=37028800 (1-based).
+    // GG is at offsets 4-5. Deleting offset 5, the anchor shifts to offset 3 (C).
+    // Expected VCF key: (chr3, 37028800+3=37028803, "CG", "C").
+    #[test]
+    fn deletion_key_dinucleotide_repeat() {
+        // ref: ACCCGGT  alt: ACCCGT  (delete one G from GG at offsets 4-5)
+        let ref_seq = b"ACCCGGT";
+        let alt_seq = b"ACCCGT";
+        let key = extract_variant_key("chr3:37028800-37028807", ref_seq, alt_seq);
+        assert_eq!(
+            key,
+            Some((
+                "chr3".to_string(),
+                37_028_803,
+                "CG".to_string(),
+                "C".to_string()
+            ))
+        );
+    }
+
+    // Test: G→GG insertion in a repeat.
+    // Same left-normalisation: anchor shifts one step past the repeat boundary.
+    #[test]
+    fn insertion_key_dinucleotide_repeat() {
+        // ref: ACCCGT  alt: ACCCGGT  (insert one G into G run at offset 4)
+        let ref_seq = b"ACCCGT";
+        let alt_seq = b"ACCCGGT";
+        let key = extract_variant_key("chr9:136504800-136504806", ref_seq, alt_seq);
+        assert_eq!(
+            key,
+            Some((
+                "chr9".to_string(),
+                136_504_803,
+                "C".to_string(),
+                "CG".to_string()
+            ))
+        );
     }
 }

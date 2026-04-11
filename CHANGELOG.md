@@ -5,6 +5,43 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.2.0] - 2026-04-12
+
+### Added
+
+- `--ti-rescue` diagnostic flag: probes k-mer evidence for variants not
+  detected in TI mode, reporting alt k-mer coverage and molecule counts for
+  each targeted position. Useful for investigating missed detections.
+- Benchmark 07 (SNV/indel ML boost v1): full titration evaluation across
+  24 samples (3 ng × 8 VAF), comparing baseline, TI-only, and ML+TI
+  conditions. Results and report at `docs/benchmarking/07-snvindel-ml-boost-v1/`.
+- Alignment comparison document: kam versus alignment-based detection on the
+  titration dataset, with per-variant detection table and gap analysis.
+- Benchmarking resources folder (`docs/benchmarking/resources/`) with
+  external reference data including the alignment-based titration results.
+
+### Fixed
+
+- Indel TI matching regression: an extraneous `+1` in all VCF position
+  formulas in `extract_variant_key`, `deletion_key`, and `insertion_key`
+  (`kam-call/src/targeting.rs`) caused the TI filter to compute positions one
+  higher than the truth VCF, rejecting all INDEL calls as `NotTargeted`. The
+  `+1` was introduced in a squash commit and has been removed. Indel
+  sensitivity at 2% VAF (15 ng) returns from ~23 to ~67 TPs out of 170.
+- Python scoring normalisation: the same off-by-one was present in the
+  `run_titration_batch.py` scoring loop for the batch benchmark script.
+  Normalisation loop condition reverted to match the Rust implementation.
+- DFS budget test: corrected `budget_exceeded_returns_partial_and_flag` in
+  `kam-pathfind` to use a graph with valid paths to end, ensuring the test
+  verifies that found paths are returned before the budget fires.
+
+### Changed
+
+- `run_titration_batch.py` (benchmark 07): added `--ti-rescue` support and
+  per-sample output. Unused `disc_proc` variable removed.
+
 ## [0.1.0] - 2026-04-11
 
 ### Added
