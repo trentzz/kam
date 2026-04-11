@@ -9,6 +9,31 @@ use statrs::distribution::{Beta, ContinuousCDF};
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
+/// Indicates how a variant call record was produced.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+pub enum CallSource {
+    /// Normal pathfinding call that passed or failed statistical thresholds.
+    #[default]
+    Called,
+    /// Pathfinding found a matching path but confidence was below threshold.
+    SubThreshold,
+    /// No call from pathfinding; k-mer index evidence found at target position.
+    Rescued,
+    /// No call from pathfinding; no k-mer evidence at target position.
+    NoEvidence,
+}
+
+impl std::fmt::Display for CallSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CallSource::Called => write!(f, "CALLED"),
+            CallSource::SubThreshold => write!(f, "SUBTHRESHOLD"),
+            CallSource::Rescued => write!(f, "RESCUED"),
+            CallSource::NoEvidence => write!(f, "NO_EVIDENCE"),
+        }
+    }
+}
+
 /// A called variant with full statistical evidence.
 ///
 /// # Example
@@ -81,6 +106,18 @@ pub struct VariantCall {
     ///
     /// `None` when no model was loaded.
     pub ml_prob: Option<f32>,
+    /// How this call record was produced.
+    pub call_source: CallSource,
+    /// Minimum alt-specific k-mer molecule count (rescue probe only).
+    pub rescue_min_alt_molecules: Option<u32>,
+    /// Duplex count across alt-specific k-mers (rescue probe only).
+    pub rescue_alt_duplex: Option<u32>,
+    /// Approximate VAF from k-mer evidence (rescue probe only).
+    pub rescue_approx_vaf: Option<f32>,
+    /// Number of alt-specific k-mers found in index (rescue probe only).
+    pub rescue_kmers_found: Option<usize>,
+    /// Total alt-specific k-mers checked (rescue probe only).
+    pub rescue_kmers_total: Option<usize>,
 }
 
 /// Classification of a variant by allele length comparison.
@@ -326,6 +363,12 @@ pub fn call_variant(
             strand_bias_p: 1.0,
             filter: VariantFilter::LowConfidence,
             ml_prob: None,
+            call_source: CallSource::Called,
+            rescue_min_alt_molecules: None,
+            rescue_alt_duplex: None,
+            rescue_approx_vaf: None,
+            rescue_kmers_found: None,
+            rescue_kmers_total: None,
         };
     }
 
@@ -412,6 +455,12 @@ pub fn call_variant(
         strand_bias_p,
         filter,
         ml_prob: None,
+        call_source: CallSource::Called,
+        rescue_min_alt_molecules: None,
+        rescue_alt_duplex: None,
+        rescue_approx_vaf: None,
+        rescue_kmers_found: None,
+        rescue_kmers_total: None,
     }
 }
 

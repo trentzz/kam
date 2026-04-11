@@ -548,6 +548,12 @@ mod tests {
             strand_bias_p: 0.5,
             filter: VariantFilter::Pass,
             ml_prob: None,
+            call_source: crate::caller::CallSource::Called,
+            rescue_min_alt_molecules: None,
+            rescue_alt_duplex: None,
+            rescue_approx_vaf: None,
+            rescue_kmers_found: None,
+            rescue_kmers_total: None,
         };
 
         let empty_targets = TargetVariantSet::new();
@@ -588,6 +594,12 @@ mod tests {
             strand_bias_p: 0.5,
             filter: VariantFilter::Pass,
             ml_prob: None,
+            call_source: crate::caller::CallSource::Called,
+            rescue_min_alt_molecules: None,
+            rescue_alt_duplex: None,
+            rescue_approx_vaf: None,
+            rescue_kmers_found: None,
+            rescue_kmers_total: None,
         };
 
         let mut targets = TargetVariantSet::new();
@@ -626,6 +638,12 @@ mod tests {
             strand_bias_p: 0.5,
             filter: VariantFilter::LowConfidence,
             ml_prob: None,
+            call_source: crate::caller::CallSource::Called,
+            rescue_min_alt_molecules: None,
+            rescue_alt_duplex: None,
+            rescue_approx_vaf: None,
+            rescue_kmers_found: None,
+            rescue_kmers_total: None,
         };
 
         let empty = TargetVariantSet::new();
@@ -666,6 +684,12 @@ mod tests {
             strand_bias_p: 0.5,
             filter: VariantFilter::Pass,
             ml_prob: None,
+            call_source: crate::caller::CallSource::Called,
+            rescue_min_alt_molecules: None,
+            rescue_alt_duplex: None,
+            rescue_approx_vaf: None,
+            rescue_kmers_found: None,
+            rescue_kmers_total: None,
         };
 
         let mut targets = TargetVariantSet::new();
@@ -711,6 +735,12 @@ mod tests {
             strand_bias_p: 0.5,
             filter: VariantFilter::Pass,
             ml_prob: None,
+            call_source: crate::caller::CallSource::Called,
+            rescue_min_alt_molecules: None,
+            rescue_alt_duplex: None,
+            rescue_approx_vaf: None,
+            rescue_kmers_found: None,
+            rescue_kmers_total: None,
         };
 
         let mut targets = TargetVariantSet::new();
@@ -750,6 +780,12 @@ mod tests {
             strand_bias_p: 0.5,
             filter: VariantFilter::Pass,
             ml_prob: None,
+            call_source: crate::caller::CallSource::Called,
+            rescue_min_alt_molecules: None,
+            rescue_alt_duplex: None,
+            rescue_approx_vaf: None,
+            rescue_kmers_found: None,
+            rescue_kmers_total: None,
         };
 
         // Target VCF has BND record (ALT contains ']').
@@ -795,6 +831,12 @@ mod tests {
             strand_bias_p: 0.5,
             filter: VariantFilter::Pass,
             ml_prob: None,
+            call_source: crate::caller::CallSource::Called,
+            rescue_min_alt_molecules: None,
+            rescue_alt_duplex: None,
+            rescue_approx_vaf: None,
+            rescue_kmers_found: None,
+            rescue_kmers_total: None,
         };
 
         // Target VCF has only SNV records (no BND).

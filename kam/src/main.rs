@@ -13,6 +13,7 @@ mod commands;
 pub mod config;
 mod models;
 mod output;
+pub mod rescue;
 
 fn main() {
     let cli = Cli::parse();
