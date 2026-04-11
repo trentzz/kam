@@ -84,7 +84,7 @@ biological cfDNA variants are reported in monitoring mode.
 \subsection{SNV and indel sensitivity}
 
 Figure~\ref{fig:sensitivity_by_type} shows sensitivity broken down by variant
-type at 2M read pairs. At 2\% VAF, SNV sensitivity ranges from 69\% to 80\%
+type at 2M read pairs. At 2\% VAF, SNV sensitivity ranges from 69\% to 82\%
 across the three concentrations. Indel sensitivity is lower, ranging from 31\%
 to 39\%. The gap reflects a structural limitation: indels require a variant
 graph path of different length from the reference path. Anchor k-mers at the
@@ -125,12 +125,15 @@ backpressure that limits effective depth (Section~\ref{sec:evaluation}).
 % ── Negative control ──────────────────────────────────────────────────────────
 \subsection{Negative control}
 
-The 0\% VAF samples (no spike-in variants present) produced zero calls in
+The 0\% VAF samples (no spike-in variants present) produced 0 or 1 calls in
 tumour-informed monitoring mode.
+The 5\,ng and 30\,ng negative controls produced zero calls.
+The 15\,ng control produced one PASS call: a background error molecule whose
+assembled allele coincidentally matched a truth-set coordinate.
 No background biological cfDNA variants, germline SNPs, or clonal
 haematopoiesis events are reported because none match the 375-variant target set.
-This is the key property of monitoring mode: the noise floor is zero by
-construction when none of the expected alleles happen to be present in the sample.
+This is the key property of monitoring mode: the noise floor is effectively zero
+when none of the expected alleles happen to be present in the sample.
 
 % ── Structural variant detection ──────────────────────────────────────────────
 \subsection{Structural variant detection}
@@ -165,7 +168,7 @@ Table~\ref{tab:sv-results} shows detection results in discovery mode (no \texttt
   \end{tabular}
 \end{table}
 
-Large deletions are detected at all four VAF levels with PASS confidence. The observed VAF is approximately $2\times$ the simulated VAF because the deleted segment is absent from the alt path, creating a higher relative molecule count in the shorter window. Inversions are detected at all four VAF levels, including 0.5\% with 3 supporting molecules. Prior to the partial-inversion fix (Section~\ref{sec:sv-detection}), inversions were misclassified as MNVs at all VAFs because the classifier checked the full-path reverse complement rather than the central inverted segment. Tandem duplications use an SV-specific confidence threshold of 0.95 (compared to 0.99 for SNVs and indels). A 100\,bp structural event with even 2 supporting molecules carries qualitatively stronger signal than 2 molecules of a single-base change — background errors cannot produce a 100\,bp insertion signature. With this threshold, duplications reach PASS at $\ge 0.5\%$ VAF (2 molecules, confidence 0.98). At 1\% VAF only 1 molecule spans the head-to-tail junction (confidence 0.79), remaining below the SV threshold.
+Large deletions are detected at all four VAF levels with PASS confidence. The observed VAF is approximately $2\times$ the simulated VAF because the deleted segment is absent from the alt path, creating a higher relative molecule count in the shorter window. Inversions are detected at all four VAF levels, including 0.5\% with 3 supporting molecules. Prior to the partial-inversion fix (Section~\ref{sec:sv-detection}), inversions were misclassified as MNVs at all VAFs because the classifier checked the full-path reverse complement rather than the central inverted segment. Tandem duplications use an SV-specific confidence threshold of 0.95 (compared to 0.99 for SNVs and indels). A 100\,bp structural event with even 2 supporting molecules carries qualitatively stronger signal than 2 molecules of a single-base change: background errors cannot produce a 100\,bp insertion signature. With this threshold, duplications reach PASS at $\ge 0.5\%$ VAF (2 molecules, confidence 0.98). At 1\% VAF only 1 molecule spans the head-to-tail junction (confidence 0.79), remaining below the SV threshold.
 
 Discovery mode produces 2--7 false positives per VAF level, all low-molecule SNV or MNV calls arising from sequencing errors in the SV target windows. In monitoring mode, a truth VCF derived from the discovery PASS SV calls is provided via \texttt{--target-variants}. Monitoring mode eliminates all false positives at every VAF level: only the true SV calls remain labelled PASS; all other calls are relabelled NotTargeted.
 
@@ -185,7 +188,7 @@ for kam.
 At 0.5\% VAF the alignment-based pipeline reaches \placeholder{XX.X}\%
 (15\,ng) vs.\ 40.0\% for kam.
 The sensitivity gap narrows for SNVs alone: at 2\% VAF, kam SNV sensitivity
-of 69--80\% approaches the alignment-based figure of \placeholder{XX.X}\%,
+of 69--82\% approaches the alignment-based figure of \placeholder{XX.X}\%,
 with most of the overall gap attributable to indels.
 
 Precision differs sharply.
@@ -229,7 +232,7 @@ Twist 5M2S+T chemistry used in the primary evaluation.
 A cfDNA panel with 12\,bp simplex read-name UMIs~\autocite{Calib25umi}.
 This dataset validates that kam's molecule assembly correctly groups reads by
 UMI on real cfDNA data.
-Results: \placeholder{pending — data not yet processed}.
+Results: \placeholder{pending, data not yet processed}.
 
 \paragraph{SEQC2 HCC1395.}
 Multi-centre somatic benchmark using the HCC1395 breast cancer cell line and
@@ -237,14 +240,14 @@ matched normal, with a majority-vote truth set from 63 tumour-normal pairs
 across six callers~\autocite{Xiao21seqc2}.
 This dataset has no UMI; each read pair is treated as a single molecule, testing
 the variant-calling component in isolation.
-Results: \placeholder{pending — no-UMI mode not yet implemented}.
+Results: \placeholder{pending, no-UMI mode not yet implemented}.
 
 \paragraph{COLO829 SV truth set (PRJEB27698).}
 Illumina HiSeq X Ten whole-genome data for the COLO829 melanoma cell line, with
 68 somatic SVs confirmed across five sequencing technologies~\autocite{vanDijk22colo829}.
 This dataset has no UMI and tests kam's SV detection without molecule-level
 evidence.
-Results: \placeholder{pending — no-UMI mode and WGS-scale compute not yet in place}.
+Results: \placeholder{pending, no-UMI mode and WGS-scale compute not yet in place}.
 
 % ── Runtime and memory ────────────────────────────────────────────────────────
 \subsection{Runtime and memory}

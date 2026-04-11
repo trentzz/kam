@@ -53,6 +53,19 @@ comparison or the 32-bit-rotated comparison passes the threshold.
 This correctly groups genuine duplex pairs while keeping the collision detection
 logic unchanged for same-strand reads.
 
+% ── Indel normalisation regression ───────────────────────────────────────────
+\subsection{Indel normalisation regression}
+\label{sec:eval:indelnorm}
+
+An extraneous \texttt{+1} offset in the target interval comparison in
+\texttt{targeting.rs} caused the tumour-informed filter to reject all indel
+calls: the assembled indel position fell one base outside the target window.
+Removing the offset restored 67 of 170 indel true positives at 2\% VAF that
+had previously been relabelled \texttt{NotTargeted} despite matching a truth
+entry.
+SNV calls were unaffected because the position offset is only material when
+the reference and alternate alleles differ in length.
+
 At shallower depths (200K--500K reads) the duplex rate was near zero because
 duplex pairs require both strands of the same fragment to be sampled.
 Duplex yield grows with depth until fragment saturation.
@@ -61,7 +74,7 @@ Duplex yield grows with depth until fragment saturation.
 \subsection{Tumour-informed monitoring mode}
 \label{sec:eval:targeting}
 
-Discovery mode --- the default --- finds all alternative paths within each
+Discovery mode (the default) finds all alternative paths within each
 100\,bp target window and reports every path passing statistical quality filters.
 This produces 50--169 false positives per sample before post-calling filters
 (Section~\ref{sec:eval:fp}) and 35--72 after applying \texttt{--max-vaf 0.35}
