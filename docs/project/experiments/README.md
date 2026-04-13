@@ -8,6 +8,7 @@ Research experiments that go beyond routine benchmarking. Each experiment has a 
 |---|---|---|---|---|
 | 01 | [ml-twist-duplex](01-ml-twist-duplex/README.md) | A chemistry-specific classifier trained only on Twist duplex data will outperform the generic ML3 model by exploiting duplex-vs-simplex evidence features | In progress | Pending training runs |
 | 02 | [ml-single-strand](02-ml-single-strand/README.md) | A gradient boosting model trained on simulated single-strand indel/SNV data can improve precision over the raw PASS filter at low VAF | Complete | v3 LightGBM: AUPRC 0.920 on 4.85M rows; ONNX integrated into `kam run --ml-model` |
+| 03 | [ml-twist-duplex-v2](03-ml-twist-duplex-v2/design.md) | A model retrained on real TP/FP calls from the titration dataset with new sequence-context features (subst_type, trinuc_context) will produce discriminating ml_prob distributions in discovery mode | Planned | Pending |
 
 ## Adding a new experiment
 
