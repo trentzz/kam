@@ -263,7 +263,7 @@ def ref_alt_to_vcf_key(
         # SNV or MNV path.
         ref_allele = ref_trimmed[0] if len(ref_trimmed) == 1 else ref_trimmed
         alt_allele = alt_trimmed[0] if len(alt_trimmed) == 1 else alt_trimmed
-        genomic_pos_0based = target_start + diff_pos
+        genomic_pos = target_start + diff_pos
     else:
         # Indel path: further trim common prefix and suffix within trimmed seqs.
         inner_cs = 0
@@ -296,11 +296,11 @@ def ref_alt_to_vcf_key(
                 anchor = ref_seq[anchor_pos]
                 ref_allele = anchor + del_seq
                 alt_allele = anchor
-                genomic_pos_0based = target_start + anchor_pos
+                genomic_pos = target_start + anchor_pos
             else:
                 ref_allele = del_seq
                 alt_allele = ""
-                genomic_pos_0based = target_start + indel_start
+                genomic_pos = target_start + indel_start
         else:
             # Insertion.
             ins_seq = alt_min
@@ -312,15 +312,15 @@ def ref_alt_to_vcf_key(
                 anchor = ref_seq[anchor_pos]
                 ref_allele = anchor
                 alt_allele = anchor + ins_seq
-                genomic_pos_0based = target_start + anchor_pos
+                genomic_pos = target_start + anchor_pos
             else:
                 ref_allele = ""
                 alt_allele = ins_seq
-                genomic_pos_0based = target_start + indel_start
+                genomic_pos = target_start + indel_start
 
-    # Convert 0-based to 1-based for VCF comparison.
-    genomic_pos_1based = genomic_pos_0based + 1
-    return (chrom, genomic_pos_1based, ref_allele, alt_allele)
+    # target_start + diff_pos already gives the 1-based VCF position directly,
+    # matching the convention used by run_titration_batch.py.
+    return (chrom, genomic_pos, ref_allele, alt_allele)
 
 
 # ── Sequence-context features (Category A) ────────────────────────────────────
