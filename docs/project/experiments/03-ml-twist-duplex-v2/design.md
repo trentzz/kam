@@ -16,39 +16,42 @@ The titration dataset provides the first real labelled training data: ~200–250
 
 ## New Features
 
-Two features are added to `extract_features()` in `kam-call/src/ml.rs`. Both are computable from existing `VariantCall` fields (`ref_sequence`, `alt_sequence`, `variant_type`) with no struct changes.
+Sixteen features are added to `extract_features()` in `kam-call/src/ml.rs`, growing the vector from 33 to 49. Backward compatibility is preserved: `extract_features()` uses the `feature_names` list from the model JSON to build the lookup. Old models (`twist-duplex-v1`, `single-strand-v1`) list only their original 33 features and are unaffected.
 
-### `subst_type` (integer 0–12)
+### Category A — Sequence context (5 features, computed from `ref_sequence`/`alt_sequence`)
 
-Encodes the substitution class for SNVs using 12 canonical classes, plus a non-SNV sentinel.
+| Feature | Range | Rationale |
+|---------|-------|-----------|
+| `subst_type` | 0–12 | 12 canonical SNV classes (C>A=0 … A>C=11) + non-SNV sentinel 12. Captures damage signature. |
+| `trinuc_context` | 0–64 | Base-4 encoded 3-mer at variant site: `ref[i-1]*16 + ref[i]*4 + ref[i+1]`. Sentinel 64 for non-SNV/edge. |
+| `is_cpg` | 0/1 | 1 if C>T or G>A change at a CpG dinucleotide. Key deamination indicator. |
+| `gc_content_ref` | 0–1 | GC fraction of `ref_sequence`. GC-rich regions have elevated oxidative damage rates. |
+| `homopolymer_run` | 0+ | Longest run of identical bases adjacent to the variant in `ref_sequence`. PCR slippage indicator. |
 
-| Value | Class | Note |
-|-------|-------|------|
-| 0 | C>A | |
-| 1 | C>G | |
-| 2 | C>T | Common deamination artefact |
-| 3 | T>A | |
-| 4 | T>C | |
-| 5 | T>G | |
-| 6 | G>T | |
-| 7 | G>C | |
-| 8 | G>A | Complement of C>T |
-| 9 | A>T | |
-| 10 | A>G | |
-| 11 | A>C | |
-| 12 | non-SNV | Sentinel for indels, SVs |
+### Category B — Existing VariantCall fields not previously exposed (7 features)
 
-Implementation: find the first differing position in `ref_sequence`/`alt_sequence`, look up the (ref_base, alt_base) pair. Non-SNV variants and any unrecognised pair return 12.
+| Feature | Field | Notes |
+|---------|-------|-------|
+| `n_simplex_fwd_alt` | `call.n_simplex_fwd_alt` | Simplex forward-strand alt molecules |
+| `n_simplex_rev_alt` | `call.n_simplex_rev_alt` | Simplex reverse-strand alt molecules |
+| `n_duplex_ref` | `call.n_duplex_ref` | Duplex-confirmed reference molecules |
+| `n_simplex_ref` | `call.n_simplex_ref` | Simplex-only reference molecules |
+| `mean_alt_error_prob` | `call.mean_alt_error_prob` | Mean consensus error probability of alt-supporting reads |
+| `min_variant_specific_duplex` | `call.min_variant_specific_duplex` | Minimum duplex count per variant-specific k-mer |
+| `mean_variant_specific_molecules` | `call.mean_variant_specific_molecules` | Mean molecule count per variant-specific k-mer |
 
-### `trinuc_context` (integer 0–64)
+### Category C — Derived strand/duplex features (4 features)
 
-Encodes the 3-mer reference context centred on the SNV site. Using base-4 encoding (A=0, C=1, G=2, T=3): `context[i-1] * 16 + context[i] * 4 + context[i+1]`. Returns 64 for non-SNVs, edge-position SNVs, or unrecognised bases.
-
-Rationale: C>T deamination preferentially occurs at CpG sites (5'-CG-3'). Encoding the trinucleotide lets the model learn that C>T at `_CG` context (trinuc values 9, 11, 13, 15 for `ACG`, `CCG`, `GCG`, `TCG`) are high-risk background errors compared to C>T in non-CpG contexts.
+| Feature | Formula | Rationale |
+|---------|---------|-----------|
+| `strand_asymmetry_alt` | `(fwd - rev) / (fwd + rev + ε)` | Alt-specific strand imbalance. Damage artefacts are often single-strand. |
+| `duplex_vaf` | `ndupalt / (ndupalt + n_duplex_ref + ε)` | VAF estimated from duplex molecules only. |
+| `simplex_vaf` | `nsimalt / (nsimalt + n_simplex_ref + ε)` | VAF estimated from simplex molecules only. |
+| `duplex_simplex_vaf_delta` | `duplex_vaf - simplex_vaf` | Real variants: delta ≈ 0. Damage artefacts: large positive or negative delta. |
 
 ### Feature vector size
 
-The full vector grows from 33 to 35 elements. Backward compatibility is preserved: `extract_features()` uses the `feature_names` list from the model JSON to build the lookup. Models that don't list `subst_type` or `trinuc_context` in `feature_names` are unaffected. Existing `twist-duplex-v1` and `single-strand-v1` continue to work with their 33-element vectors.
+Total: 33 + 5 + 7 + 4 = **49 features**.
 
 ---
 
@@ -83,7 +86,7 @@ Roughly balanced. Do not apply downsampling or class weights initially — verif
 
 ### Train/test split
 
-Hold out all 5ng samples (8 samples covering all VAF levels) as the test set. Train on 15ng (8 samples) and 30ng (8 samples). This ensures the test set is from a genuinely different DNA input condition — the model must generalise across input amounts, not just across VAF levels.
+Hold out all 30ng samples (8 samples covering all VAF levels) as the test set. Train on 5ng (8 samples) and 15ng (8 samples). This ensures the model sees both the weakest and middle input conditions during training, and the test set evaluates generalisation to higher molecule counts and duplex rates. Holding out 30ng avoids the original concern of testing on the weakest condition (5ng) when the model has only seen stronger inputs.
 
 ---
 
@@ -110,13 +113,12 @@ Steps:
      b. For each PASS row: recover genomic key via diff_pos algorithm.
      c. Assign label: 1 if key in truth, 0 otherwise.
         For vaf_nominal == 0.0: force label = 0 unconditionally.
-     d. Derive 33 base features (same as build_twist_duplex_features.py).
-     e. Compute subst_type and trinuc_context from ref_seq/alt_seq/diff_pos.
-  3. Emit train_features.csv.gz (15ng + 30ng samples).
-  4. Emit test_features.csv.gz (5ng samples).
+     d. Derive all 49 features (33 base + 7 category B + 4 category C + 5 category A).
+  3. Emit train_features.csv.gz (5ng + 15ng samples).
+  4. Emit test_features.csv.gz (30ng samples).
   5. Emit label_summary.csv (TP/FP counts per sample).
 
-Output columns include: all 35 features, label, sample_id, ng_condition, vaf_nominal.
+Output columns include: all 49 features, label, sample_id, ng_condition, vaf_nominal.
 ```
 
 Important: do NOT include `ng_condition`, `vaf_nominal`, `sample_id` as model features. These are identifiers. Drop them from the feature matrix before training.
@@ -124,10 +126,10 @@ Important: do NOT include `ng_condition`, `vaf_nominal`, `sample_id` as model fe
 ### `train_twist_duplex_v2.py` key differences from v1
 
 - No `params.json` files — drop all `add_param_features()` logic.
-- `GroupKFold(n_splits=3)` grouped by `sample_id`. With 16 training samples this gives ~5–6 samples per fold.
+- `GroupKFold(n_splits=4)` grouped by `sample_id`. With 16 training samples this gives 4 samples per fold.
 - 50 Optuna trials per model (small dataset, fast evaluation).
-- Feature list: base 33 + `subst_type` + `trinuc_context` = 35 features. Treat both new features as numeric integers, NOT categorical.
-- Export metadata JSON with `"version": "twist-duplex-2"` and 35-element `feature_names` list.
+- Feature list: 49 features (33 base + 16 new). Treat all new features as numeric, NOT categorical.
+- Export metadata JSON with `"version": "twist-duplex-2"` and 49-element `feature_names` list.
 - Output ONNX to `bigdata/experiments/03-ml-twist-duplex-v2/models/twist-duplex-v2.onnx`.
 
 ---
@@ -138,20 +140,19 @@ All changes confined to two files.
 
 ### `kam-call/src/ml.rs`
 
-Add two helper functions (gated by `#[cfg(feature = "ml")]`) after the existing `variant_type_str()` function:
+Five helper functions added after `variant_type_str()`, all gated by `#[cfg(feature = "ml")]`:
 
 ```rust
 fn snv_subst_type(ref_seq: &[u8], alt_seq: &[u8], vt: VariantType) -> f32
 fn snv_trinuc_context(ref_seq: &[u8], alt_seq: &[u8], vt: VariantType) -> f32
+fn snv_is_cpg(ref_seq: &[u8], alt_seq: &[u8], vt: VariantType) -> f32
+fn ref_gc_content(ref_seq: &[u8]) -> f32
+fn ref_homopolymer_run(ref_seq: &[u8], alt_seq: &[u8], vt: VariantType) -> f32
 ```
 
-Add two entries to the `lookup` HashMap in `extract_features()`:
-```rust
-("subst_type", snv_subst_type(&call.ref_sequence, &call.alt_sequence, call.variant_type)),
-("trinuc_context", snv_trinuc_context(&call.ref_sequence, &call.alt_sequence, call.variant_type)),
-```
+16 new entries added to the `lookup` HashMap in `extract_features()` (categories A, B, C as above).
 
-Feature vector grows from 33 to 35 elements. Old models unaffected (metadata-driven lookup).
+Feature vector grows from 33 to 49 elements. Old models unaffected (metadata-driven lookup).
 
 ### `kam/src/models.rs`
 
