@@ -760,11 +760,11 @@ def main() -> None:
     lgb_model = lgb.LGBMClassifier(**lgb_best)
     lgb_model.fit(X_train, y_train)
     # Save native LightGBM model so re-export is possible without retraining.
-    lgb_model.booster_.save_model(str(out_models_dir / "lightgbm_v2.txt"))
+    lgb_model.booster_.save_model(str(models_dir / "lightgbm_v2.txt"))
 
     xgb_model = xgb.XGBClassifier(**xgb_best)
     xgb_model.fit(X_train, y_train)
-    xgb_model.save_model(str(out_models_dir / "xgboost_v2.json"))
+    xgb_model.save_model(str(models_dir / "xgboost_v2.json"))
 
     # ── Isotonic calibration ───────────────────────────────────────────────────
     print("\n=== Calibrating models (isotonic, 4-fold) ===", flush=True)
