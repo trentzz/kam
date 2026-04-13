@@ -478,18 +478,28 @@ def export_onnx_lgb(model, n_features: int, out_path: Path) -> bool:
         True
     """
     try:
-        from skl2onnx import convert_sklearn
-        from skl2onnx.common.data_types import FloatTensorType
+        import onnxmltools
+        from onnxmltools.convert.common.data_types import FloatTensorType as OnnxFloat
     except ImportError:
-        print("[WARN] skl2onnx not available; skipping ONNX export.", file=sys.stderr)
+        print("[WARN] onnxmltools not available; skipping ONNX export.", file=sys.stderr)
         return False
 
-    initial_type = [("float_input", FloatTensorType([None, n_features]))]
+    # Export the raw booster, not the calibrated wrapper.
+    # CalibratedClassifierCV wraps the estimator; unwrap it.
+    raw = model
+    if hasattr(raw, "estimator"):
+        raw = raw.estimator
+    if hasattr(raw, "base_estimator"):
+        raw = raw.base_estimator
+    booster = raw.booster_ if hasattr(raw, "booster_") else raw
+
     try:
-        onnx_model = convert_sklearn(model, initial_types=initial_type)
+        onnx_model = onnxmltools.convert_lightgbm(
+            booster,
+            initial_types=[("float_input", OnnxFloat([None, n_features]))],
+        )
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(out_path, "wb") as fh:
-            fh.write(onnx_model.SerializeToString())
+        onnxmltools.utils.save_model(onnx_model, str(out_path))
         print(f"ONNX model written: {out_path}", flush=True)
         return True
     except Exception as exc:
@@ -749,9 +759,12 @@ def main() -> None:
     print("\n=== Final training on full training set ===", flush=True)
     lgb_model = lgb.LGBMClassifier(**lgb_best)
     lgb_model.fit(X_train, y_train)
+    # Save native LightGBM model so re-export is possible without retraining.
+    lgb_model.booster_.save_model(str(out_models_dir / "lightgbm_v2.txt"))
 
     xgb_model = xgb.XGBClassifier(**xgb_best)
     xgb_model.fit(X_train, y_train)
+    xgb_model.save_model(str(out_models_dir / "xgboost_v2.json"))
 
     # ── Isotonic calibration ───────────────────────────────────────────────────
     print("\n=== Calibrating models (isotonic, 4-fold) ===", flush=True)
