@@ -21,7 +21,7 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-REPO    = Path("/home/trent/code/kam")
+REPO    = Path(__file__).resolve().parents[2]
 CONFIGS = sorted((REPO / "bigdata/experiments/02-ml-single-strand/configs/train").glob("*.yaml"))
 SIM_DIR = REPO / "bigdata/experiments/02-ml-single-strand/results/train"
 KAM_DIR = REPO / "bigdata/experiments/02-ml-single-strand/results/train"

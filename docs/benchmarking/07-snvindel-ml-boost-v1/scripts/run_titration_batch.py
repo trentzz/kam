@@ -55,6 +55,9 @@ KAM_TI_RESCUE: bool = False
 # When set, save per-sample VCFs to this directory.
 VCF_SAVE_DIR: Path | None = None
 
+# When set, save per-sample variants.tsv (all PASS calls, including ml_prob) to this directory.
+TSV_SAVE_DIR: Path | None = None
+
 # When set, write per-sample per-target TSV to this directory.
 PER_SAMPLE_DIR: Path | None = None
 
@@ -608,6 +611,12 @@ def run_sample(sample, truth_set, tmp_dir):
             else:
                 shutil.copy(src_vcf, VCF_SAVE_DIR / f"{name}.discovery.vcf")
 
+    if TSV_SAVE_DIR is not None and proc.returncode == 0:
+        TSV_SAVE_DIR.mkdir(parents=True, exist_ok=True)
+        src_tsv = out_dir / "variants.tsv"
+        if src_tsv.exists():
+            shutil.copy(src_tsv, TSV_SAVE_DIR / f"{name}.variants.tsv")
+
     # ── Per-target TSV ───────────────────────────────────────────────────────
     if PER_SAMPLE_DIR is not None and proc.returncode == 0:
         per_target_path = PER_SAMPLE_DIR / f"{name}.targets.tsv"
@@ -632,7 +641,7 @@ def main():
     global KAM, TARGETS, TRUTH_VCF, FASTQ_DIR, RESULTS_DIR, RESULTS_FILE
     global READS_PER_SAMPLE, PEAK_RSS_LIMIT_MB
     global KAM_MAX_VAF, KAM_MIN_ALT_MOLECULES, KAM_MIN_CONFIDENCE, KAM_MIN_FAMILY_SIZE
-    global KAM_TARGET_VARIANTS, KAM_KMER_SIZE, KAM_MIN_ALT_DUPLEX, VCF_SAVE_DIR
+    global KAM_TARGET_VARIANTS, KAM_KMER_SIZE, KAM_MIN_ALT_DUPLEX, VCF_SAVE_DIR, TSV_SAVE_DIR
     global KAM_ML_MODEL, PER_SAMPLE_DIR, KAM_TI_RESCUE
 
     parser = argparse.ArgumentParser(
@@ -653,6 +662,9 @@ def main():
     parser.add_argument("--target-variants", type=Path, default=None)
     parser.add_argument("--min-alt-duplex", type=int, default=None)
     parser.add_argument("--save-vcfs", type=Path, default=None)
+    parser.add_argument("--save-tsvs", type=Path, default=None,
+                        help="Directory to save per-sample variants.tsv files (all PASS calls, "
+                             "including ml_prob/ml_filter columns when --ml-model is used).")
     parser.add_argument("--kmer-size", type=int, default=None)
     parser.add_argument("--ml-model", type=str, default=None,
                         help="Built-in ML model name to pass to kam (e.g. twist-duplex-v1). "
@@ -679,6 +691,7 @@ def main():
     KAM_MIN_ALT_DUPLEX    = args.min_alt_duplex
     KAM_KMER_SIZE         = args.kmer_size
     VCF_SAVE_DIR          = args.save_vcfs
+    TSV_SAVE_DIR          = args.save_tsvs
     KAM_ML_MODEL          = args.ml_model
     PER_SAMPLE_DIR        = args.per_sample_dir
     KAM_TI_RESCUE         = args.ti_rescue

@@ -15,7 +15,7 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-REPO = Path("/home/trent/code/kam")
+REPO = Path(__file__).resolve().parents[2]
 CONFIGS = sorted((REPO / "bigdata/experiments/02-ml-single-strand/configs").glob("*.yaml"))
 RESULTS = REPO / "bigdata/experiments/02-ml-single-strand/results"
 SAMPLES = REPO / "docs/project/experiments/02-ml-single-strand/samples"
