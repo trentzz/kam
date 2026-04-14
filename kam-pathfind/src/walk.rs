@@ -620,28 +620,29 @@ mod tests {
     // Test 9b: Budget exceeded returns partial result and flag.
     #[test]
     fn budget_exceeded_returns_partial_and_flag() {
-        // Build a graph where start branches into dead-end paths that never
-        // reach end. The graph has exactly 4 possible node expansions total
-        // (b1, b3, b2, b4), so a budget of 3 fires before all branches are
-        // explored.
+        // Build a graph with three parallel single-hop paths from start to end.
+        // All nodes are in useful_nodes (every node can reach end), so the
+        // useful_nodes pruning does not eliminate any branches. With
+        // max_expansions=3, the DFS finds two paths and fires the budget while
+        // attempting to expand the third branch.
         //
-        // DFS order (biased, all molecule counts equal):
-        //   expand b1 (n=1) → expand b3 (n=2) → b3 dead-ends, backtrack
-        //   → expand b2 (n=3) → budget triggered
+        // DFS order (biased, all molecule counts equal; insertion order preserved):
+        //   expand a1 (n=1) → end found, path 1 recorded, backtrack
+        //   expand a2 (n=2) → end found, path 2 recorded, backtrack
+        //   expand a3 (n=3) → budget triggered, path 3 never found
         let k = 3;
         let mut g = DeBruijnGraph::new(k);
         let start = encode_kmer(b"AAA").unwrap();
+        let a1 = encode_kmer(b"AAC").unwrap();
+        let a2 = encode_kmer(b"AAG").unwrap();
+        let a3 = encode_kmer(b"AAT").unwrap();
         let end = encode_kmer(b"TTT").unwrap();
-        let b1 = encode_kmer(b"AAC").unwrap();
-        let b2 = encode_kmer(b"AAG").unwrap();
-        let b3 = encode_kmer(b"ACG").unwrap();
-        let b4 = encode_kmer(b"AGC").unwrap();
-        g.add_edge(start, b1);
-        g.add_edge(start, b2);
-        g.add_edge(b1, b3);
-        g.add_edge(b2, b4);
-        // Add end as an isolated node with no path from start to it.
-        g.add_edge(end, end);
+        g.add_edge(start, a1);
+        g.add_edge(start, a2);
+        g.add_edge(start, a3);
+        g.add_edge(a1, end);
+        g.add_edge(a2, end);
+        g.add_edge(a3, end);
 
         let cfg = WalkConfig {
             max_path_length: 50,
@@ -651,9 +652,9 @@ mod tests {
         let (paths, exceeded) = walk_paths_biased(&g, start, end, &cfg, |_| 1);
         assert!(
             exceeded,
-            "budget of 3 should be exceeded in this 4-expansion graph"
+            "budget of 3 should be exceeded before the 3rd branch is explored"
         );
-        assert!(paths.is_empty(), "no complete paths reach end");
+        assert_eq!(paths.len(), 2, "two paths found before budget fires");
     }
 
     // Test 10: Start == end (zero-length variant) → single path of one k-mer.

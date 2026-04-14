@@ -40,9 +40,22 @@ python3 docs/benchmarking/07-snvindel-ml-boost-v1/scripts/run_titration_batch.py
   --output titration_2mreads_ml_twist_duplex_ti.tsv
 ```
 
+### TI + duplex confirmation filter
+```bash
+python3 docs/benchmarking/07-snvindel-ml-boost-v1/scripts/run_titration_batch.py \
+  --fastq-dir /mnt/tzeng-local/tzeng-thesis/titration-nondedup/fastqs \
+  --reads 2000000 \
+  --target-variants docs/benchmarking/01-snvindel/scripts/truth_variants.vcf \
+  --min-alt-duplex 1 \
+  --output titration_2mreads_ti_minduplex1.tsv
+```
+
 ## Outputs
 - `results/titration_2mreads_ti.tsv` — aggregate metrics, TI-only run
 - `results/titration_2mreads_ml_twist_duplex_ti.tsv` — aggregate metrics, ML+TI run
+- `results/titration_2mreads_ti_minduplex1.tsv` — aggregate metrics, TI + `--min-alt-duplex 1`
 - `results/per_sample/{sample}.targets.tsv` — per-sample, per-variant detail
 - `results/vcfs/{sample}.monitoring.vcf` — per-sample called variants
 - `report.md` — analysis and conclusions
+- `duplex-filter-analysis.md` — sensitivity cost of `--min-alt-duplex 1` vs TI-only
+- `discovery-precision-analysis.md` — discovery mode precision study: 5 filter conditions vs TI, ML model failure analysis

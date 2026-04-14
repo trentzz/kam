@@ -739,7 +739,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
                     fusion_call.name, fusion_call.vaf, fusion_call.n_molecules
                 );
                 // Convert FusionCall to a VariantCall for unified output.
-                use kam_call::caller::{VariantCall, VariantType};
+                use kam_call::caller::{CallSource, VariantCall, VariantType};
                 all_calls.push(VariantCall {
                     target_id: format!(
                         "{name}__{chrom_a}:{start_a}-{end_a}__{chrom_b}:{start_b}-{end_b}__fusion",
@@ -773,6 +773,12 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
                     strand_bias_p: 1.0,
                     filter: fusion_call.filter,
                     ml_prob: None,
+                    call_source: CallSource::Called,
+                    rescue_min_alt_molecules: None,
+                    rescue_alt_duplex: None,
+                    rescue_approx_vaf: None,
+                    rescue_kmers_found: None,
+                    rescue_kmers_total: None,
                 });
             }
         }
@@ -792,6 +798,174 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             target_set.len(),
             tol,
         );
+    }
+
+    // Rescue probe: for TI targets with no matching call, query the k-mer
+    // index directly for alt-supporting evidence.
+    if cfg.calling.ti_rescue {
+        if let Some(ref vcf_path) = cfg.input.target_variants {
+            use crate::rescue::{build_alt_seq, parse_target_id, probe_ti_target};
+            use kam_call::caller::{CallSource, VariantType};
+
+            let target_set = load_target_variants(vcf_path)?;
+
+            // Mark sub-threshold calls that match TI targets.
+            for call in &mut all_calls {
+                if call.filter != VariantFilter::Pass {
+                    if let Some(key) = kam_call::targeting::extract_variant_key(
+                        &call.target_id,
+                        &call.ref_sequence,
+                        &call.alt_sequence,
+                    ) {
+                        if target_set.contains(&key) {
+                            call.call_source = CallSource::SubThreshold;
+                        }
+                    }
+                }
+            }
+
+            // Determine which TI targets already have a PASS or SubThreshold call.
+            let mut matched: std::collections::HashSet<(String, i64, String, String)> =
+                std::collections::HashSet::new();
+            for call in &all_calls {
+                if call.filter == VariantFilter::Pass
+                    || call.call_source == CallSource::SubThreshold
+                {
+                    if let Some(key) = kam_call::targeting::extract_variant_key(
+                        &call.target_id,
+                        &call.ref_sequence,
+                        &call.alt_sequence,
+                    ) {
+                        matched.insert(key);
+                    }
+                }
+            }
+
+            // Probe unmatched TI targets.
+            let mut rescue_calls: Vec<kam_call::caller::VariantCall> = Vec::new();
+
+            for (chrom, vcf_pos, vcf_ref, vcf_alt) in &target_set {
+                let key = (chrom.clone(), *vcf_pos, vcf_ref.clone(), vcf_alt.clone());
+                if matched.contains(&key) {
+                    continue;
+                }
+
+                // Find the target window that covers this position.
+                let found = target_map.iter().find(|(tid, _)| {
+                    if let Some((tc, ts, te)) = parse_target_id(tid) {
+                        tc == chrom.as_str() && ts < *vcf_pos && *vcf_pos <= te
+                    } else {
+                        false
+                    }
+                });
+
+                let (target_id, ref_seq) = match found {
+                    Some((tid, seq)) => (*tid, *seq),
+                    None => continue,
+                };
+
+                let (_, target_start, _) = match parse_target_id(target_id) {
+                    Some(v) => v,
+                    None => continue,
+                };
+
+                let alt_seq = match build_alt_seq(
+                    ref_seq,
+                    target_start,
+                    *vcf_pos,
+                    vcf_ref.as_bytes(),
+                    vcf_alt.as_bytes(),
+                ) {
+                    Some(s) => s,
+                    None => continue,
+                };
+
+                let evidence = probe_ti_target(&index, ref_seq, &alt_seq, k);
+
+                let (src, min_alt, alt_dup, approx_vaf, kf, kt) = match evidence {
+                    Some(ref ev) => (
+                        if ev.min_alt_molecules > 0 {
+                            CallSource::Rescued
+                        } else {
+                            CallSource::NoEvidence
+                        },
+                        Some(ev.min_alt_molecules),
+                        Some(ev.alt_duplex),
+                        Some(ev.approx_vaf),
+                        Some(ev.n_alt_kmers_found),
+                        Some(ev.n_alt_kmers_total),
+                    ),
+                    None => (
+                        CallSource::NoEvidence,
+                        Some(0),
+                        Some(0),
+                        Some(0.0),
+                        Some(0),
+                        Some(0),
+                    ),
+                };
+
+                let variant_type = {
+                    let r = vcf_ref.as_bytes();
+                    let a = vcf_alt.as_bytes();
+                    if r.len() == 1 && a.len() == 1 {
+                        VariantType::Snv
+                    } else if r.len() < a.len() {
+                        VariantType::Insertion
+                    } else if r.len() > a.len() {
+                        VariantType::Deletion
+                    } else {
+                        VariantType::Mnv
+                    }
+                };
+
+                let mean_ref = evidence
+                    .as_ref()
+                    .map(|e| e.mean_ref_molecules)
+                    .unwrap_or(0.0);
+
+                rescue_calls.push(kam_call::caller::VariantCall {
+                    target_id: target_id.to_string(),
+                    variant_type,
+                    ref_sequence: vcf_ref.as_bytes().to_vec(),
+                    alt_sequence: vcf_alt.as_bytes().to_vec(),
+                    vaf: approx_vaf.unwrap_or(0.0) as f64,
+                    vaf_ci_low: 0.0,
+                    vaf_ci_high: 0.0,
+                    n_molecules_ref: mean_ref.round() as u32,
+                    n_molecules_alt: min_alt.unwrap_or(0),
+                    n_duplex_alt: alt_dup.unwrap_or(0),
+                    n_simplex_alt: min_alt.unwrap_or(0).saturating_sub(alt_dup.unwrap_or(0)),
+                    n_simplex_fwd_alt: 0,
+                    n_simplex_rev_alt: 0,
+                    n_duplex_ref: 0,
+                    n_simplex_ref: 0,
+                    mean_alt_error_prob: 0.0,
+                    min_variant_specific_duplex: alt_dup.unwrap_or(0),
+                    mean_variant_specific_molecules: min_alt.unwrap_or(0) as f32,
+                    confidence: 0.0,
+                    strand_bias_p: 1.0,
+                    filter: VariantFilter::LowConfidence,
+                    ml_prob: None,
+                    call_source: src,
+                    rescue_min_alt_molecules: min_alt,
+                    rescue_alt_duplex: alt_dup,
+                    rescue_approx_vaf: approx_vaf,
+                    rescue_kmers_found: kf,
+                    rescue_kmers_total: kt,
+                });
+            }
+
+            if !rescue_calls.is_empty() {
+                eprintln!(
+                    "[run/rescue] {} rescue probe records added ({} with evidence, {} with no evidence)",
+                    rescue_calls.len(),
+                    rescue_calls.iter().filter(|c| c.call_source == CallSource::Rescued).count(),
+                    rescue_calls.iter().filter(|c| c.call_source == CallSource::NoEvidence).count(),
+                );
+            }
+            all_calls.extend(rescue_calls);
+        }
     }
 
     // Optional ML scoring.
@@ -1263,6 +1437,7 @@ mod tests {
             fusion_targets: None,
             target_variants: None,
             ti_position_tolerance_override: None,
+            ti_rescue: false,
             output_format_override: None,
             qc_output: None,
             log_dir: None,
@@ -1487,6 +1662,7 @@ min_umi_quality = 0
             fusion_targets: None,
             target_variants: None,
             ti_position_tolerance_override: None,
+            ti_rescue: false,
             output_format_override: None,
             qc_output: None,
             log_dir: None,
@@ -1578,6 +1754,7 @@ min_umi_quality = 0
             fusion_targets: None,
             target_variants: None,
             ti_position_tolerance_override: None,
+            ti_rescue: false,
             output_format_override: Some("tsv".to_string()),
             qc_output: None,
             log_dir: None,

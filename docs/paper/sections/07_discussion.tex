@@ -4,9 +4,9 @@
 kam is a proof of concept that alignment-free variant detection is feasible for
 Twist duplex UMI panel sequencing.
 The pipeline preserves molecule-level information from raw FASTQ to variant call
-without any alignment step, detecting 52--61\% of truth variants at 2\% VAF
+without any alignment step, detecting 54--63\% of truth variants at 2\% VAF
 with precision 1.0 in tumour-informed monitoring mode using 2M read pairs per
-sample, running in 16--22 seconds on a single core.
+sample, running in 41--55 seconds on a single core.
 
 Evaluation identified and fixed two implementation bugs: a strand
 bias overcounting bug that inflated the Fisher exact test sample size
@@ -32,12 +32,12 @@ This mode is directly applicable to serial ctDNA monitoring: given a set of
 somatic variants identified from a tissue biopsy, kam confirms whether each
 variant is detectable in a subsequent liquid biopsy sample.
 Precision 1.0 at all VAF levels means every reported call is a confirmed target
-variant; sensitivity 52--61\% at 2\% VAF means that roughly half of all target
+variant; sensitivity 54--63\% at 2\% VAF means that roughly half of all target
 variants with sufficient sequencing depth are recovered.
 
 \paragraph{SNV and indel calling.}
 Indel sensitivity at 2M reads ranges from 32\% to 39\% at 2\% VAF, compared to
-69--80\% for SNVs. The gap is expected: insertions and deletions shift the
+72--82\% for SNVs. The gap is expected: insertions and deletions shift the
 position of end-anchor k-mers relative to the reference, requiring those
 shifted k-mers to be covered by sequencing reads for a walk to complete. This
 anchor coverage requirement is more likely to be satisfied as depth increases.
@@ -58,8 +58,8 @@ once the O($n^2$) UMI grouping bottleneck is resolved by hash partitioning
 Alignment-based pipelines for ctDNA variant calling typically report sensitivity
 of 80--95\% at 1--2\% VAF with comparable panel sizes, using millions of
 read pairs~\autocite{Twist22cfdna}. The gap between those numbers and the
-52--61\% reported here has two primary components: the anchor coverage
-limitation for indels (SNV sensitivity at 2\% VAF reaches 69--80\%, narrowing
+54--63\% reported here has two primary components: the anchor coverage
+limitation for indels (SNV sensitivity at 2\% VAF reaches 72--82\%, narrowing
 the gap considerably), and the conservative minimum alt molecule threshold.
 A direct head-to-head comparison on the same samples against GATK Mutect2,
 Sentieon TNscope, or fgbio\,+\,bwa is not included in this work; such a
@@ -94,7 +94,7 @@ an equivalent target-matching step, at which point the reference alignment
 contributes only runtime overhead.
 
 Second, speed-critical or resource-constrained deployments.
-kam runs each sample in under 30\,s on a single core without a reference
+kam runs each sample in under 60\,s on a single core without a reference
 index loaded into memory.
 Alignment-based pipelines must coordinate reference download, index
 construction, BAM generation, and coordinate sorting before calling begins.
@@ -110,11 +110,11 @@ scripts require engineering changes for each chemistry variation.
 \paragraph{Limitations.}
 
 \textit{Discovery mode sensitivity gap.}
-At 2\% VAF, kam discovery mode sensitivity of 52--61\% is lower than
+At 2\% VAF, kam discovery mode sensitivity of 54--63\% is lower than
 published alignment-based figures of 80--95\% for comparable panels.
 Two structural causes account for most of the gap.
 The anchor coverage constraint means indels are harder to detect than SNVs;
-at 2\% VAF indel sensitivity is 31--39\% vs.\ 69--80\% for SNVs.
+at 2\% VAF indel sensitivity is 32--39\% vs.\ 72--82\% for SNVs.
 The O($n^2$) UMI clustering step limits practical sequencing depth to 2M
 read pairs, below the depths used in some alignment-based evaluations.
 Neither limitation is fundamental to the alignment-free approach; both have
@@ -141,30 +141,20 @@ implementing no-UMI mode for whole-genome data.
 \textit{UMI collision rate.}
 With a 5\,bp UMI providing 1024 possible sequences, the collision probability
 at high library complexity is non-negligible.
-At 350K unique molecules per sample, the expected fraction of UMI collisions
-(two distinct molecules sharing the same canonical UMI pair) is
-\placeholder{X.X}\% under a uniform collision model.
+At 350K unique molecules per sample a non-trivial fraction of UMI collisions
+(two distinct molecules sharing the same canonical UMI pair) is expected under
+a uniform collision model.
 These collisions merge distinct molecules, reducing effective depth and
 potentially confusing the strand bias signal.
 A collision reporting module is planned (\texttt{kam-assemble} QC output) but
 is not included in the current version.
 
 \paragraph{Cross-chemistry outlook.}
-The three public datasets selected for cross-chemistry validation
-(Section~\ref{sec:results-crosschem}) test molecule assembly on a 12\,bp
-read-name UMI, SNV/indel calling without UMI deduplication, and SV calling on
-a WGS truth set.
-Running these will require implementing no-UMI mode (treating each read pair as
-a single molecule) and validating that the FASTQ parser correctly extracts
-non-inline UMIs.
-Both are engineering tasks with no algorithmic uncertainty; they are scheduled
-for the next development sprint.
+Generalisation beyond the Twist 5M2S+T chemistry is reserved for future work.
+The \texttt{config.toml} design means adapting to a new UMI chemistry requires
+only a configuration change, not a code change, but validation on public datasets
+with different UMI structures has not yet been performed.
 
 \paragraph{Figure availability.}
-Figures~\ref{fig:sensitivity}--\ref{fig:runtime_comparison} are generated by
-scripts in \texttt{docs/benchmarking/*/scripts/} and reproduced from committed
-benchmark outputs.
-The comparison figures (\autoref{fig:comparison}, \autoref{fig:comparison_fp},
-\autoref{fig:runtime_comparison}) require alignment-baseline results; those
-scripts exist but the figures contain placeholder data pending final extraction
-of the thesis alignment pipeline numbers.
+All figures are generated by scripts in \texttt{docs/benchmarking/*/scripts/}
+and reproduced from committed benchmark outputs.

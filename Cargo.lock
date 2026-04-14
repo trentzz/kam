@@ -396,7 +396,7 @@ dependencies = [
 
 [[package]]
 name = "kam-assemble"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "flate2",
  "kam-core",
@@ -408,7 +408,7 @@ dependencies = [
 
 [[package]]
 name = "kam-bio"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "kam-assemble",
@@ -427,7 +427,7 @@ dependencies = [
 
 [[package]]
 name = "kam-call"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "kam-core",
  "kam-pathfind",
@@ -444,7 +444,7 @@ dependencies = [
 
 [[package]]
 name = "kam-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bincode",
  "log",
@@ -456,7 +456,7 @@ dependencies = [
 
 [[package]]
 name = "kam-index"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "kam-core",
  "log",
@@ -466,7 +466,7 @@ dependencies = [
 
 [[package]]
 name = "kam-ml"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "kam-call",
  "ndarray",
@@ -477,7 +477,7 @@ dependencies = [
 
 [[package]]
 name = "kam-pathfind"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "kam-core",
  "kam-index",

@@ -173,6 +173,9 @@ pub struct CallingConfig {
     pub sv_strand_bias_threshold: Option<f64>,
     /// Position tolerance (bp) for tumour-informed matching.
     pub ti_position_tolerance: Option<u32>,
+    /// Enable k-mer rescue probe for undetected TI targets.
+    #[serde(default)]
+    pub ti_rescue: bool,
 }
 
 /// Logging settings.
@@ -315,6 +318,7 @@ impl KamConfig {
         cfg.calling.sv_min_alt_molecules = args.sv_min_alt_molecules;
         cfg.calling.sv_strand_bias_threshold = args.sv_strand_bias_threshold_override;
         cfg.calling.ti_position_tolerance = args.ti_position_tolerance_override;
+        cfg.calling.ti_rescue = args.ti_rescue;
 
         cfg.logging.log_dir = args.log_dir.clone();
         cfg.logging.log = if args.log.is_empty() {
@@ -428,6 +432,9 @@ impl KamConfig {
         }
         if let Some(v) = args.ti_position_tolerance_override {
             self.calling.ti_position_tolerance = Some(v);
+        }
+        if args.ti_rescue {
+            self.calling.ti_rescue = true;
         }
 
         // Logging fields.

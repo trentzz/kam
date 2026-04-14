@@ -438,6 +438,14 @@ pub fn write_fusion_bnd_records(call: &FusionCall, writer: &mut dyn Write) -> io
 
 // ─── Private helpers ──────────────────────────────────────────────────────────
 
+/// Format an `Option<T>` as its string value or `"."` when absent.
+fn opt_to_str<T: std::fmt::Display>(v: Option<T>) -> String {
+    match v {
+        Some(x) => x.to_string(),
+        None => ".".to_string(),
+    }
+}
+
 /// Write a delimited (TSV or CSV) format.
 fn write_delimited(calls: &[VariantCall], sep: char, writer: &mut dyn Write) -> io::Result<()> {
     let s = sep;
@@ -448,7 +456,8 @@ fn write_delimited(calls: &[VariantCall], sep: char, writer: &mut dyn Write) -> 
          strand_bias_p{s}confidence{s}filter{s}\
          n_simplex_fwd_alt{s}n_simplex_rev_alt{s}n_duplex_ref{s}n_simplex_ref{s}\
          mean_alt_error_prob{s}min_variant_specific_duplex{s}mean_variant_specific_molecules{s}\
-         ml_prob{s}ml_filter"
+         ml_prob{s}ml_filter{s}\
+         call_source{s}rescue_min_alt_molecules{s}rescue_alt_duplex{s}rescue_approx_vaf{s}rescue_kmers_found{s}rescue_kmers_total"
     )?;
     for call in calls {
         let ml_prob_str = match call.ml_prob {
@@ -460,9 +469,17 @@ fn write_delimited(calls: &[VariantCall], sep: char, writer: &mut dyn Write) -> 
             Some(_) => "ML_FILTER",
             None => ".",
         };
+        let rescue_min = opt_to_str(call.rescue_min_alt_molecules);
+        let rescue_dup = opt_to_str(call.rescue_alt_duplex);
+        let rescue_vaf = match call.rescue_approx_vaf {
+            Some(v) => format!("{:.6}", v),
+            None => ".".to_string(),
+        };
+        let rescue_kf = opt_to_str(call.rescue_kmers_found);
+        let rescue_kt = opt_to_str(call.rescue_kmers_total);
         writeln!(
             writer,
-            "{}{s}{}{s}{}{s}{}{s}{:.6}{s}{:.6}{s}{:.6}{s}{}{s}{}{s}{}{s}{}{s}{:.6}{s}{:.6}{s}{}{s}{}{s}{}{s}{}{s}{}{s}{:.6}{s}{}{s}{:.4}{s}{}{s}{}",
+            "{}{s}{}{s}{}{s}{}{s}{:.6}{s}{:.6}{s}{:.6}{s}{}{s}{}{s}{}{s}{}{s}{:.6}{s}{:.6}{s}{}{s}{}{s}{}{s}{}{s}{}{s}{:.6}{s}{}{s}{:.4}{s}{}{s}{}{s}{}{s}{}{s}{}{s}{}{s}{}{s}{}",
             call.target_id,
             variant_type_to_str(call.variant_type),
             bytes_to_str(&call.ref_sequence),
@@ -486,6 +503,12 @@ fn write_delimited(calls: &[VariantCall], sep: char, writer: &mut dyn Write) -> 
             call.mean_variant_specific_molecules,
             ml_prob_str,
             ml_filter_str,
+            call.call_source,
+            rescue_min,
+            rescue_dup,
+            rescue_vaf,
+            rescue_kf,
+            rescue_kt,
         )?;
     }
     Ok(())
@@ -522,6 +545,12 @@ fn call_to_json(call: &VariantCall) -> Value {
         "mean_variant_specific_molecules": call.mean_variant_specific_molecules,
         "ml_prob": call.ml_prob,
         "ml_filter": ml_filter,
+        "call_source": call.call_source.to_string(),
+        "rescue_min_alt_molecules": call.rescue_min_alt_molecules,
+        "rescue_alt_duplex": call.rescue_alt_duplex,
+        "rescue_approx_vaf": call.rescue_approx_vaf,
+        "rescue_kmers_found": call.rescue_kmers_found,
+        "rescue_kmers_total": call.rescue_kmers_total,
     })
 }
 
@@ -566,6 +595,7 @@ mod tests {
     use crate::caller::{VariantCall, VariantFilter, VariantType};
 
     fn make_call(target: &str, ref_seq: &[u8], alt_seq: &[u8]) -> VariantCall {
+        use crate::caller::CallSource;
         VariantCall {
             target_id: target.to_owned(),
             variant_type: VariantType::Snv,
@@ -589,6 +619,12 @@ mod tests {
             strand_bias_p: 0.8,
             filter: VariantFilter::Pass,
             ml_prob: None,
+            call_source: CallSource::Called,
+            rescue_min_alt_molecules: None,
+            rescue_alt_duplex: None,
+            rescue_approx_vaf: None,
+            rescue_kmers_found: None,
+            rescue_kmers_total: None,
         }
     }
 

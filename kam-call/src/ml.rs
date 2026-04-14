@@ -136,6 +136,7 @@ impl MlScorer {
     /// Build the feature vector for a call in the order `meta.feature_names` specifies.
     #[cfg(feature = "ml")]
     fn extract_features(&self, call: &VariantCall) -> Vec<f32> {
+        // ── Original 33 features ──────────────────────────────────────────────
         let vaf = call.vaf as f32;
         let nref = call.n_molecules_ref as f32;
         let nalt = call.n_molecules_alt as f32;
@@ -166,15 +167,15 @@ impl MlScorer {
         let nalt_sq = nalt * nalt;
         let vaf_sq = vaf * vaf;
 
-        let ref_alt_len_ratio = ref_len / (alt_len + 1.0);
+        let ref_alt_len_ratio = ref_len / (alt_len + 1e-9_f32);
         let indel_size = (ref_len - alt_len).abs();
 
         let duplex_enrichment = ndupalt / (vaf * alt_depth + 1e-9);
         let simplex_only_frac = nsimalt / (nalt + 1e-9);
 
-        let conf_above_99 = if conf > 0.99 { 1.0_f32 } else { 0.0_f32 };
-        let conf_above_999 = if conf > 0.999 { 1.0_f32 } else { 0.0_f32 };
-        let sbp_above_05 = if sbp > 0.05 { 1.0_f32 } else { 0.0_f32 };
+        let conf_above_99 = if conf >= 0.99 { 1.0_f32 } else { 0.0_f32 };
+        let conf_above_999 = if conf >= 0.999 { 1.0_f32 } else { 0.0_f32 };
+        let sbp_above_05 = if sbp >= 0.05 { 1.0_f32 } else { 0.0_f32 };
 
         let variant_class_enc = *self
             .meta
@@ -182,7 +183,33 @@ impl MlScorer {
             .get(variant_type_str(call.variant_type))
             .unwrap_or(&0) as f32;
 
+        // ── Category B: existing VariantCall fields not previously exposed ────
+        let n_simplex_fwd_alt = call.n_simplex_fwd_alt as f32;
+        let n_simplex_rev_alt = call.n_simplex_rev_alt as f32;
+        let n_duplex_ref = call.n_duplex_ref as f32;
+        let n_simplex_ref = call.n_simplex_ref as f32;
+        let mean_alt_error_prob = call.mean_alt_error_prob;
+        let min_variant_specific_duplex = call.min_variant_specific_duplex as f32;
+        let mean_variant_specific_molecules = call.mean_variant_specific_molecules;
+
+        // ── Category C: derived strand/duplex features ────────────────────────
+        let strand_asymmetry_alt = (n_simplex_fwd_alt - n_simplex_rev_alt)
+            / (n_simplex_fwd_alt + n_simplex_rev_alt + 1e-9);
+        let duplex_vaf = ndupalt / (ndupalt + n_duplex_ref + 1e-9);
+        let simplex_vaf = nsimalt / (nsimalt + n_simplex_ref + 1e-9);
+        let duplex_simplex_vaf_delta = duplex_vaf - simplex_vaf;
+
+        // ── Category A: sequence-context features ─────────────────────────────
+        let subst_type = snv_subst_type(&call.ref_sequence, &call.alt_sequence, call.variant_type);
+        let trinuc_context =
+            snv_trinuc_context(&call.ref_sequence, &call.alt_sequence, call.variant_type);
+        let is_cpg = snv_is_cpg(&call.ref_sequence, &call.alt_sequence, call.variant_type);
+        let gc_content_ref = ref_gc_content(&call.ref_sequence);
+        let homopolymer_run =
+            ref_homopolymer_run(&call.ref_sequence, &call.alt_sequence, call.variant_type);
+
         let lookup: HashMap<&str, f32> = [
+            // original 33
             ("vaf", vaf),
             ("nref", nref),
             ("nalt", nalt),
@@ -216,6 +243,28 @@ impl MlScorer {
             ("conf_above_999", conf_above_999),
             ("sbp_above_05", sbp_above_05),
             ("variant_class_enc", variant_class_enc),
+            // category B
+            ("n_simplex_fwd_alt", n_simplex_fwd_alt),
+            ("n_simplex_rev_alt", n_simplex_rev_alt),
+            ("n_duplex_ref", n_duplex_ref),
+            ("n_simplex_ref", n_simplex_ref),
+            ("mean_alt_error_prob", mean_alt_error_prob),
+            ("min_variant_specific_duplex", min_variant_specific_duplex),
+            (
+                "mean_variant_specific_molecules",
+                mean_variant_specific_molecules,
+            ),
+            // category C
+            ("strand_asymmetry_alt", strand_asymmetry_alt),
+            ("duplex_vaf", duplex_vaf),
+            ("simplex_vaf", simplex_vaf),
+            ("duplex_simplex_vaf_delta", duplex_simplex_vaf_delta),
+            // category A
+            ("subst_type", subst_type),
+            ("trinuc_context", trinuc_context),
+            ("is_cpg", is_cpg),
+            ("gc_content_ref", gc_content_ref),
+            ("homopolymer_run", homopolymer_run),
         ]
         .into_iter()
         .collect();
@@ -243,4 +292,142 @@ fn variant_type_str(vt: VariantType) -> &'static str {
         VariantType::InvDel => "InvDel",
         VariantType::NovelInsertion => "NovelInsertion",
     }
+}
+
+/// Encode the SNV substitution class (0–11) or return 12 for non-SNV/unrecognised.
+///
+/// Uses 12 canonical classes:
+/// C>A=0, C>G=1, C>T=2, T>A=3, T>C=4, T>G=5, G>T=6, G>C=7, G>A=8, A>T=9, A>G=10, A>C=11.
+#[cfg(feature = "ml")]
+fn snv_subst_type(ref_seq: &[u8], alt_seq: &[u8], vt: VariantType) -> f32 {
+    if vt != VariantType::Snv {
+        return 12.0;
+    }
+    let diff = ref_seq.iter().zip(alt_seq.iter()).position(|(r, a)| r != a);
+    let i = match diff {
+        Some(i) => i,
+        None => return 12.0,
+    };
+    match (ref_seq[i], alt_seq[i]) {
+        (b'C', b'A') => 0.0,
+        (b'C', b'G') => 1.0,
+        (b'C', b'T') => 2.0,
+        (b'T', b'A') => 3.0,
+        (b'T', b'C') => 4.0,
+        (b'T', b'G') => 5.0,
+        (b'G', b'T') => 6.0,
+        (b'G', b'C') => 7.0,
+        (b'G', b'A') => 8.0,
+        (b'A', b'T') => 9.0,
+        (b'A', b'G') => 10.0,
+        (b'A', b'C') => 11.0,
+        _ => 12.0,
+    }
+}
+
+/// Encode the trinucleotide context centred on the SNV site (0–63), or 64 for non-SNV/edge.
+///
+/// Uses base-4 encoding: A=0, C=1, G=2, T=3.
+/// Value = ref[i-1]*16 + ref[i]*4 + ref[i+1].
+#[cfg(feature = "ml")]
+fn snv_trinuc_context(ref_seq: &[u8], alt_seq: &[u8], vt: VariantType) -> f32 {
+    if vt != VariantType::Snv {
+        return 64.0;
+    }
+    let diff = ref_seq.iter().zip(alt_seq.iter()).position(|(r, a)| r != a);
+    let i = match diff {
+        Some(i) if i >= 1 && i + 1 < ref_seq.len() => i,
+        _ => return 64.0,
+    };
+    let encode = |b: u8| -> Option<u8> {
+        match b {
+            b'A' | b'a' => Some(0),
+            b'C' | b'c' => Some(1),
+            b'G' | b'g' => Some(2),
+            b'T' | b't' => Some(3),
+            _ => None,
+        }
+    };
+    match (
+        encode(ref_seq[i - 1]),
+        encode(ref_seq[i]),
+        encode(ref_seq[i + 1]),
+    ) {
+        (Some(l), Some(c), Some(r)) => (l as f32) * 16.0 + (c as f32) * 4.0 + (r as f32),
+        _ => 64.0,
+    }
+}
+
+/// Return 1.0 if the SNV is a C>T or G>A change at a CpG dinucleotide, else 0.0.
+///
+/// C>T is CpG-context when the base immediately 3' of the C is G.
+/// G>A is CpG-context when the base immediately 5' of the G is C.
+#[cfg(feature = "ml")]
+fn snv_is_cpg(ref_seq: &[u8], alt_seq: &[u8], vt: VariantType) -> f32 {
+    if vt != VariantType::Snv {
+        return 0.0;
+    }
+    let diff = ref_seq.iter().zip(alt_seq.iter()).position(|(r, a)| r != a);
+    let i = match diff {
+        Some(i) => i,
+        None => return 0.0,
+    };
+    let is_ct = ref_seq[i] == b'C' && alt_seq[i] == b'T';
+    let is_ga = ref_seq[i] == b'G' && alt_seq[i] == b'A';
+    if is_ct && i + 1 < ref_seq.len() && ref_seq[i + 1] == b'G' {
+        return 1.0;
+    }
+    if is_ga && i >= 1 && ref_seq[i - 1] == b'C' {
+        return 1.0;
+    }
+    0.0
+}
+
+/// Return the GC fraction of the reference sequence (0.0 for empty input).
+#[cfg(feature = "ml")]
+fn ref_gc_content(ref_seq: &[u8]) -> f32 {
+    if ref_seq.is_empty() {
+        return 0.0;
+    }
+    let gc = ref_seq
+        .iter()
+        .filter(|&&b| b == b'G' || b == b'g' || b == b'C' || b == b'c')
+        .count();
+    gc as f32 / ref_seq.len() as f32
+}
+
+/// Return the length of the longest homopolymer run adjacent to the variant site.
+///
+/// Finds the first differing position and scans left and right in `ref_seq`
+/// counting runs of the same base. Returns the longer of the two runs.
+/// Returns 0.0 for non-SNV or when the variant position is at an edge.
+#[cfg(feature = "ml")]
+fn ref_homopolymer_run(ref_seq: &[u8], alt_seq: &[u8], vt: VariantType) -> f32 {
+    if vt != VariantType::Snv {
+        return 0.0;
+    }
+    let diff = ref_seq.iter().zip(alt_seq.iter()).position(|(r, a)| r != a);
+    let i = match diff {
+        Some(i) => i,
+        None => return 0.0,
+    };
+    // Scan left from i-1.
+    let left_run = if i > 0 {
+        let base = ref_seq[i - 1];
+        ref_seq[..i]
+            .iter()
+            .rev()
+            .take_while(|&&b| b == base)
+            .count()
+    } else {
+        0
+    };
+    // Scan right from i+1.
+    let right_run = if i + 1 < ref_seq.len() {
+        let base = ref_seq[i + 1];
+        ref_seq[i + 1..].iter().take_while(|&&b| b == base).count()
+    } else {
+        0
+    };
+    left_run.max(right_run) as f32
 }

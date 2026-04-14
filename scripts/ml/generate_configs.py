@@ -6,7 +6,7 @@ Regenerates configs based on the patterns observed in existing manifest files.
 import re
 from pathlib import Path
 
-REPO = Path("/home/trent/code/kam")
+REPO = Path(__file__).resolve().parents[2]
 CONFIGS_DIR = REPO / "bigdata/experiments/02-ml-single-strand/configs"
 RESULTS = REPO / "bigdata/experiments/02-ml-single-strand/results"
 

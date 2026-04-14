@@ -7,3 +7,14 @@ __pycache__/
 bigdata/
 
 scripts/ml/__pycache__/
+
+# LaTeX build artifacts
+*.aux
+*.bcf
+*.log
+*.out
+*.run.xml
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
