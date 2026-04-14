@@ -1,7 +1,8 @@
 # Experiment 03: twist-duplex-v2 — Real-data Retraining
 
-**Status:** Planned
+**Status:** Complete
 **Hypothesis:** A ML model trained on real confirmed TP/FP calls from the titration dataset, with new sequence-context features, will produce discriminating ml_prob distributions in discovery mode (unlike twist-duplex-v1 which assigns ≥ 0.9 to all PASS calls).
+**Outcome:** Confirmed. See `results/README.md`. AUPRC 0.973, FP reduction 79–93%, precision 0.969–1.000 at 1–2% VAF, sensitivity retention 97–100%.
 **Motivation:** `docs/benchmarking/07-snvindel-ml-boost-v1/discovery-precision-analysis.md`
 
 ---

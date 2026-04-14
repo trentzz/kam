@@ -498,8 +498,34 @@ def export_onnx_lgb(model, n_features: int, out_path: Path) -> bool:
             booster,
             initial_types=[("float_input", OnnxFloat([None, n_features]))],
         )
+        # onnxmltools wraps the probability output in a ZipMap node that produces
+        # sequence<map<int64, float>>, which the ort Rust crate does not support.
+        # Remove the ZipMap and expose the raw probability tensor directly.
+        import onnx
+        from onnx import helper as oh
+        new_nodes = [n for n in onnx_model.graph.node if n.op_type != "ZipMap"]
+        for node in new_nodes:
+            if node.op_type == "Identity" and list(node.input) == ["probability_tensor"]:
+                node.output[:] = ["probabilities"]
+        new_outputs = []
+        for o in onnx_model.graph.output:
+            if o.name == "probabilities":
+                new_outputs.append(oh.make_tensor_value_info("probabilities", onnx.TensorProto.FLOAT, [None, 2]))
+            else:
+                new_outputs.append(o)
+        new_graph = oh.make_graph(
+            new_nodes,
+            onnx_model.graph.name,
+            list(onnx_model.graph.input),
+            new_outputs,
+            list(onnx_model.graph.initializer),
+        )
+        fixed = oh.make_model(new_graph, opset_imports=onnx_model.opset_import)
+        fixed.ir_version = onnx_model.ir_version
+        onnx.checker.check_model(fixed)
+
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        onnxmltools.utils.save_model(onnx_model, str(out_path))
+        onnx.save(fixed, str(out_path))
         print(f"ONNX model written: {out_path}", flush=True)
         return True
     except Exception as exc:
