@@ -167,15 +167,15 @@ impl MlScorer {
         let nalt_sq = nalt * nalt;
         let vaf_sq = vaf * vaf;
 
-        let ref_alt_len_ratio = ref_len / (alt_len + 1.0);
+        let ref_alt_len_ratio = ref_len / (alt_len + 1e-9_f32);
         let indel_size = (ref_len - alt_len).abs();
 
         let duplex_enrichment = ndupalt / (vaf * alt_depth + 1e-9);
         let simplex_only_frac = nsimalt / (nalt + 1e-9);
 
-        let conf_above_99 = if conf > 0.99 { 1.0_f32 } else { 0.0_f32 };
-        let conf_above_999 = if conf > 0.999 { 1.0_f32 } else { 0.0_f32 };
-        let sbp_above_05 = if sbp > 0.05 { 1.0_f32 } else { 0.0_f32 };
+        let conf_above_99 = if conf >= 0.99 { 1.0_f32 } else { 0.0_f32 };
+        let conf_above_999 = if conf >= 0.999 { 1.0_f32 } else { 0.0_f32 };
+        let sbp_above_05 = if sbp >= 0.05 { 1.0_f32 } else { 0.0_f32 };
 
         let variant_class_enc = *self
             .meta
@@ -200,8 +200,7 @@ impl MlScorer {
         let duplex_simplex_vaf_delta = duplex_vaf - simplex_vaf;
 
         // ── Category A: sequence-context features ─────────────────────────────
-        let subst_type =
-            snv_subst_type(&call.ref_sequence, &call.alt_sequence, call.variant_type);
+        let subst_type = snv_subst_type(&call.ref_sequence, &call.alt_sequence, call.variant_type);
         let trinuc_context =
             snv_trinuc_context(&call.ref_sequence, &call.alt_sequence, call.variant_type);
         let is_cpg = snv_is_cpg(&call.ref_sequence, &call.alt_sequence, call.variant_type);
@@ -251,7 +250,10 @@ impl MlScorer {
             ("n_simplex_ref", n_simplex_ref),
             ("mean_alt_error_prob", mean_alt_error_prob),
             ("min_variant_specific_duplex", min_variant_specific_duplex),
-            ("mean_variant_specific_molecules", mean_variant_specific_molecules),
+            (
+                "mean_variant_specific_molecules",
+                mean_variant_specific_molecules,
+            ),
             // category C
             ("strand_asymmetry_alt", strand_asymmetry_alt),
             ("duplex_vaf", duplex_vaf),
@@ -294,17 +296,14 @@ fn variant_type_str(vt: VariantType) -> &'static str {
 
 /// Encode the SNV substitution class (0–11) or return 12 for non-SNV/unrecognised.
 ///
-/// Uses 12 canonical classes with pyrimidine-first convention where applicable:
+/// Uses 12 canonical classes:
 /// C>A=0, C>G=1, C>T=2, T>A=3, T>C=4, T>G=5, G>T=6, G>C=7, G>A=8, A>T=9, A>G=10, A>C=11.
 #[cfg(feature = "ml")]
 fn snv_subst_type(ref_seq: &[u8], alt_seq: &[u8], vt: VariantType) -> f32 {
     if vt != VariantType::Snv {
         return 12.0;
     }
-    let diff = ref_seq
-        .iter()
-        .zip(alt_seq.iter())
-        .position(|(r, a)| r != a);
+    let diff = ref_seq.iter().zip(alt_seq.iter()).position(|(r, a)| r != a);
     let i = match diff {
         Some(i) => i,
         None => return 12.0,
@@ -335,10 +334,7 @@ fn snv_trinuc_context(ref_seq: &[u8], alt_seq: &[u8], vt: VariantType) -> f32 {
     if vt != VariantType::Snv {
         return 64.0;
     }
-    let diff = ref_seq
-        .iter()
-        .zip(alt_seq.iter())
-        .position(|(r, a)| r != a);
+    let diff = ref_seq.iter().zip(alt_seq.iter()).position(|(r, a)| r != a);
     let i = match diff {
         Some(i) if i >= 1 && i + 1 < ref_seq.len() => i,
         _ => return 64.0,
@@ -352,7 +348,11 @@ fn snv_trinuc_context(ref_seq: &[u8], alt_seq: &[u8], vt: VariantType) -> f32 {
             _ => None,
         }
     };
-    match (encode(ref_seq[i - 1]), encode(ref_seq[i]), encode(ref_seq[i + 1])) {
+    match (
+        encode(ref_seq[i - 1]),
+        encode(ref_seq[i]),
+        encode(ref_seq[i + 1]),
+    ) {
         (Some(l), Some(c), Some(r)) => (l as f32) * 16.0 + (c as f32) * 4.0 + (r as f32),
         _ => 64.0,
     }
@@ -367,10 +367,7 @@ fn snv_is_cpg(ref_seq: &[u8], alt_seq: &[u8], vt: VariantType) -> f32 {
     if vt != VariantType::Snv {
         return 0.0;
     }
-    let diff = ref_seq
-        .iter()
-        .zip(alt_seq.iter())
-        .position(|(r, a)| r != a);
+    let diff = ref_seq.iter().zip(alt_seq.iter()).position(|(r, a)| r != a);
     let i = match diff {
         Some(i) => i,
         None => return 0.0,
@@ -409,10 +406,7 @@ fn ref_homopolymer_run(ref_seq: &[u8], alt_seq: &[u8], vt: VariantType) -> f32 {
     if vt != VariantType::Snv {
         return 0.0;
     }
-    let diff = ref_seq
-        .iter()
-        .zip(alt_seq.iter())
-        .position(|(r, a)| r != a);
+    let diff = ref_seq.iter().zip(alt_seq.iter()).position(|(r, a)| r != a);
     let i = match diff {
         Some(i) => i,
         None => return 0.0,
@@ -420,7 +414,11 @@ fn ref_homopolymer_run(ref_seq: &[u8], alt_seq: &[u8], vt: VariantType) -> f32 {
     // Scan left from i-1.
     let left_run = if i > 0 {
         let base = ref_seq[i - 1];
-        ref_seq[..i].iter().rev().take_while(|&&b| b == base).count()
+        ref_seq[..i]
+            .iter()
+            .rev()
+            .take_while(|&&b| b == base)
+            .count()
     } else {
         0
     };

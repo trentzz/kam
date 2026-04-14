@@ -8,7 +8,7 @@ repository.workspace = true
 readme = "../README.md"
 keywords.workspace = true
 categories.workspace = true
-exclude = ["docs/", "examples/", "benchmarking/"]
+exclude = ["docs/", "bigdata/", "scripts/", "*.fastq.gz", ".env"]
 
 [[bin]]
 name = "kam"

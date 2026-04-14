@@ -13,7 +13,7 @@ import math
 import random
 from pathlib import Path
 
-REPO = Path("/home/trent/code/kam")
+REPO = Path(__file__).resolve().parents[2]
 CONFIGS_DIR = REPO / "bigdata/experiments/02-ml-single-strand/configs"
 
 # Available VAF tags in the truth VCF filenames (as integers, vaf * 10000).

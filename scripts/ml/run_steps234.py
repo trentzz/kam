@@ -4,7 +4,8 @@ Use this to resume after varforge has completed.
 """
 
 import sys
-sys.path.insert(0, "/home/trent/code/kam/scripts/ml")
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from run_ml_pipeline import step2_kam, step3_samples, step4_training_data
 
