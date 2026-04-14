@@ -2,12 +2,22 @@
 
 ## Registry
 
-kam publishes to **GitHub Releases** only. It does not publish to crates.io.
-This is a research tool. Distribution is via compiled binary attached to the
-GitHub release at https://github.com/trentzz/kam.
+kam publishes to both **GitHub Releases** and **crates.io**.
 
-The crate name in Cargo.toml is `kam-bio` (to avoid collision on crates.io),
-but the binary is always `kam`.
+- GitHub Releases: compiled `kam-linux-x86_64` binary attached to the release.
+- crates.io: all 7 workspace crates published in dependency order.
+
+The top-level binary crate is `kam-bio` on crates.io (to avoid a name
+collision), but the binary produced is always `kam`.
+
+### Workspace crates (publish in this order)
+
+1. `kam-core`
+2. `kam-assemble`, `kam-index` (parallel)
+3. `kam-pathfind`
+4. `kam-call`
+5. `kam-ml`
+6. `kam-bio` (binary, `--features ml`)
 
 ---
 
