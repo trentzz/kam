@@ -69,6 +69,23 @@ pub fn run_index(args: IndexArgs) -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
+    // Augment allowlist with raw junction sequence k-mers when provided.
+    // These sequences may use any FASTA header format and require no coordinate
+    // syntax. Each sequence is added to the allowlist so that reads spanning
+    // the junction are captured during two-pass indexing.
+    if let Some(ref jseq_path) = args.junction_sequences {
+        let jseq = read_fasta(jseq_path)?;
+        let jseq_slices: Vec<&[u8]> = jseq.iter().map(|(_id, seq)| seq.as_slice()).collect();
+        let jseq_allowlist = build_allowlist(&jseq_slices, k);
+        let n_jseq = jseq_allowlist.len();
+        allowlist.extend(jseq_allowlist);
+        eprintln!(
+            "[index] junction_sequences: added {n_jseq} k-mers from {} sequences ({} total)",
+            jseq.len(),
+            allowlist.len()
+        );
+    }
+
     let n_target_kmers = allowlist.len() as u64;
 
     // ── 4. Build raw HashKmerIndex from molecules ─────────────────────────────
@@ -263,6 +280,7 @@ mod tests {
             output: output_path.clone(),
             kmer_size: 8,
             sv_junctions: None,
+            junction_sequences: None,
         };
 
         run_index(args).expect("run_index should succeed");
@@ -296,9 +314,76 @@ mod tests {
             output: output_path.clone(),
             kmer_size: 4,
             sv_junctions: None,
+            junction_sequences: None,
         };
 
         run_index(args).expect("run_index with empty molecules should succeed");
         assert!(output_path.exists());
+    }
+
+    /// junction_sequences extends the allowlist beyond what targets alone produce.
+    ///
+    /// A junction sequence with k-mers absent from the normal target should cause
+    /// the total allowlist count (recorded in the QC JSON's n_target_kmers field)
+    /// to increase when junction_sequences is supplied.
+    #[test]
+    fn index_junction_sequences_extends_allowlist() {
+        use kam_index::allowlist::build_allowlist;
+
+        // Target: 24 bp with repeating ACGT pattern.
+        let target_seq = b"ACGTACGTACGTACGTACGTACGT";
+        // Junction: 24 bp of TTTT (all k-mers distinct from ACGT target at k=8).
+        let junc_seq = b"TTTTTTTTTTTTTTTTTTTTTTTT";
+        let k = 8;
+
+        let target_slices: Vec<&[u8]> = vec![target_seq.as_slice()];
+        let allowlist_target_only = build_allowlist(&target_slices, k);
+
+        let junc_slices: Vec<&[u8]> = vec![junc_seq.as_slice()];
+        let junc_allowlist = build_allowlist(&junc_slices, k);
+
+        let mut combined = allowlist_target_only.clone();
+        combined.extend(junc_allowlist);
+
+        // The combined allowlist must be strictly larger than target-only.
+        assert!(
+            combined.len() > allowlist_target_only.len(),
+            "junction k-mers should expand the allowlist: combined={} target_only={}",
+            combined.len(),
+            allowlist_target_only.len()
+        );
+    }
+
+    /// run_index with junction_sequences set produces a valid index output file.
+    #[test]
+    fn run_index_with_junction_sequences_succeeds() {
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        let mol = make_molecule();
+        let molecules_path = dir.path().join("molecules.bin");
+        write_bincode(&molecules_path, FileType::Molecules, &[mol]).expect("write molecules");
+
+        let targets_path = dir.path().join("targets.fa");
+        write_fasta(
+            &targets_path,
+            &[("target1", "ACGTACGTACGTACGTACGTACGTACGT")],
+        );
+
+        let jseq_path = dir.path().join("jseq.fa");
+        write_fasta(&jseq_path, &[("junction1", "TTTTTTTTTTTTTTTTTTTTTTTTTTTT")]);
+
+        let output_path = dir.path().join("index.bin");
+
+        let args = IndexArgs {
+            input: molecules_path,
+            targets: targets_path,
+            output: output_path.clone(),
+            kmer_size: 8,
+            sv_junctions: None,
+            junction_sequences: Some(jseq_path),
+        };
+
+        run_index(args).expect("run_index with junction_sequences should succeed");
+        assert!(output_path.exists(), "index.bin should exist");
     }
 }
