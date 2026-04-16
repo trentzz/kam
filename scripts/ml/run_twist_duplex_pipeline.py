@@ -95,7 +95,9 @@ def _load_edit_token() -> str:
 
 
 NEXTCLOUD_TOKEN = _load_edit_token()
-NEXTCLOUD_URL = f"https://nextcloudlocal.trentz.me/public.php/dav/files/{NEXTCLOUD_TOKEN}"
+# Override with NEXTCLOUD_BASE_URL env var when deploying outside the local network.
+NEXTCLOUD_BASE_URL = os.environ.get("NEXTCLOUD_BASE_URL", "https://nextcloudlocal.trentz.me")
+NEXTCLOUD_URL = f"{NEXTCLOUD_BASE_URL}/public.php/dav/files/{NEXTCLOUD_TOKEN}"
 
 # ─── Nextcloud ────────────────────────────────────────────────────────────────
 
@@ -410,13 +412,13 @@ def save_checkpoint(completed: set[str]) -> None:
 
 # ─── Nextcloud upload ─────────────────────────────────────────────────────────
 
-# Cloudflare proxies nextcloudlocal.trentz.me with a ~100MB request size limit.
+# Cloudflare proxies the Nextcloud host (see NEXTCLOUD_BASE_URL) with a ~100MB request size limit.
 # Use Nextcloud's TUS-style chunked upload protocol to handle large tarballs:
 #   1. MKCOL  /dav/uploads/{token}/{uuid}/
 #   2. PUT    /dav/uploads/{token}/{uuid}/{offset}   (one per chunk)
 #   3. MOVE   /dav/uploads/{token}/{uuid}/.file  →  final destination
 CHUNK_SIZE = 90 * 1024 * 1024  # 90 MB per chunk (safely under Cloudflare limit)
-NEXTCLOUD_UPLOADS_URL = "https://nextcloudlocal.trentz.me/public.php/dav/uploads"
+NEXTCLOUD_UPLOADS_URL = f"{NEXTCLOUD_BASE_URL}/public.php/dav/uploads"
 
 
 def _curl_check(result: subprocess.CompletedProcess, label: str) -> int:

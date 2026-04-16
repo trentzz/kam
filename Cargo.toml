@@ -11,7 +11,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/trentzz/kam"
@@ -32,9 +32,9 @@ log = "0.4"
 clap = { version = "4", features = ["derive"] }
 
 # Internal crate dependencies
-kam-core = { path = "kam-core", version = "0.2.0" }
-kam-assemble = { path = "kam-assemble", version = "0.2.0" }
-kam-index = { path = "kam-index", version = "0.2.0" }
-kam-pathfind = { path = "kam-pathfind", version = "0.2.0" }
-kam-call = { path = "kam-call", version = "0.2.0" }
-kam-ml = { path = "kam-ml", version = "0.2.0" }
+kam-core = { path = "kam-core", version = "0.3.0" }
+kam-assemble = { path = "kam-assemble", version = "0.3.0" }
+kam-index = { path = "kam-index", version = "0.3.0" }
+kam-pathfind = { path = "kam-pathfind", version = "0.3.0" }
+kam-call = { path = "kam-call", version = "0.3.0" }
+kam-ml = { path = "kam-ml", version = "0.3.0" }
