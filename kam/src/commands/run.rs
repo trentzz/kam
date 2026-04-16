@@ -1173,9 +1173,12 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             None
         };
 
-    if let Some(scorer_result) = scorer_result {
+    // Capture the model's pass threshold so it can be used when writing output.
+    // Defaults to 0.5 when no model is loaded.
+    let ml_threshold = if let Some(scorer_result) = scorer_result {
         match scorer_result {
             Ok(mut scorer) => {
+                let threshold = scorer.meta.ml_pass_threshold;
                 for call in &mut all_calls {
                     call.ml_prob = scorer.score(call);
                 }
@@ -1183,12 +1186,16 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
                     "[run/call] ML scoring applied: {} calls scored",
                     all_calls.len()
                 );
+                threshold
             }
             Err(e) => {
                 eprintln!("[run/call] WARNING: failed to load ML model: {}", e);
+                0.5
             }
         }
-    }
+    } else {
+        0.5
+    };
 
     for call in &all_calls {
         if call.filter == VariantFilter::Pass {
@@ -1227,14 +1234,14 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
         let path = base_path.with_extension(ext);
         let file = File::create(&path)?;
         let mut writer = BufWriter::new(file);
-        write_variants(&all_calls, formats[0], &mut writer)?;
+        write_variants(&all_calls, formats[0], &mut writer, ml_threshold)?;
     } else {
         for &fmt in &formats {
             let ext = format_extension(fmt);
             let path = base_path.with_extension(ext);
             let file = File::create(&path)?;
             let mut writer = BufWriter::new(file);
-            write_variants(&all_calls, fmt, &mut writer)?;
+            write_variants(&all_calls, fmt, &mut writer, ml_threshold)?;
         }
     }
 

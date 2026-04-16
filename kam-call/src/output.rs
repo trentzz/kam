@@ -38,6 +38,10 @@ pub enum OutputFormat {
 ///
 /// Dispatches to the appropriate format-specific writer.
 ///
+/// `ml_filter_threshold` is the probability threshold at or above which a call
+/// is labelled `ML_PASS` in the `ml_filter` column. Pass `0.5` when no model
+/// is loaded. Use `scorer.meta.ml_pass_threshold` when a model is loaded.
+///
 /// # Example
 /// ```
 /// use kam_call::output::{write_variants, OutputFormat};
@@ -45,18 +49,19 @@ pub enum OutputFormat {
 ///
 /// let calls: Vec<VariantCall> = vec![];
 /// let mut buf = Vec::new();
-/// write_variants(&calls, OutputFormat::Tsv, &mut buf).unwrap();
+/// write_variants(&calls, OutputFormat::Tsv, &mut buf, 0.5).unwrap();
 /// assert!(!buf.is_empty());
 /// ```
 pub fn write_variants(
     calls: &[VariantCall],
     format: OutputFormat,
     writer: &mut dyn Write,
+    ml_filter_threshold: f64,
 ) -> io::Result<()> {
     match format {
-        OutputFormat::Tsv => write_tsv(calls, writer),
-        OutputFormat::Csv => write_csv(calls, writer),
-        OutputFormat::Json => write_json(calls, writer),
+        OutputFormat::Tsv => write_delimited(calls, '\t', writer, ml_filter_threshold),
+        OutputFormat::Csv => write_delimited(calls, ',', writer, ml_filter_threshold),
+        OutputFormat::Json => write_json_with_threshold(calls, writer, ml_filter_threshold),
         OutputFormat::Vcf => write_vcf(calls, writer),
     }
 }
@@ -76,7 +81,7 @@ pub fn write_variants(
 /// assert!(text.starts_with("target_id\t"));
 /// ```
 pub fn write_tsv(calls: &[VariantCall], writer: &mut dyn Write) -> io::Result<()> {
-    write_delimited(calls, '\t', writer)
+    write_delimited(calls, '\t', writer, 0.5)
 }
 
 /// Write variant calls as comma-separated values.
@@ -91,7 +96,7 @@ pub fn write_tsv(calls: &[VariantCall], writer: &mut dyn Write) -> io::Result<()
 /// assert!(text.starts_with("target_id,"));
 /// ```
 pub fn write_csv(calls: &[VariantCall], writer: &mut dyn Write) -> io::Result<()> {
-    write_delimited(calls, ',', writer)
+    write_delimited(calls, ',', writer, 0.5)
 }
 
 /// Write variant calls as a JSON array of objects.
@@ -108,9 +113,7 @@ pub fn write_csv(calls: &[VariantCall], writer: &mut dyn Write) -> io::Result<()
 /// assert_eq!(text.trim(), "[]");
 /// ```
 pub fn write_json(calls: &[VariantCall], writer: &mut dyn Write) -> io::Result<()> {
-    let items: Vec<Value> = calls.iter().map(call_to_json).collect();
-    let serialised = serde_json::to_string_pretty(&items).map_err(io::Error::other)?;
-    writeln!(writer, "{serialised}")
+    write_json_with_threshold(calls, writer, 0.5)
 }
 
 /// Write variant calls as minimal VCF 4.3.
@@ -447,7 +450,15 @@ fn opt_to_str<T: std::fmt::Display>(v: Option<T>) -> String {
 }
 
 /// Write a delimited (TSV or CSV) format.
-fn write_delimited(calls: &[VariantCall], sep: char, writer: &mut dyn Write) -> io::Result<()> {
+///
+/// `ml_filter_threshold` is the probability at or above which a call is
+/// labelled `ML_PASS`. Callers that do not use a model should pass `0.5`.
+fn write_delimited(
+    calls: &[VariantCall],
+    sep: char,
+    writer: &mut dyn Write,
+    ml_filter_threshold: f64,
+) -> io::Result<()> {
     let s = sep;
     writeln!(
         writer,
@@ -465,7 +476,7 @@ fn write_delimited(calls: &[VariantCall], sep: char, writer: &mut dyn Write) -> 
             None => ".".to_string(),
         };
         let ml_filter_str = match call.ml_prob {
-            Some(p) if p >= 0.5 => "ML_PASS",
+            Some(p) if f64::from(p) >= ml_filter_threshold => "ML_PASS",
             Some(_) => "ML_FILTER",
             None => ".",
         };
@@ -514,10 +525,24 @@ fn write_delimited(calls: &[VariantCall], sep: char, writer: &mut dyn Write) -> 
     Ok(())
 }
 
+/// Write calls as a JSON array using `ml_filter_threshold` for the `ml_filter` field.
+fn write_json_with_threshold(
+    calls: &[VariantCall],
+    writer: &mut dyn Write,
+    ml_filter_threshold: f64,
+) -> io::Result<()> {
+    let items: Vec<Value> = calls
+        .iter()
+        .map(|c| call_to_json(c, ml_filter_threshold))
+        .collect();
+    let serialised = serde_json::to_string_pretty(&items).map_err(io::Error::other)?;
+    writeln!(writer, "{serialised}")
+}
+
 /// Serialise a single [`VariantCall`] to a JSON [`Value`].
-fn call_to_json(call: &VariantCall) -> Value {
+fn call_to_json(call: &VariantCall, ml_filter_threshold: f64) -> Value {
     let ml_filter = match call.ml_prob {
-        Some(p) if p >= 0.5 => "ML_PASS",
+        Some(p) if f64::from(p) >= ml_filter_threshold => "ML_PASS",
         Some(_) => "ML_FILTER",
         None => ".",
     };
@@ -879,21 +904,47 @@ mod tests {
         let calls = vec![make_call("test", b"A", b"T")];
 
         let mut tsv_buf = Vec::new();
-        write_variants(&calls, OutputFormat::Tsv, &mut tsv_buf).unwrap();
+        write_variants(&calls, OutputFormat::Tsv, &mut tsv_buf, 0.5).unwrap();
         assert!(String::from_utf8(tsv_buf).unwrap().contains('\t'));
 
         let mut csv_buf = Vec::new();
-        write_variants(&calls, OutputFormat::Csv, &mut csv_buf).unwrap();
+        write_variants(&calls, OutputFormat::Csv, &mut csv_buf, 0.5).unwrap();
         assert!(String::from_utf8(csv_buf).unwrap().contains(','));
 
         let mut json_buf = Vec::new();
-        write_variants(&calls, OutputFormat::Json, &mut json_buf).unwrap();
+        write_variants(&calls, OutputFormat::Json, &mut json_buf, 0.5).unwrap();
         let parsed: serde_json::Value =
             serde_json::from_str(&String::from_utf8(json_buf).unwrap()).unwrap();
         assert!(parsed.is_array());
 
         let mut vcf_buf = Vec::new();
-        write_variants(&calls, OutputFormat::Vcf, &mut vcf_buf).unwrap();
+        write_variants(&calls, OutputFormat::Vcf, &mut vcf_buf, 0.5).unwrap();
         assert!(String::from_utf8(vcf_buf).unwrap().contains("##fileformat"));
+    }
+
+    // Test 11: ml_filter column respects the supplied threshold, not the hardcoded 0.5.
+    #[test]
+    fn ml_filter_respects_custom_threshold() {
+        // Build a call with ml_prob = 0.46, which sits between 0.449 and 0.5.
+        let mut call = make_call("TARGET1", b"A", b"T");
+        call.ml_prob = Some(0.46_f32);
+
+        // With a threshold of 0.449: 0.46 >= 0.449, so the call should be ML_PASS.
+        let mut buf = Vec::new();
+        write_delimited(&[call.clone()], '\t', &mut buf, 0.449).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+        assert!(
+            output.contains("ML_PASS"),
+            "0.46 >= 0.449 should be ML_PASS, got: {output}"
+        );
+
+        // With a threshold of 0.5: 0.46 < 0.5, so the call should be ML_FILTER.
+        let mut buf2 = Vec::new();
+        write_delimited(&[call], '\t', &mut buf2, 0.5).unwrap();
+        let output2 = String::from_utf8(buf2).unwrap();
+        assert!(
+            output2.contains("ML_FILTER"),
+            "0.46 < 0.5 should be ML_FILTER, got: {output2}"
+        );
     }
 }
