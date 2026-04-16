@@ -852,4 +852,210 @@ mod tests {
         };
         assert_eq!(args.log, vec!["umi", "family"]);
     }
+
+    // ── New CLI parsing tests ────────────────────────────────────────────────
+
+    /// `--junction-sequences` on `run` subcommand parses into Some(PathBuf).
+    #[test]
+    fn run_junction_sequences_parses_path() {
+        let cli = Cli::try_parse_from([
+            "kam",
+            "run",
+            "--r1",
+            "r1.fq",
+            "--r2",
+            "r2.fq",
+            "--targets",
+            "targets.fa",
+            "--output-dir",
+            "out",
+            "--junction-sequences",
+            "/path/to/file.fa",
+        ])
+        .expect("--junction-sequences should parse on run");
+        let Commands::Run(args) = cli.command else {
+            panic!("expected Run subcommand");
+        };
+        assert_eq!(
+            args.junction_sequences,
+            Some(PathBuf::from("/path/to/file.fa")),
+            "junction_sequences should be Some with the given path"
+        );
+    }
+
+    /// `--junction-sequences` absent on `run` results in None.
+    #[test]
+    fn run_junction_sequences_absent_is_none() {
+        let cli = Cli::try_parse_from([
+            "kam",
+            "run",
+            "--r1",
+            "r1.fq",
+            "--r2",
+            "r2.fq",
+            "--targets",
+            "targets.fa",
+            "--output-dir",
+            "out",
+        ])
+        .expect("run without --junction-sequences should parse");
+        let Commands::Run(args) = cli.command else {
+            panic!("expected Run subcommand");
+        };
+        assert!(
+            args.junction_sequences.is_none(),
+            "junction_sequences should be None when not supplied"
+        );
+    }
+
+    /// `--sv-junctions` and `--junction-sequences` can both be provided.
+    /// They are independent flags, not mutually exclusive.
+    #[test]
+    fn run_sv_junctions_and_junction_sequences_both_present() {
+        let cli = Cli::try_parse_from([
+            "kam",
+            "run",
+            "--r1",
+            "r1.fq",
+            "--r2",
+            "r2.fq",
+            "--targets",
+            "targets.fa",
+            "--output-dir",
+            "out",
+            "--sv-junctions",
+            "sv.fa",
+            "--junction-sequences",
+            "jseq.fa",
+        ])
+        .expect("both --sv-junctions and --junction-sequences should parse");
+        let Commands::Run(args) = cli.command else {
+            panic!("expected Run subcommand");
+        };
+        assert_eq!(args.sv_junctions, Some(PathBuf::from("sv.fa")));
+        assert_eq!(args.junction_sequences, Some(PathBuf::from("jseq.fa")));
+    }
+
+    /// `--junction-sequences` on the `index` subcommand parses into IndexArgs.
+    #[test]
+    fn index_junction_sequences_parses_into_index_args() {
+        let cli = Cli::try_parse_from([
+            "kam",
+            "index",
+            "--input",
+            "mol.bin",
+            "--targets",
+            "t.fa",
+            "--output",
+            "idx.bin",
+            "--junction-sequences",
+            "/data/junctions.fa",
+        ])
+        .expect("--junction-sequences should parse on index");
+        let Commands::Index(args) = cli.command else {
+            panic!("expected Index subcommand");
+        };
+        assert_eq!(
+            args.junction_sequences,
+            Some(PathBuf::from("/data/junctions.fa"))
+        );
+    }
+
+    /// `--ml-model twist-duplex-v2` is parsed as Some("twist-duplex-v2").
+    #[test]
+    fn run_ml_model_parses() {
+        let cli = Cli::try_parse_from([
+            "kam",
+            "run",
+            "--r1",
+            "r1.fq",
+            "--r2",
+            "r2.fq",
+            "--targets",
+            "t.fa",
+            "--output-dir",
+            "out",
+            "--ml-model",
+            "twist-duplex-v2",
+        ])
+        .expect("--ml-model should parse");
+        let Commands::Run(args) = cli.command else {
+            panic!("expected Run subcommand");
+        };
+        assert_eq!(
+            args.ml_model,
+            Some("twist-duplex-v2".to_string()),
+            "ml_model should hold the provided model name"
+        );
+    }
+
+    /// `-k 25` (short alias for `--kmer-size-override`) is parsed correctly on `run`.
+    #[test]
+    fn run_kmer_size_short_alias() {
+        let cli = Cli::try_parse_from(["kam", "run", "--r1", "r1.fq", "-k", "25"])
+            .expect("-k 25 should parse on run");
+        let Commands::Run(args) = cli.command else {
+            panic!("expected Run subcommand");
+        };
+        assert_eq!(
+            args.kmer_size_override,
+            Some(25u32),
+            "kmer_size_override should be 25"
+        );
+    }
+
+    /// Missing required `--r1` on `assemble` produces an error, not a panic.
+    #[test]
+    fn assemble_missing_r1_errors_with_r1_mention() {
+        let result =
+            Cli::try_parse_from(["kam", "assemble", "--r2", "r2.fq", "--output", "mol.bin"]);
+        assert!(result.is_err(), "missing --r1 should produce an error");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("r1"),
+            "error should mention the missing r1 flag: {err_msg}"
+        );
+    }
+
+    /// A path with spaces (quoted) is parsed correctly on `--targets`.
+    #[test]
+    fn run_targets_path_with_spaces() {
+        let cli = Cli::try_parse_from([
+            "kam",
+            "run",
+            "--r1",
+            "r1.fq",
+            "--targets",
+            "/path/with spaces/targets.fa",
+        ])
+        .expect("path with spaces should parse");
+        let Commands::Run(args) = cli.command else {
+            panic!("expected Run subcommand");
+        };
+        assert_eq!(
+            args.targets,
+            Some(PathBuf::from("/path/with spaces/targets.fa")),
+            "paths containing spaces should be preserved verbatim"
+        );
+    }
+
+    /// `--ti-rescue` flag defaults to false and can be set to true.
+    #[test]
+    fn run_ti_rescue_flag() {
+        // Default: false.
+        let cli_default = Cli::try_parse_from(["kam", "run", "--r1", "r1.fq"])
+            .expect("parse without --ti-rescue");
+        let Commands::Run(ref args) = cli_default.command else {
+            panic!("expected Run subcommand");
+        };
+        assert!(!args.ti_rescue, "ti_rescue should default to false");
+
+        // Explicit: true.
+        let cli_set = Cli::try_parse_from(["kam", "run", "--r1", "r1.fq", "--ti-rescue"])
+            .expect("parse with --ti-rescue");
+        let Commands::Run(ref args2) = cli_set.command else {
+            panic!("expected Run subcommand");
+        };
+        assert!(args2.ti_rescue, "ti_rescue should be true when flag is set");
+    }
 }
