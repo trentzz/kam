@@ -18,3 +18,4 @@ scripts/ml/__pycache__/
 *.fls
 *.fdb_latexmk
 *.synctex.gz
+.claude/
