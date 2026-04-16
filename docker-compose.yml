@@ -1,0 +1,55 @@
+# docker-compose.yml for kam — alignment-free variant detection for duplex UMI sequencing.
+#
+# Provides a convenience wrapper around the kam container with bind-mounted
+# input and output directories.
+#
+# Typical usage:
+#
+#   # Build the image from source:
+#   docker compose build
+#
+#   # Run a variant detection job:
+#   docker compose run --rm kam run \
+#     --r1 /data/R1.fastq.gz \
+#     --r2 /data/R2.fastq.gz \
+#     --targets /data/panel.fa \
+#     --output-dir /results/
+#
+# Place input files in ./data/ and results will appear in ./results/.
+# Override the image tag by setting KAM_IMAGE in your environment or a .env file.
+
+version: "3.8"
+
+services:
+  kam:
+    # Use a locally built image by default. Override with KAM_IMAGE to pull
+    # a published image (e.g. KAM_IMAGE=ghcr.io/trentzz/kam:0.2.0).
+    build: .
+    image: ${KAM_IMAGE:-kam:latest}
+
+    volumes:
+      # Input files (FASTQ, target panel FASTA, config files).
+      - ./data:/data:ro
+      # Output directory (VCF, TSV, QC JSON). Must be writable.
+      - ./results:/results
+
+    environment:
+      # Optional: set paths via environment variables for scripted invocations.
+      # These are not used by kam directly — pass them as CLI flags in the
+      # command below, or substitute them in your wrapper script.
+      - KAM_R1=${KAM_R1:-/data/R1.fastq.gz}
+      - KAM_R2=${KAM_R2:-/data/R2.fastq.gz}
+      - KAM_TARGETS=${KAM_TARGETS:-/data/panel.fa}
+      - KAM_OUTPUT=${KAM_OUTPUT:-/results}
+
+    # Example command — edit or override on the CLI with:
+    #   docker compose run --rm kam run --r1 ... --r2 ... --targets ... --output-dir ...
+    command: >
+      run
+      --r1 /data/R1.fastq.gz
+      --r2 /data/R2.fastq.gz
+      --targets /data/panel.fa
+      --output-dir /results/
+
+    # Do not restart automatically — variant calling is a one-shot batch job.
+    restart: "no"
