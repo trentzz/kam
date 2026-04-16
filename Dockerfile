@@ -25,12 +25,13 @@
 # Stage 1: Build
 # Uses the official Rust image to compile the workspace with ML support.
 # ---------------------------------------------------------------------------
-FROM rust:1.80-slim AS builder
+FROM rust:1.94-slim AS builder
 
 # Install build-time dependencies needed by openssl and other sys crates.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     libssl-dev \
+    g++ \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
@@ -68,6 +69,7 @@ COPY kam-pathfind/src kam-pathfind/src
 COPY kam-call/src     kam-call/src
 COPY kam-ml/src       kam-ml/src
 COPY kam/src          kam/src
+COPY kam/models       kam/models
 
 # Touch source files so cargo knows they changed after the stub build.
 RUN find . -name "*.rs" -exec touch {} +
@@ -78,17 +80,20 @@ RUN cargo build --release --features ml
 # Stage 2: Runtime
 # Minimal Debian image — no Rust toolchain, no build tools.
 # ---------------------------------------------------------------------------
-FROM debian:bookworm-slim AS runtime
+FROM debian:trixie-slim AS runtime
 
 LABEL org.opencontainers.image.title="kam" \
       org.opencontainers.image.description="Alignment-free variant detection for duplex UMI sequencing" \
       org.opencontainers.image.version="0.3.0" \
       org.opencontainers.image.source="https://github.com/trentzz/kam"
 
-# Copy required shared libraries from the builder stage rather than
-# installing via apt-get (avoids network dependency during build).
-COPY --from=builder /lib/x86_64-linux-gnu/libssl.so.3 /lib/x86_64-linux-gnu/
-COPY --from=builder /lib/x86_64-linux-gnu/libcrypto.so.3 /lib/x86_64-linux-gnu/
+# Install runtime libraries required by the binary and the ONNX Runtime.
+# Note: if build fails here with "Unable to locate package", try building
+# with --network host (e.g. docker build --network host -t kam .)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libssl3 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy the compiled binary from the builder stage.
 COPY --from=builder /build/target/release/kam /usr/local/bin/kam
