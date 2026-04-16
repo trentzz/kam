@@ -145,9 +145,42 @@ kam run \
 
 Fusions are written as paired BND records in VCF output.
 
+### Junction sequence monitoring: tracking SVs from BAM
+
+If you have observed a fusion or structural variant in a BAM file (e.g. via IGV), you can
+provide the junction sequence directly. No genomic coordinates are needed. The observed
+chimeric read sequence encodes the correct strand orientation and includes any inserted
+nucleotides at the breakpoint.
+
+Create a FASTA file with the junction sequence(s):
+
+```
+>BCR_ABL1_patient_junction
+CAGAGGAAGAGCTGCAGACCATGCGTCTGTGGCCGCTGATCCTGTCGGAGCCATAATTAGCAGACCGGTACCTGAGGACTG
+```
+
+Run with `--junction-sequences`:
+
+```bash
+kam run \
+  --r1 plasma_R1.fastq.gz \
+  --r2 plasma_R2.fastq.gz \
+  --targets panel_targets.fa \
+  --junction-sequences junction_sequences.fa \
+  --output-dir results/ \
+  --output-format tsv,vcf
+```
+
+Each junction entry is walked as a standalone target. The FASTA header appears as the
+`target_id` in the output. Total library depth is used as the VAF denominator.
+
+This mode is ideal for serial ctDNA monitoring of a known structural event. Use the same
+junction FASTA across all time points for comparable results. See
+`guides/patient-sv-monitoring.md` for a full walkthrough.
+
 ### Everything at once
 
-Run SNV/indel, SV, and fusion detection in a single pass:
+Run SNV/indel, SV, fusion, and junction monitoring in a single pass:
 
 ```bash
 kam run \
@@ -156,6 +189,7 @@ kam run \
   --targets panel_targets.fa \
   --sv-junctions sv_junctions.fa \
   --fusion-targets fusion_targets.fa \
+  --junction-sequences junction_from_bam.fa \
   --target-variants biopsy_somatic.vcf \
   --output-dir results/ \
   --max-vaf 0.35 \
