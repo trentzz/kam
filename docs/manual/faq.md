@@ -33,15 +33,17 @@ kam detects 11 variant types:
 | `Insertion` (< 50 bp) | Standard graph walk |
 | `Deletion` (< 50 bp) | Standard graph walk |
 | `Complex` | Standard graph walk |
-| `LargeDeletion` (≥ 50 bp) | `sv_junctions` file with deletion junction sequences |
-| `TandemDuplication` (≥ 50 bp) | `sv_junctions` file with duplication junction sequences |
+| `LargeDeletion` (≥ 50 bp) | Standard graph walk |
+| `TandemDuplication` (≥ 50 bp) | Standard graph walk |
 | `Inversion` (≥ 50 bp) | `sv_junctions` file with inversion junction sequences |
 | `InvDel` (≥ 50 bp) | `sv_junctions` file with inversion-deletion junction sequences |
 | `NovelInsertion` (≥ 50 bp) | Standard graph walk with extended path length |
 | `Fusion` | `fusion_targets` file with synthetic breakpoint junction sequences |
 
-SNVs, MNVs, and short indels are detected from the standard de Bruijn graph walk and do not
-require any additional input files. Large SVs require pre-computed junction sequences.
+SNVs, MNVs, short indels, large deletions, tandem duplications, and novel insertions are all
+detected from the standard de Bruijn graph walk without additional input files. Only inversions
+and InvDel events require pre-computed junction sequences, because their breakpoints introduce
+reverse-complement k-mers that are absent from the panel target sequences.
 
 ---
 

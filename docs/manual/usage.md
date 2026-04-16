@@ -43,8 +43,8 @@ r2 = "sample_R2.fastq.gz"
 targets = "panel_targets.fa"
 
 [output]
-dir = "results/"
-format = ["tsv", "vcf"]
+output_dir = "results/"
+output_format = "tsv,vcf"
 
 [calling]
 max_vaf = 0.35

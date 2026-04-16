@@ -210,6 +210,19 @@ Only calls that exactly match a pre-specified truth variant remain `PASS`. All o
 
 The monitoring filter is the reason kam achieves near-zero false positives in tracking mode. The background biology in cfDNA (germline variants, clonal haematopoiesis, somatic mosaicism in normal tissue) produces ~35–72 PASS calls per sample in discovery mode. Monitoring mode filters all of them.
 
+### TI rescue (`--ti-rescue`)
+
+When `--ti-rescue` is set alongside `--target-variants`, the caller performs a rescue pass for each TI variant that produced no matching call. The k-mer index is queried directly for the expected alt k-mers.
+
+Rescue results are written with an additional `call_source` field:
+
+| Value | Meaning |
+|-------|---------|
+| `RESCUED` | Evidence found in the k-mer index; the variant exists but did not survive standard calling filters |
+| `NO_EVIDENCE` | No alt k-mers found for this variant in the index |
+
+Rescue probing does not change the filter labels of existing calls. It only adds entries for target variants that were otherwise absent from the output.
+
 ---
 
 ## CallerConfig summary
@@ -223,6 +236,7 @@ The monitoring filter is the reason kam achieves near-zero false positives in tr
 | `min_alt_duplex_for_single` | Some(1) | Not exposed |
 | `max_vaf` | None | `--max-vaf` |
 | `background_error_rate` | 1e-4 | Not exposed |
+| `ti_rescue` | false | `--ti-rescue` |
 
 ---
 

@@ -82,6 +82,16 @@ See `docs/project/devmanual/rust_workspace_architecture.md` for full architectur
 - `docs/project/devmanual/de_novo_discovery_design.md` — 4 approaches explored, panel-aware de novo as near-term extension, deferred to Phase 2
 - `docs/project/devmanual/output_format_specs.md` — annotated FASTQ tag definitions, QC JSON schemas per stage, TSV/VCF/JSON variant output, collision probability reporting
 - `docs/project/devmanual/nextcloud.md` — Nextcloud download and upload instructions, bigdata/ structure
+- `docs/project/devmanual/sv_detection_design.md` — SV detection design: type taxonomy, graph manifestation, junction allowlist
+- `docs/project/devmanual/sv_detection_implementation.md` — SV detection implementation details and results
+- `docs/project/devmanual/fusion_detection_design.md` — fusion detection design
+- `docs/project/devmanual/hash_partition_umi_grouping.md` — hash-partition UMI grouping algorithm
+- `docs/project/devmanual/ml_gradient_boosting.md` — gradient boosting for variant re-scoring
+- `docs/project/devmanual/ml_integration_design.md` — ML integration design: ONNX runtime, feature extraction, bundled models
+- `docs/project/devmanual/benchmarking.md` — running benchmarks, adding datasets, scoring results
+- `docs/project/devmanual/release.md` — preparing and publishing a release
+- `docs/project/devmanual/task-tracking.md` — picking up tasks, creating epics, committing work
+- `docs/project/devmanual/investigation-docs.md` — writing up a diagnostic investigation
 
 ### Other
 - `docs/project/features/` — feature specs (todo/inprogress/done)
@@ -114,5 +124,4 @@ Read the relevant guide before starting work in that area.
 4. If unsure about scope, err on the side of smaller
 
 ### Current Sprint Goal
-Benchmarking: varforge VAF sweeps for SNV/indel (0.5–5%) and SV new types
-(INS, large DEL, INVDEL at 0.5–5%).
+Post v0.2.0: TI rescue probe feature (`--ti-rescue`), public dataset benchmarking (05-public), and paper writing.

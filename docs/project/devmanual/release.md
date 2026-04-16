@@ -95,6 +95,30 @@ gh release create vX.Y.Z \
 
 ---
 
+## Publish to crates.io
+
+Publish the workspace crates in dependency order. Each crate must be published
+before its dependants. Use `--allow-dirty` only if the working tree has
+expected untracked files (e.g. bigdata/).
+
+```bash
+cargo publish -p kam-core
+cargo publish -p kam-assemble
+cargo publish -p kam-index
+cargo publish -p kam-pathfind
+cargo publish -p kam-call
+cargo publish -p kam-ml
+cargo publish -p kam-bio --features ml
+```
+
+If a crate has not changed since the last published version, `cargo publish`
+will reject it. Skip unchanged crates.
+
+Authenticate with `cargo login` before publishing. The API token is stored in
+`~/.cargo/credentials.toml`.
+
+---
+
 ## Post-release steps
 
 After the GitHub release is created:

@@ -39,7 +39,7 @@ Input file paths.
 | `r1` | path | Yes | R1 FASTQ input file (gzip-compressed or plain) |
 | `r2` | path | Yes | R2 FASTQ input file (gzip-compressed or plain) |
 | `targets` | path | Yes | Target sequences FASTA file. Each entry is one target window. |
-| `sv_junctions` | path | No | SV junction sequences FASTA. Required for LargeDeletion, TandemDuplication, Inversion, and InvDel detection. |
+| `sv_junctions` | path | No | SV junction sequences FASTA. Required for Inversion and InvDel detection. Not needed for LargeDeletion, TandemDuplication, or NovelInsertion. |
 | `target_variants` | path | No | VCF of expected somatic variants for tumour-informed monitoring mode. When set, only calls matching this truth set are marked PASS. |
 | `fusion_targets` | path | No | Synthetic fusion target sequences FASTA. Required for Fusion (translocation/gene fusion) detection. Each entry ID must follow the format `{name}__{chromA}:{startA}-{endA}__{chromB}:{startB}-{endB}__fusion`. |
 
@@ -167,6 +167,7 @@ apply to standard variants (SNV, MNV, Insertion, Deletion, Complex).
 | `sv_min_alt_molecules` | integer | `1` | Minimum alt molecule count for SV-type calls. A single-molecule SV call can be meaningful in monitoring mode where the target allele is pre-specified. |
 | `sv_strand_bias_threshold` | float | `1.0` | Fisher p-value threshold for strand bias on SV-type variants. Default 1.0 disables the filter. Inversion reads are structurally strand-biased due to directional path walking in the de Bruijn graph; a standard strand bias threshold would flag all inversion calls. |
 | `ti_position_tolerance` | integer | `0` | Position tolerance in base pairs for tumour-informed matching. Default 0 requires exact coordinate matching. Use a non-zero value for large SVs where the called position may differ from the truth VCF due to breakpoint ambiguity. |
+| `ti_rescue` | boolean | `false` | Enable rescue probing for TI targets that produce no matching call. When set alongside `target_variants`, the k-mer index is queried directly for each undetected TI variant. Results appear with `call_source=RESCUED` or `call_source=NO_EVIDENCE`. |
 
 Example:
 
@@ -235,6 +236,7 @@ All config file fields can be overridden via CLI flags. CLI flags always win.
 | `--sv-min-alt-molecules` | `[calling] sv_min_alt_molecules` |
 | `--sv-strand-bias-threshold` | `[calling] sv_strand_bias_threshold` |
 | `--ti-position-tolerance` | `[calling] ti_position_tolerance` |
+| `--ti-rescue` | `[calling] ti_rescue` |
 | `--threads` | `[runtime] threads` |
 
 ---

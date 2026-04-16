@@ -90,14 +90,14 @@ kam run \
 r1 = "sample_R1.fastq.gz"
 r2 = "sample_R2.fastq.gz"
 targets = "panel_targets.fa"
+target_variants = "biopsy_somatic.vcf"
 
 [output]
-dir = "results/"
-format = ["tsv", "vcf"]
+output_dir = "results/"
+output_format = "tsv,vcf"
 
 [calling]
 max_vaf = 0.35
-target_variants = "biopsy_somatic.vcf"
 ```
 
 ---

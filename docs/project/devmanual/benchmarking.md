@@ -13,6 +13,7 @@ duplex UMI FASTQ data from a truth VCF, then run kam and score the output.
 | Comparison | `docs/benchmarking/04-comparison/` | Alignment-based baseline comparison |
 | Public | `docs/benchmarking/05-public/` | Public datasets |
 | Runtime | `docs/benchmarking/06-runtime/` | Runtime profiling |
+| SNV/indel ML boost v1 | `docs/benchmarking/07-snvindel-ml-boost-v1/` | ML model (twist-duplex-v1) evaluation on real titration data |
 
 ---
 

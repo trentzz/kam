@@ -28,7 +28,7 @@ these k-mers and the alt path is invisible to the path walk.
 This document records the design decisions made, what was implemented, and
 what worked.
 
-The design was developed in `docs/research/sv_detection_design.md` before
+The design was developed in `docs/project/devmanual/sv_detection_design.md` before
 implementation began. That document should be read alongside this one.
 
 ---
@@ -252,4 +252,4 @@ sequence is distant from both flanks and sensitivity may drop at low VAF.
 | `kam-call/src/caller.rs` | `LargeDeletion`, `TandemDuplication`, `Inversion` in `VariantType` |
 | `kam-call/src/output.rs` | Symbolic VCF alleles, SVTYPE/SVLEN, ALT headers |
 | `docs/benchmarking/scripts/make_sv_targets.py` | New script |
-| `docs/research/sv_detection_design.md` | Design document (written before implementation) |
+| `docs/project/devmanual/sv_detection_design.md` | Design document (written before implementation) |

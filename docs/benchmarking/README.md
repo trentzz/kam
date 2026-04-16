@@ -12,7 +12,9 @@ Benchmark definitions for kam. Each subdirectory covers one class of variants. C
 | `04-comparison/` | Alignment-based baseline comparison | `bigdata/benchmarking/04-comparison/` |
 | `05-public/` | Public datasets: COLO829, SEQC2, UMI benchmark | `bigdata/benchmarking/05-public/` |
 | `06-runtime/` | Runtime profiling vs alignment-based pipeline | `bigdata/benchmarking/06-runtime/` |
-| `scripts/` | Shared scoring and figure generation scripts |
+| `07-snvindel-ml-boost-v1/` | ML model evaluation on real titration data | `bigdata/benchmarking/07-snvindel-ml-boost-v1/` |
+| `resources/` | Reference data files shared across benchmarks | — |
+| `scripts/` | Shared scoring and figure generation scripts | — |
 
 ## How to run
 

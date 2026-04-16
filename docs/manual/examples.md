@@ -141,11 +141,13 @@ kam run --config examples/no-umi.toml
 
 ### sv-detection.toml
 
-SV mode for detecting large deletions, tandem duplications, and inversions
-alongside SNVs and indels. Requires an SV junction FASTA (`sv_junctions`)
-whose k-mers are added to the allowlist so that breakpoint-spanning reads
-are captured. SV thresholds are relaxed relative to SNV thresholds because
-breakpoint k-mers are naturally rare.
+SV mode for detecting large deletions, tandem duplications, novel insertions,
+inversions, and InvDel events alongside SNVs and indels. Large deletions,
+tandem duplications, and novel insertions are detected automatically without
+any extra input. Inversions and InvDel events require an SV junction FASTA
+(`sv_junctions`) whose k-mers are added to the allowlist so that
+breakpoint-spanning reads are captured. SV thresholds are relaxed relative to
+SNV thresholds because breakpoint k-mers are naturally rare.
 
 ```bash
 kam run --config examples/sv-detection.toml
