@@ -820,4 +820,483 @@ mod tests {
         assert_eq!(config.read_structure.umi_length, 5);
         assert_eq!(config.read_structure.skip_length, 2);
     }
+
+    // ── Edge-case tests ─────────────────────────────────────────────────────
+
+    // UMI base exactly at quality threshold passes; one below fails.
+    // Phred+33 encoding: Q=20 is ASCII 53 = '5'.
+    #[test]
+    fn umi_quality_at_threshold_passes() {
+        let config = ParserConfig {
+            min_umi_quality: Some(20),
+            ..ParserConfig::default()
+        };
+        let q20_char = (20 + 33) as u8; // ASCII 53 = '5'
+        let (r1_seq, _) = make_read(b"ACGTA", b"TG", b"NNNNNNNNNN");
+        let mut r1_qual = vec![b'I'; r1_seq.len()];
+        for q in r1_qual.iter_mut().take(5) {
+            *q = q20_char;
+        }
+        let (r2_seq, r2_qual) = make_read(b"TGCAT", b"AC", b"NNNNNNNNNN");
+        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &config)
+            .expect("should not return Err");
+        assert!(
+            matches!(result, ParseResult::Ok(_)),
+            "UMI base at exactly threshold should pass"
+        );
+    }
+
+    #[test]
+    fn umi_quality_one_below_threshold_fails() {
+        let config = ParserConfig {
+            min_umi_quality: Some(20),
+            ..ParserConfig::default()
+        };
+        let q19_char = (19 + 33) as u8;
+        let (r1_seq, _) = make_read(b"ACGTA", b"TG", b"NNNNNNNNNN");
+        let mut r1_qual = vec![b'I'; r1_seq.len()];
+        r1_qual[0] = q19_char; // First UMI base below threshold.
+        let (r2_seq, r2_qual) = make_read(b"TGCAT", b"AC", b"NNNNNNNNNN");
+        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &config)
+            .expect("should not return Err");
+        assert!(
+            matches!(
+                result,
+                ParseResult::Dropped {
+                    reason: DropReason::LowUmiQuality,
+                    ..
+                }
+            ),
+            "UMI base one below threshold should be dropped"
+        );
+    }
+
+    // All UMI bases fail quality: molecule is dropped with correct reason.
+    #[test]
+    fn all_umi_bases_fail_quality_dropped() {
+        let config = ParserConfig {
+            min_umi_quality: Some(30),
+            ..ParserConfig::default()
+        };
+        let (r1_seq, _) = make_read(b"ACGTA", b"TG", b"NNNNNNNNNN");
+        let mut r1_qual = vec![b'I'; r1_seq.len()];
+        for q in r1_qual.iter_mut().take(5) {
+            *q = b'#'; // Q=2, well below threshold.
+        }
+        let (r2_seq, r2_qual) = make_read(b"TGCAT", b"AC", b"NNNNNNNNNN");
+        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &config)
+            .expect("should not return Err");
+        match result {
+            ParseResult::Dropped {
+                reason: DropReason::LowUmiQuality,
+                detail,
+            } => {
+                assert!(
+                    detail.contains("r1_umi_base=0"),
+                    "detail should report base index 0: {detail}"
+                );
+            }
+            other => panic!("Expected LowUmiQuality drop, got: {other:?}"),
+        }
+    }
+
+    // Skip bases with 1bp length: returns SkipLengthMismatch error.
+    #[test]
+    fn skip_length_1bp_returns_error() {
+        let config = ParserConfig {
+            read_structure: ReadStructure {
+                umi_length: 5,
+                skip_length: 1,
+            },
+            ..ParserConfig::default()
+        };
+        let r1_seq = b"ACGTATNNNNNNNNNN";
+        let r1_qual = b"IIIIIIIIIIIIIIII";
+        let r2_seq = b"TGCATATNNNNNNNNNN";
+        let r2_qual = b"IIIIIIIIIIIIIIIII";
+        let result = parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &config);
+        assert!(
+            matches!(result, Err(ParseError::SkipLengthMismatch { actual: 1 })),
+            "1bp skip length should return SkipLengthMismatch, got: {result:?}"
+        );
+    }
+
+    // Skip bases with 3bp length: returns SkipLengthMismatch error.
+    #[test]
+    fn skip_length_3bp_returns_error() {
+        let config = ParserConfig {
+            read_structure: ReadStructure {
+                umi_length: 5,
+                skip_length: 3,
+            },
+            ..ParserConfig::default()
+        };
+        let r1_seq = b"ACGTATGNNNNNNNNNNN";
+        let r1_qual = b"IIIIIIIIIIIIIIIIII";
+        let r2_seq = b"TGCATAGNNNNNNNNNNNN";
+        let r2_qual = b"IIIIIIIIIIIIIIIIIII";
+        let result = parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &config);
+        assert!(
+            matches!(result, Err(ParseError::SkipLengthMismatch { actual: 3 })),
+            "3bp skip length should return SkipLengthMismatch, got: {result:?}"
+        );
+    }
+
+    // Template exactly at minimum length: passes.
+    #[test]
+    fn template_exactly_at_min_length_passes() {
+        let config = ParserConfig {
+            min_template_length: Some(10),
+            ..ParserConfig::default()
+        };
+        let (r1_seq, r1_qual) = make_read(b"ACGTA", b"TG", b"NNNNNNNNNN"); // 10 bp template
+        let (r2_seq, r2_qual) = make_read(b"TGCAT", b"AC", b"NNNNNNNNNN");
+        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &config)
+            .expect("should not return Err");
+        assert!(
+            matches!(result, ParseResult::Ok(_)),
+            "template at exactly min_template_length should pass"
+        );
+    }
+
+    // Template one base shorter than minimum: dropped.
+    #[test]
+    fn template_one_below_min_length_dropped() {
+        let config = ParserConfig {
+            min_template_length: Some(10),
+            ..ParserConfig::default()
+        };
+        let (r1_seq, r1_qual) = make_read(b"ACGTA", b"TG", b"NNNNNNNNN"); // 9 bp template
+        let (r2_seq, r2_qual) = make_read(b"TGCAT", b"AC", b"NNNNNNNNN");
+        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &config)
+            .expect("should not return Err");
+        assert!(
+            matches!(
+                result,
+                ParseResult::Dropped {
+                    reason: DropReason::TemplateTooShort,
+                    ..
+                }
+            ),
+            "template one below minimum should be dropped"
+        );
+    }
+
+    // Canonical UMI pair is symmetric: parse(A+B) and parse(B+A) give same canonical.
+    #[test]
+    fn canonical_umi_pair_is_symmetric() {
+        let (r1_a, q1_a) = make_read(b"ACGTA", b"TG", b"NNNNNNNNNN");
+        let (r2_a, q2_a) = make_read(b"TGCAT", b"AC", b"NNNNNNNNNN");
+        let result_a =
+            parse_read_pair(&r1_a, &q1_a, &r2_a, &q2_a, &default_config()).unwrap();
+
+        let (r1_b, q1_b) = make_read(b"TGCAT", b"AC", b"NNNNNNNNNN");
+        let (r2_b, q2_b) = make_read(b"ACGTA", b"TG", b"NNNNNNNNNN");
+        let result_b =
+            parse_read_pair(&r1_b, &q1_b, &r2_b, &q2_b, &default_config()).unwrap();
+
+        let canon_a = match result_a {
+            ParseResult::Ok(p) => p.canonical_umi.clone(),
+            ParseResult::Dropped { .. } => panic!("expected Ok"),
+        };
+        let canon_b = match result_b {
+            ParseResult::Ok(p) => p.canonical_umi.clone(),
+            ParseResult::Dropped { .. } => panic!("expected Ok"),
+        };
+
+        assert_eq!(
+            canon_a, canon_b,
+            "canonical UMI pair must be the same regardless of R1/R2 order"
+        );
+    }
+
+    // UMI with N bases: parses successfully when no quality threshold is set.
+    #[test]
+    fn umi_with_n_bases_parses_when_no_quality_threshold() {
+        let (r1_seq, r1_qual) = make_read(b"NNNNN", b"TG", b"NNNNNNNNNN");
+        let (r2_seq, r2_qual) = make_read(b"NNNNN", b"AC", b"NNNNNNNNNN");
+        let result =
+            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config()).unwrap();
+        assert!(
+            matches!(result, ParseResult::Ok(_)),
+            "N bases in UMI should parse successfully without quality filter"
+        );
+    }
+
+    // All-N template: parses successfully.
+    #[test]
+    fn all_n_template_parses_successfully() {
+        let (r1_seq, r1_qual) = make_read(b"ACGTA", b"TG", b"NNNNNNNNNN");
+        let (r2_seq, r2_qual) = make_read(b"TGCAT", b"AC", b"NNNNNNNNNN");
+        let result =
+            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config()).unwrap();
+        match result {
+            ParseResult::Ok(p) => {
+                assert!(
+                    p.template_r1.iter().all(|&b| b == b'N'),
+                    "template should be all N"
+                );
+            }
+            ParseResult::Dropped { .. } => panic!("expected Ok for all-N template"),
+        }
+    }
+
+    // Read shorter than UMI + skip: dropped, not a panic.
+    #[test]
+    fn read_exactly_one_byte_short_dropped_not_panic() {
+        let r1_seq = b"ACGTAC"; // 6 bp, one short of 7
+        let r1_qual = b"IIIIII";
+        let r2_seq = b"TGCATAGNNNNNNNNNN";
+        let r2_qual = b"IIIIIIIIIIIIIIIII";
+        let result =
+            parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &default_config()).unwrap();
+        assert!(
+            matches!(
+                result,
+                ParseResult::Dropped {
+                    reason: DropReason::ReadTooShort,
+                    ..
+                }
+            ),
+            "6 bp read (one short of 7) should be dropped as ReadTooShort"
+        );
+    }
+
+    // R1 and R2 with different template lengths: both parse successfully.
+    #[test]
+    fn r1_r2_different_template_lengths_both_parse() {
+        let (r1_seq, r1_qual) = make_read(b"ACGTA", b"TG", b"NNNNNNNNNN"); // 10 bp template
+        let (r2_seq, r2_qual) = make_read(b"TGCAT", b"AC", b"NNNNNNNNNNNNNNN"); // 15 bp template
+        let result =
+            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config()).unwrap();
+        match result {
+            ParseResult::Ok(p) => {
+                assert_eq!(p.template_r1.len(), 10, "R1 template should be 10 bp");
+                assert_eq!(p.template_r2.len(), 15, "R2 template should be 15 bp");
+            }
+            ParseResult::Dropped { reason, detail } => {
+                panic!("Expected Ok, got Dropped({reason:?}): {detail}");
+            }
+        }
+    }
+
+    // R2 UMI quality failure is detected even when R1 UMI quality is fine.
+    #[test]
+    fn r2_umi_quality_failure_detected() {
+        let config = ParserConfig {
+            min_umi_quality: Some(30),
+            ..ParserConfig::default()
+        };
+        let (r1_seq, r1_qual) = make_read(b"ACGTA", b"TG", b"NNNNNNNNNN");
+        let (r2_seq, _) = make_read(b"TGCAT", b"AC", b"NNNNNNNNNN");
+        let mut r2_qual = vec![b'I'; r2_seq.len()];
+        r2_qual[2] = b'#'; // Third UMI base at Q=2, below threshold.
+        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &config)
+            .expect("should not return Err");
+        match result {
+            ParseResult::Dropped {
+                reason: DropReason::LowUmiQuality,
+                detail,
+            } => {
+                assert!(
+                    detail.contains("r2_umi_base"),
+                    "detail should mention R2: {detail}"
+                );
+            }
+            other => panic!("Expected LowUmiQuality for R2, got: {other:?}"),
+        }
+    }
+
+    // Read exactly at umi+skip length (0 bp template) with min_template_length
+    // set: dropped as TemplateTooShort, not ReadTooShort.
+    #[test]
+    fn zero_template_with_min_template_length_dropped_as_template_too_short() {
+        let config = ParserConfig {
+            min_template_length: Some(1),
+            ..ParserConfig::default()
+        };
+        let (r1_seq, r1_qual) = make_read(b"ACGTA", b"TG", b""); // 0 bp template
+        let (r2_seq, r2_qual) = make_read(b"TGCAT", b"AC", b"");
+        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &config)
+            .expect("should not return Err");
+        assert!(
+            matches!(
+                result,
+                ParseResult::Dropped {
+                    reason: DropReason::TemplateTooShort,
+                    ..
+                }
+            ),
+            "0 bp template with min=1 should be TemplateTooShort, not ReadTooShort"
+        );
+    }
+
+    // Empty read (0 bytes) is dropped as ReadTooShort, not a panic.
+    #[test]
+    fn empty_read_dropped_not_panic() {
+        let result =
+            parse_read_pair(b"", b"", b"TGCATAGNNNNNNNNNN", b"IIIIIIIIIIIIIIIII", &default_config())
+                .unwrap();
+        assert!(
+            matches!(
+                result,
+                ParseResult::Dropped {
+                    reason: DropReason::ReadTooShort,
+                    ..
+                }
+            ),
+            "empty read should be dropped as ReadTooShort"
+        );
+    }
+
+    // Both R1 and R2 empty: dropped as ReadTooShort.
+    #[test]
+    fn both_reads_empty_dropped() {
+        let result = parse_read_pair(b"", b"", b"", b"", &default_config()).unwrap();
+        assert!(
+            matches!(
+                result,
+                ParseResult::Dropped {
+                    reason: DropReason::ReadTooShort,
+                    ..
+                }
+            ),
+            "both reads empty should be dropped as ReadTooShort"
+        );
+    }
+
+    // UMI quality check order: R1 is checked before R2. When both have low
+    // quality, the detail mentions R1.
+    #[test]
+    fn umi_quality_check_order_r1_before_r2() {
+        let config = ParserConfig {
+            min_umi_quality: Some(30),
+            ..ParserConfig::default()
+        };
+        let (r1_seq, _) = make_read(b"ACGTA", b"TG", b"NNNNNNNNNN");
+        let mut r1_qual = vec![b'#'; r1_seq.len()]; // All Q=2 for R1
+        for q in r1_qual.iter_mut().skip(7) {
+            *q = b'I';
+        }
+        let (r2_seq, _) = make_read(b"TGCAT", b"AC", b"NNNNNNNNNN");
+        let mut r2_qual = vec![b'#'; r2_seq.len()];
+        for q in r2_qual.iter_mut().skip(7) {
+            *q = b'I';
+        }
+        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &config)
+            .expect("should not return Err");
+        match result {
+            ParseResult::Dropped {
+                reason: DropReason::LowUmiQuality,
+                detail,
+            } => {
+                assert!(
+                    detail.contains("r1_umi_base"),
+                    "should detect R1 failure first: {detail}"
+                );
+            }
+            other => panic!("Expected LowUmiQuality, got: {other:?}"),
+        }
+    }
+
+    // 9 bp UMI with non-standard ReadStructure parses correctly.
+    #[test]
+    fn nine_bp_umi_parses_correctly() {
+        let config = ParserConfig {
+            read_structure: ReadStructure {
+                umi_length: 9,
+                skip_length: 2,
+            },
+            ..ParserConfig::default()
+        };
+        // 9 bp UMI + 2 bp skip + 10 bp template = 21 bp total
+        let r1_seq = b"ACGTACGTAATNNNNNNNNNN";
+        let r1_qual = b"IIIIIIIIIIIIIIIIIIIII";
+        let r2_seq = b"TGCATGCATATNNNNNNNNNN";
+        let r2_qual = b"IIIIIIIIIIIIIIIIIIIII";
+        let result = parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &config).unwrap();
+        match result {
+            ParseResult::Ok(p) => {
+                assert_eq!(p.umi_r1.len(), 9);
+                assert_eq!(p.umi_r2.len(), 9);
+                assert_eq!(p.umi_r1, b"ACGTACGTA");
+                assert_eq!(p.umi_r2, b"TGCATGCAT");
+            }
+            ParseResult::Dropped { reason, detail } => {
+                panic!("Expected Ok, got Dropped({reason:?}): {detail}");
+            }
+        }
+    }
+
+    // UMI quality fields are correctly extracted and have the right length.
+    #[test]
+    fn umi_quality_fields_have_correct_length_and_values() {
+        let (r1_seq, _) = make_read(b"ACGTA", b"TG", b"NNNNNNNNNN");
+        let mut r1_qual = vec![b'I'; r1_seq.len()];
+        r1_qual[0] = b'5'; // Q=20
+        r1_qual[1] = b'?'; // Q=30
+        r1_qual[2] = b'I'; // Q=40
+        r1_qual[3] = b'5'; // Q=20
+        r1_qual[4] = b'?'; // Q=30
+        let (r2_seq, r2_qual) = make_read(b"TGCAT", b"AC", b"NNNNNNNNNN");
+        let result =
+            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config()).unwrap();
+        match result {
+            ParseResult::Ok(p) => {
+                assert_eq!(p.umi_qual_r1.len(), 5, "UMI quality should be 5 bytes");
+                assert_eq!(p.umi_qual_r1[0], b'5');
+                assert_eq!(p.umi_qual_r1[1], b'?');
+                assert_eq!(p.umi_qual_r2.len(), 5);
+            }
+            ParseResult::Dropped { reason, detail } => {
+                panic!("Expected Ok, got Dropped({reason:?}): {detail}");
+            }
+        }
+    }
+
+    // Identical UMIs on R1 and R2: canonical pair has umi_a == umi_b, strand
+    // is Forward (since R1 UMI == umi_a when they are equal).
+    #[test]
+    fn identical_umi_r1_r2_canonical_pair() {
+        let (r1_seq, r1_qual) = make_read(b"AAAAA", b"TG", b"NNNNNNNNNN");
+        let (r2_seq, r2_qual) = make_read(b"AAAAA", b"AC", b"NNNNNNNNNN");
+        let result =
+            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config()).unwrap();
+        match result {
+            ParseResult::Ok(p) => {
+                assert_eq!(p.canonical_umi.umi_a, b"AAAAA");
+                assert_eq!(p.canonical_umi.umi_b, b"AAAAA");
+                assert_eq!(
+                    p.strand,
+                    Strand::Forward,
+                    "R1 UMI == umi_a when equal, so strand should be Forward"
+                );
+            }
+            ParseResult::Dropped { reason, detail } => {
+                panic!("Expected Ok, got Dropped({reason:?}): {detail}");
+            }
+        }
+    }
+
+    // Filter priority: ReadTooShort is checked before TemplateTooShort and
+    // LowUmiQuality.
+    #[test]
+    fn filter_priority_read_too_short_first() {
+        let config = ParserConfig {
+            min_template_length: Some(100),
+            min_umi_quality: Some(40),
+            ..ParserConfig::default()
+        };
+        let result = parse_read_pair(b"ACGT", b"IIII", b"ACGT", b"IIII", &config).unwrap();
+        assert!(
+            matches!(
+                result,
+                ParseResult::Dropped {
+                    reason: DropReason::ReadTooShort,
+                    ..
+                }
+            ),
+            "ReadTooShort should take priority over other filters"
+        );
+    }
 }

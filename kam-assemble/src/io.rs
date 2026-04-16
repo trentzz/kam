@@ -397,6 +397,113 @@ mod tests {
         assert_eq!(p.template_r2.len(), 20);
     }
 
+    // ── Test 8: Record with empty sequence handled gracefully ──────────
+
+    #[test]
+    fn record_with_empty_sequence_handled_gracefully() {
+        let dir = tempdir();
+        let r1_path = dir.join("R1.fastq");
+        let r2_path = dir.join("R2.fastq");
+
+        // Write a record with an empty sequence. The parser should drop it
+        // as ReadTooShort since 0 < umi+skip (7).
+        write_fastq(&r1_path, &[("read1", "", "")]);
+        write_fastq(&r2_path, &[("read1", "", "")]);
+
+        let config = ParserConfig::default();
+        let (pairs, stats) = read_fastq_pairs(&r1_path, &r2_path, &config).unwrap();
+        assert!(pairs.is_empty(), "empty-sequence record should be dropped");
+        assert_eq!(stats.n_processed, 1);
+        assert_eq!(stats.n_read_too_short, 1);
+    }
+
+    // ── Test 9: R1 empty, R2 non-empty: returns error ───────────────────
+
+    #[test]
+    fn r1_empty_r2_nonempty_returns_error() {
+        let dir = tempdir();
+        let r1_path = dir.join("R1.fastq");
+        let r2_path = dir.join("R2.fastq");
+
+        let seq = make_read_str("ACGTA", "TG", "NNNNNNNNNN");
+        let qual = qual_str(seq.len());
+
+        write_fastq(&r1_path, &[]); // empty
+        write_fastq(&r2_path, &[("read1", &seq, &qual)]);
+
+        let config = ParserConfig::default();
+        let result = read_fastq_pairs(&r1_path, &r2_path, &config);
+        assert!(
+            result.is_err(),
+            "R1 empty + R2 non-empty should return error"
+        );
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("mismatched") || msg.contains("empty"),
+            "error should mention mismatch or empty: {msg}"
+        );
+    }
+
+    // ── Test 10: R1 non-empty, R2 empty: returns error ──────────────────
+
+    #[test]
+    fn r1_nonempty_r2_empty_returns_error() {
+        let dir = tempdir();
+        let r1_path = dir.join("R1.fastq");
+        let r2_path = dir.join("R2.fastq");
+
+        let seq = make_read_str("ACGTA", "TG", "NNNNNNNNNN");
+        let qual = qual_str(seq.len());
+
+        write_fastq(&r1_path, &[("read1", &seq, &qual)]);
+        write_fastq(&r2_path, &[]); // empty
+
+        let config = ParserConfig::default();
+        let result = read_fastq_pairs(&r1_path, &r2_path, &config);
+        assert!(
+            result.is_err(),
+            "R1 non-empty + R2 empty should return error"
+        );
+    }
+
+    // ── Test 11: All records dropped still returns Ok with correct stats ─
+
+    #[test]
+    fn all_records_dropped_returns_ok_with_stats() {
+        let dir = tempdir();
+        let r1_path = dir.join("R1.fastq");
+        let r2_path = dir.join("R2.fastq");
+
+        write_fastq(
+            &r1_path,
+            &[("r1", "ACGT", "IIII"), ("r2", "TGCA", "IIII")],
+        );
+        write_fastq(
+            &r2_path,
+            &[("r1", "ACGT", "IIII"), ("r2", "TGCA", "IIII")],
+        );
+
+        let config = ParserConfig::default();
+        let (pairs, stats) = read_fastq_pairs(&r1_path, &r2_path, &config).unwrap();
+        assert!(pairs.is_empty());
+        assert_eq!(stats.n_processed, 2);
+        assert_eq!(stats.n_read_too_short, 2);
+        assert_eq!(stats.n_passed, 0);
+    }
+
+    // ── Test 12: Non-existent file path returns error ────────────────────
+
+    #[test]
+    fn nonexistent_file_returns_error() {
+        let dir = tempdir();
+        let r1_path = dir.join("does_not_exist_R1.fastq");
+        let r2_path = dir.join("does_not_exist_R2.fastq");
+
+        let config = ParserConfig::default();
+        let result = read_fastq_pairs(&r1_path, &r2_path, &config);
+        assert!(result.is_err(), "non-existent files should return error");
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────
 
     /// Create a temporary directory for test files.
