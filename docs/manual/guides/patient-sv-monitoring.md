@@ -203,7 +203,7 @@ In `results/plasma_T1/variants.tsv`, a positive result looks like:
 
 ```
 target_id                vaf      n_molecules_ref  n_molecules_alt  n_duplex_alt  confidence  filter
-BCR_ABL1_CML_patient     0.0034   0                385              72            0.9999      PASS
+BCR_ABL1_CML_patient     0.0034   113235           385              72            0.9999      PASS
 ```
 
 This indicates 385 molecules spanning the BCR-ABL1 junction at 0.34% VAF, with 72 duplex

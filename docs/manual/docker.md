@@ -51,8 +51,8 @@ docker build -t kam:latest .
 
 The build uses a multi-stage Dockerfile:
 
-1. **Builder stage** (`rust:1.80-slim`): compiles the workspace in release mode.
-2. **Runtime stage** (`debian:bookworm-slim`): copies only the compiled binary. No Rust
+1. **Builder stage** (`rust:1.94-slim`): compiles the workspace in release mode.
+2. **Runtime stage** (`debian:trixie-slim`): copies only the compiled binary. No Rust
    toolchain or source code is present in the final image.
 
 Build time is approximately 5-10 minutes on a modern machine. The final image is under 100 MB.
@@ -284,3 +284,17 @@ done
 ```
 
 Each run creates its output directory inside the mounted `/results` volume.
+
+---
+
+## Troubleshooting
+
+### apt-get fails during build
+
+If `docker build` fails with "Unable to locate package", Docker's default bridge networking may not be resolving DNS correctly. Build with host networking:
+
+```bash
+docker build --network host -t trentzz/kam:latest .
+```
+
+This is common when a VPN is active.
