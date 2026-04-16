@@ -396,4 +396,141 @@ mod tests {
         a.extend_from_slice(&r[52..]);
         check("chr7:1000-1099", &r, &a, 1049, "A", "AT");
     }
+
+    // ── Additional edge-case tests ───────────────────────────────────────────
+
+    // Test 11: SNV at the very first position (index 0) of the target.
+    // Verifies that the 1-based output position equals the target start exactly.
+    #[test]
+    fn snv_at_first_position() {
+        let mut r = vec![b'A'; 10];
+        let mut a = r.clone();
+        r[0] = b'C';
+        a[0] = b'T';
+        check("chr1:500-509", &r, &a, 500, "C", "T");
+    }
+
+    // Test 12: SNV at the very last position of the target.
+    // Boundary: common suffix is zero, common prefix is len-1.
+    #[test]
+    fn snv_at_last_position() {
+        let mut r = vec![b'A'; 10];
+        let mut a = r.clone();
+        r[9] = b'C';
+        a[9] = b'T';
+        check("chr1:100-109", &r, &a, 109, "C", "T");
+    }
+
+    // Test 13: Deletion in a homopolymer context (AAAA).
+    // Deleting one A from a run of 4 A's must left-normalise to the leftmost
+    // anchor before the run.
+    #[test]
+    fn deletion_in_homopolymer_left_normalises() {
+        // ref: T(0) A(1) A(2) A(3) A(4) G(5)
+        // alt: T(0) A(1) A(2) A(3) G(4) — one A deleted from the run.
+        // The anchor must shift left to the T at index 0.
+        let r = b"TAAAAAG".to_vec();
+        let mut a = r[..4].to_vec(); // T A A A
+        a.extend_from_slice(&r[5..]); // G
+        // After left-normalisation: anchor is at index 0 (T), del_seq = A.
+        // REF = "TA", ALT = "T".
+        check("chr2:200-206", &r, &a, 200, "TA", "T");
+    }
+
+    // Test 14: Insertion in a homopolymer context (AAAA).
+    // Inserting an extra A into a poly-A run must left-normalise.
+    #[test]
+    fn insertion_in_homopolymer_left_normalises() {
+        // ref: G(0) A(1) A(2) A(3) T(4)
+        // alt: G(0) A(1) A(2) A(3) A(4) T(5) — one A inserted.
+        let r = b"GAAAT".to_vec();
+        let mut a = r[..4].to_vec(); // G A A A
+        a.push(b'A');
+        a.push(b'T');
+        // Left-normalise: anchor shifts to index 0 (G).
+        // REF = "G", ALT = "GA".
+        check("chr3:50-54", &r, &a, 50, "G", "GA");
+    }
+
+    // Test 15: Multi-base deletion where the deleted region differs from the
+    // flanking context, so the first differing position is detectable.
+    // ref: ACGT + CCCC + ACGT = 12bp, alt: ACGT + ACGT = 8bp (CCCC deleted).
+    // The diff is at index 4 where ref[4]='C' and alt[4]='A'.
+    #[test]
+    fn multi_base_deletion_spanning_entire_diff() {
+        let r = b"ACGTCCCCACGT".to_vec();
+        let a = b"ACGTACGT".to_vec();
+        let result =
+            extract_minimal_allele("chr1:100-111", &r, &a).expect("should produce an allele");
+        // The deletion must have ref_allele longer than alt_allele.
+        assert!(
+            result.ref_allele.len() > result.alt_allele.len(),
+            "deletion must have REF longer than ALT"
+        );
+        assert_eq!(result.chrom, "chr1", "chrom must be chr1");
+    }
+
+    // Test 16: MNV where both bases differ (e.g. CG → TA).
+    // Equal-length sequences with >1 differing base, not an inversion.
+    #[test]
+    fn mnv_two_adjacent_changes() {
+        let mut r = vec![b'G'; 20];
+        let mut a = r.clone();
+        r[10] = b'A';
+        r[11] = b'C';
+        a[10] = b'T';
+        a[11] = b'G';
+        check("chr4:300-319", &r, &a, 310, "AC", "TG");
+    }
+
+    // Test 17: Very short target (3 bases, shorter than typical k) still works.
+    // Ensures the algorithm handles short sequences without panicking.
+    #[test]
+    fn very_short_target_still_extracts() {
+        let r = b"ACG".to_vec();
+        let a = b"ATG".to_vec();
+        check("chrM:1-3", &r, &a, 2, "C", "T");
+    }
+
+    // Test 18: Large deletion at the right boundary of the sequence.
+    // The deletion removes several bases near the end, but the sequences
+    // differ in the overlapping region so the variant is detectable.
+    // ref: ACGT + TTTT + G = 9bp. alt: ACGT + G = 5bp.
+    // Diff at index 4: ref[4]='T', alt[4]='G'. Suffix 'G' is shared.
+    #[test]
+    fn deletion_at_right_boundary() {
+        let r = b"ACGTTTTTG".to_vec();
+        let a = b"ACGTG".to_vec();
+        let result =
+            extract_minimal_allele("chr5:10-18", &r, &a).expect("should produce an allele");
+        assert!(
+            result.ref_allele.len() > result.alt_allele.len(),
+            "deletion: REF must be longer than ALT"
+        );
+    }
+
+    // Test 19: Target ID with large coordinate values (chr1:999999-1000099).
+    // Verifies that position arithmetic handles large numbers correctly.
+    #[test]
+    fn large_coordinate_target_id() {
+        let mut r = vec![b'A'; 101];
+        let mut a = r.clone();
+        r[50] = b'C';
+        a[50] = b'G';
+        check("chr1:999999-1000099", &r, &a, 1000049, "C", "G");
+    }
+
+    // Test 20: MinimalAllele Display trait formats correctly.
+    // The Display output is used in logging, so it must be readable.
+    #[test]
+    fn minimal_allele_display() {
+        let allele = MinimalAllele {
+            chrom: "chr1".to_string(),
+            pos: 12345,
+            ref_allele: "A".to_string(),
+            alt_allele: "T".to_string(),
+        };
+        let s = format!("{allele}");
+        assert_eq!(s, "chr1:12345 A->T", "Display format mismatch");
+    }
 }

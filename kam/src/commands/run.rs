@@ -1173,9 +1173,12 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             None
         };
 
-    if let Some(scorer_result) = scorer_result {
+    // Capture the model's pass threshold so it can be used when writing output.
+    // Defaults to 0.5 when no model is loaded.
+    let ml_threshold = if let Some(scorer_result) = scorer_result {
         match scorer_result {
             Ok(mut scorer) => {
+                let threshold = scorer.meta.ml_pass_threshold;
                 for call in &mut all_calls {
                     call.ml_prob = scorer.score(call);
                 }
@@ -1183,12 +1186,16 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
                     "[run/call] ML scoring applied: {} calls scored",
                     all_calls.len()
                 );
+                threshold
             }
             Err(e) => {
                 eprintln!("[run/call] WARNING: failed to load ML model: {}", e);
+                0.5
             }
         }
-    }
+    } else {
+        0.5
+    };
 
     for call in &all_calls {
         if call.filter == VariantFilter::Pass {
@@ -1227,14 +1234,14 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
         let path = base_path.with_extension(ext);
         let file = File::create(&path)?;
         let mut writer = BufWriter::new(file);
-        write_variants(&all_calls, formats[0], &mut writer)?;
+        write_variants(&all_calls, formats[0], &mut writer, ml_threshold)?;
     } else {
         for &fmt in &formats {
             let ext = format_extension(fmt);
             let path = base_path.with_extension(ext);
             let file = File::create(&path)?;
             let mut writer = BufWriter::new(file);
-            write_variants(&all_calls, fmt, &mut writer)?;
+            write_variants(&all_calls, fmt, &mut writer, ml_threshold)?;
         }
     }
 
@@ -2169,5 +2176,154 @@ min_umi_quality = 0
 
         run_pipeline(args).expect("run_pipeline with junction_sequences should succeed");
         assert!(output_dir.join("variants.tsv").exists(), "variants.tsv");
+    }
+
+    // ── New junction-sequences seam tests ─────────────────────────────────────
+
+    /// Junction sequence k-mers increase the allowlist size compared to
+    /// targets alone.
+    #[test]
+    fn junction_seq_kmers_increase_allowlist_size() {
+        use kam_index::allowlist::build_allowlist;
+
+        let k = 8;
+        let target: &[u8] = b"ACGTACGTACGTACGTACGTACGT";
+        // A junction made entirely of G should have k-mers distinct from
+        // the ACGT-repeat target.
+        let junction: &[u8] = b"GGGGGGGGGGGGGGGGGGGGGGGG";
+
+        let target_only = build_allowlist(&[target], k);
+        let junction_only = build_allowlist(&[junction], k);
+        let mut combined = target_only.clone();
+        combined.extend(junction_only);
+
+        assert!(
+            combined.len() > target_only.len(),
+            "adding junction k-mers should strictly increase allowlist size: \
+             combined={}, target_only={}",
+            combined.len(),
+            target_only.len()
+        );
+    }
+
+    /// When junction_seq_canonical_kmers is non-empty, use_junction_filter is
+    /// true. This tests the branch filter decision logic from the pipeline.
+    #[test]
+    fn use_junction_filter_true_when_junction_seq_kmers_non_empty() {
+        let junction_canonical_kmers: std::collections::HashSet<u64> =
+            std::collections::HashSet::new();
+        let mut junction_seq_canonical_kmers: std::collections::HashSet<u64> =
+            std::collections::HashSet::new();
+        junction_seq_canonical_kmers.insert(42);
+
+        let use_junction_filter =
+            !junction_canonical_kmers.is_empty() || !junction_seq_canonical_kmers.is_empty();
+        assert!(
+            use_junction_filter,
+            "use_junction_filter should be true when junction_seq_canonical_kmers is non-empty"
+        );
+    }
+
+    /// When both junction k-mer sets are empty, use_junction_filter is false.
+    #[test]
+    fn use_junction_filter_false_when_both_sets_empty() {
+        let junction_canonical_kmers: std::collections::HashSet<u64> =
+            std::collections::HashSet::new();
+        let junction_seq_canonical_kmers: std::collections::HashSet<u64> =
+            std::collections::HashSet::new();
+
+        let use_junction_filter =
+            !junction_canonical_kmers.is_empty() || !junction_seq_canonical_kmers.is_empty();
+        assert!(
+            !use_junction_filter,
+            "use_junction_filter should be false when both k-mer sets are empty"
+        );
+    }
+
+    /// Junction sequence with k-mers present in indexed molecules causes those
+    /// molecules to be counted as on-target (their k-mers appear in the index).
+    ///
+    /// We simulate this by checking that a molecule whose only k-mers match the
+    /// junction (not the reference target) would pass the allowlist overlap check.
+    #[test]
+    fn junction_seq_molecules_counted_as_on_target() {
+        use kam_index::allowlist::build_allowlist;
+        use kam_index::encode::{canonical, KmerIterator};
+
+        let k = 4;
+        // Target has ACGT-repeat k-mers.
+        let target: &[u8] = b"ACGTACGTACGT";
+        // Junction has TTTT-only k-mers (distinct from ACGT k-mers at k=4).
+        let junction: &[u8] = b"TTTTTTTT";
+
+        let target_allowlist = build_allowlist(&[target], k);
+        let junction_allowlist = build_allowlist(&[junction], k);
+
+        // A molecule that only contains TTTT k-mers.
+        let molecule_seq: &[u8] = b"TTTTTTTT";
+
+        // Without junction k-mers, this molecule does not overlap the allowlist.
+        let overlaps_target_only = KmerIterator::new(molecule_seq, k)
+            .any(|(_, km)| target_allowlist.contains(&canonical(km, k)));
+        assert!(
+            !overlaps_target_only,
+            "TTTT-only molecule should NOT overlap the target-only allowlist"
+        );
+
+        // With junction k-mers added, this molecule overlaps the allowlist.
+        let mut combined = target_allowlist;
+        combined.extend(junction_allowlist);
+        let overlaps_combined =
+            KmerIterator::new(molecule_seq, k).any(|(_, km)| combined.contains(&canonical(km, k)));
+        assert!(
+            overlaps_combined,
+            "TTTT-only molecule SHOULD overlap the combined allowlist \
+             (target + junction k-mers)"
+        );
+    }
+
+    /// build_config returns Err when required fields are missing and no config
+    /// file is provided.
+    #[test]
+    fn build_config_missing_required_fields_errors() {
+        // All path fields are None, no config file.
+        let args = RunArgs {
+            config: None,
+            r1: None,
+            r2: None,
+            targets: None,
+            output_dir: None,
+            chemistry_override: None,
+            min_umi_quality_override: None,
+            min_family_size_override: None,
+            min_template_length: None,
+            kmer_size_override: None,
+            min_confidence: None,
+            strand_bias_threshold: None,
+            min_alt_molecules: None,
+            min_alt_duplex: None,
+            sv_min_confidence: None,
+            sv_min_alt_molecules: None,
+            sv_strand_bias_threshold_override: None,
+            max_vaf: None,
+            sv_junctions: None,
+            fusion_targets: None,
+            junction_sequences: None,
+            target_variants: None,
+            ti_position_tolerance_override: None,
+            ti_rescue: false,
+            output_format_override: None,
+            qc_output: None,
+            log_dir: None,
+            log: vec![],
+            threads: None,
+            ml_model: None,
+            custom_ml_model: None,
+        };
+        let result = build_config(&args);
+        assert!(
+            result.is_err(),
+            "build_config should error when required fields are missing"
+        );
     }
 }

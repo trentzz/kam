@@ -472,4 +472,264 @@ mod tests {
         assert_eq!(g.n_nodes(), 2);
         assert_eq!(g.n_edges(), 1);
     }
+
+    // ── New edge-case tests ──────────────────────────────────────────────────
+
+    // Test 10: Single k-mer in the graph produces one node and no edges
+    // (unless it self-loops, but a non-self-looping k-mer should have 0 edges).
+    #[test]
+    fn single_non_looping_kmer_one_node_no_edges() {
+        // ACG has suffix CG and prefix AC. They do not match, so no self-loop.
+        let acg = encode_kmer(b"ACG").expect("valid k-mer");
+        let graph = build(&[acg], 3);
+        assert_eq!(graph.n_nodes(), 1);
+        assert_eq!(graph.n_edges(), 0);
+        assert!(graph.successors(acg).is_empty());
+    }
+
+    // Test 11: Graph from a linear sequence of length 2k.
+    // For k=3 and sequence "ACGTAC" (length 6 = 2*3), there are 4 k-mers:
+    // ACG → CGT → GTA → TAC. These form 3 linear edges. However, TAC has
+    // suffix AC, and ACG has prefix AC (ACG >> 2), so an additional edge
+    // TAC → ACG exists, creating a cycle. Total edges = 4.
+    #[test]
+    fn linear_sequence_of_length_2k() {
+        let k = 3;
+        let seq = b"ACGTAC";
+        assert_eq!(seq.len(), 2 * k);
+
+        let kmers: Vec<u64> = (0..=seq.len() - k)
+            .map(|i| encode_kmer(&seq[i..i + k]).expect("valid k-mer"))
+            .collect();
+        assert_eq!(kmers.len(), k + 1, "expected k+1 = {} k-mers", k + 1);
+
+        let graph = build(&kmers, k);
+        assert_eq!(graph.n_nodes(), k + 1);
+        // 3 linear edges plus a wrap-around edge TAC → ACG = 4 edges total.
+        assert_eq!(
+            graph.n_edges(),
+            k + 1,
+            "linear chain plus wrap-around edge TAC → ACG"
+        );
+
+        // Each consecutive pair has a forward edge.
+        for w in kmers.windows(2) {
+            assert!(
+                graph.successors(w[0]).contains(&w[1]),
+                "expected edge {} → {}",
+                w[0],
+                w[1]
+            );
+        }
+        // TAC → ACG wrap-around edge.
+        let tac = *kmers.last().expect("non-empty");
+        let acg = kmers[0];
+        assert!(
+            graph.successors(tac).contains(&acg),
+            "TAC should have a wrap-around edge to ACG"
+        );
+    }
+
+    // Test 12: forward_reachable from the start of a linear graph returns
+    // only downstream nodes within the hop limit.
+    #[test]
+    fn forward_reachable_linear_graph() {
+        let mut g = DeBruijnGraph::new(3);
+        // Chain: 0 → 1 → 2 → 3 → 4
+        for i in 0u64..4 {
+            g.add_edge(i, i + 1);
+        }
+
+        // From node 0 with max_hops=2, reachable nodes are {0, 1, 2}.
+        let reach = g.forward_reachable(0, 2);
+        assert!(reach.contains(&0));
+        assert!(reach.contains(&1));
+        assert!(reach.contains(&2));
+        assert!(!reach.contains(&3), "node 3 is 3 hops away, beyond limit");
+        assert!(!reach.contains(&4));
+
+        // With unlimited hops, all nodes are reachable.
+        let reach_all = g.forward_reachable(0, 100);
+        for i in 0u64..=4 {
+            assert!(reach_all.contains(&i), "node {i} should be reachable");
+        }
+    }
+
+    // Test 13: backward_reachable from the end of a linear graph returns
+    // only upstream nodes within the hop limit.
+    #[test]
+    fn backward_reachable_linear_graph() {
+        let mut g = DeBruijnGraph::new(3);
+        // Chain: 0 → 1 → 2 → 3 → 4
+        for i in 0u64..4 {
+            g.add_edge(i, i + 1);
+        }
+
+        // From node 4 with max_hops=2, backward-reachable nodes are {4, 3, 2}.
+        let reach = g.backward_reachable(4, 2);
+        assert!(reach.contains(&4));
+        assert!(reach.contains(&3));
+        assert!(reach.contains(&2));
+        assert!(!reach.contains(&1), "node 1 is 3 hops upstream, beyond limit");
+        assert!(!reach.contains(&0));
+    }
+
+    // Test 14: Successors of a node not in the graph returns an empty slice.
+    #[test]
+    fn successors_of_absent_node_empty() {
+        let graph = build(&[], 3);
+        let empty: &[u64] = &[];
+        assert_eq!(graph.successors(12345), empty);
+    }
+
+    // Test 15: add_edge with the same pair twice creates duplicate edges.
+    // This mirrors real graph construction where a k-mer can overlap itself.
+    #[test]
+    fn add_edge_allows_duplicates() {
+        let mut g = DeBruijnGraph::new(3);
+        g.add_edge(10, 20);
+        g.add_edge(10, 20);
+        assert_eq!(g.successors(10).len(), 2, "duplicate edges are preserved");
+        assert_eq!(g.n_edges(), 2);
+        // Node count should still be 2 (not 4).
+        assert_eq!(g.n_nodes(), 2);
+    }
+
+    // Test 16: With k=1 and suffix_mask=0, every node's suffix is 0 and every
+    // node's prefix is also 0 (B >> 2 for a 2-bit value is 0). So every node
+    // is a successor of every other node (and itself). A full graph on 4
+    // single-base k-mers has 4 nodes and 16 edges (including self-loops).
+    #[test]
+    fn k_equals_one_fully_connected_graph() {
+        let a = encode_kmer(b"A").expect("valid 1-mer");
+        let c = encode_kmer(b"C").expect("valid 1-mer");
+        let g_base = encode_kmer(b"G").expect("valid 1-mer");
+        let t = encode_kmer(b"T").expect("valid 1-mer");
+        let all = vec![a, c, g_base, t];
+
+        let graph = build(&all, 1);
+        assert_eq!(graph.n_nodes(), 4);
+        // Every pair (including self-loops) is an edge: 4 * 4 = 16.
+        assert_eq!(graph.n_edges(), 16);
+
+        for &src in &all {
+            let succs = graph.successors(src);
+            assert_eq!(succs.len(), 4, "every node should connect to all 4 nodes");
+            for &dst in &all {
+                assert!(
+                    succs.contains(&dst),
+                    "edge {} -> {} should exist",
+                    src,
+                    dst
+                );
+            }
+        }
+    }
+
+    // Test 17: Diamond graph (branch then merge). Two paths from start to end.
+    // ACG branches to CGA and CGT, both of which converge on a common
+    // successor. Verify correct node and edge counts.
+    #[test]
+    fn diamond_graph_branch_and_merge() {
+        let k = 3;
+        let acg = encode_kmer(b"ACG").expect("valid k-mer");
+        let cga = encode_kmer(b"CGA").expect("valid k-mer");
+        let cgt = encode_kmer(b"CGT").expect("valid k-mer");
+        // Both CGA and CGT share suffix GA/GT? No. We need them to converge.
+        // CGA has suffix GA. CGT has suffix GT. They converge on different
+        // targets. Instead, build explicitly with add_edge.
+        let end = encode_kmer(b"GTA").expect("valid k-mer");
+
+        let mut g = DeBruijnGraph::new(k);
+        g.add_edge(acg, cga);
+        g.add_edge(acg, cgt);
+        g.add_edge(cga, end);
+        g.add_edge(cgt, end);
+
+        assert_eq!(g.n_nodes(), 4);
+        assert_eq!(g.n_edges(), 4);
+        assert_eq!(g.successors(acg).len(), 2);
+        assert!(g.successors(cga).contains(&end));
+        assert!(g.successors(cgt).contains(&end));
+    }
+
+    // Test 18: forward_reachable with max_hops=0 returns only the start node.
+    #[test]
+    fn forward_reachable_zero_hops_returns_only_start() {
+        let mut g = DeBruijnGraph::new(3);
+        g.add_edge(0, 1);
+        g.add_edge(1, 2);
+
+        let reach = g.forward_reachable(0, 0);
+        assert_eq!(reach.len(), 1);
+        assert!(reach.contains(&0));
+    }
+
+    // Test 19: backward_reachable with max_hops=0 returns only the end node.
+    #[test]
+    fn backward_reachable_zero_hops_returns_only_end() {
+        let mut g = DeBruijnGraph::new(3);
+        g.add_edge(0, 1);
+        g.add_edge(1, 2);
+
+        let reach = g.backward_reachable(2, 0);
+        assert_eq!(reach.len(), 1);
+        assert!(reach.contains(&2));
+    }
+
+    // Test 20: from_index with all k-mers below min_molecules produces an
+    // empty graph. No nodes survive the filter.
+    #[test]
+    fn all_below_min_molecules_produces_empty_graph() {
+        let mut index = HashKmerIndex::new();
+        let acg = encode_kmer(b"ACG").expect("valid k-mer");
+        let cgt = encode_kmer(b"CGT").expect("valid k-mer");
+        index.insert(acg, ev(2));
+        index.insert(cgt, ev(3));
+
+        // min_molecules=10 filters out both k-mers.
+        let graph = DeBruijnGraph::from_index(&index, 3, &[acg, cgt], 10);
+        assert_eq!(graph.n_nodes(), 0);
+        assert_eq!(graph.n_edges(), 0);
+    }
+
+    // Test 21: Disconnected components. Two separate linear chains share no
+    // reachable nodes.
+    #[test]
+    fn disconnected_components_independent_reachability() {
+        let mut g = DeBruijnGraph::new(3);
+        // Component A: 0 → 1 → 2
+        g.add_edge(0, 1);
+        g.add_edge(1, 2);
+        // Component B: 10 → 11 → 12
+        g.add_edge(10, 11);
+        g.add_edge(11, 12);
+
+        let reach_a = g.forward_reachable(0, 100);
+        assert!(reach_a.contains(&0));
+        assert!(reach_a.contains(&1));
+        assert!(reach_a.contains(&2));
+        assert!(
+            !reach_a.contains(&10),
+            "component B nodes should not be reachable from component A"
+        );
+        assert!(!reach_a.contains(&11));
+        assert!(!reach_a.contains(&12));
+
+        let reach_b = g.backward_reachable(12, 100);
+        assert!(reach_b.contains(&10));
+        assert!(reach_b.contains(&11));
+        assert!(reach_b.contains(&12));
+        assert!(!reach_b.contains(&0));
+    }
+
+    // Test 22: forward_reachable on a node not in the graph returns a set
+    // containing only that node (the start is always included).
+    #[test]
+    fn forward_reachable_absent_node() {
+        let g = DeBruijnGraph::new(3);
+        let reach = g.forward_reachable(999, 10);
+        assert_eq!(reach.len(), 1);
+        assert!(reach.contains(&999));
+    }
 }

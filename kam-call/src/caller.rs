@@ -2084,4 +2084,83 @@ mod tests {
             "NovelInsertion must pass filters"
         );
     }
+
+    // ── Additional edge-case tests ───────────────────────────────────────────
+
+    // Test 50: estimate_vaf with zero total (m=0) returns (0, 0, 0).
+    // This guards against division by zero when no molecules are observed.
+    #[test]
+    fn estimate_vaf_zero_total_returns_zeros() {
+        let (vaf, lo, hi) = estimate_vaf(0, 0);
+        assert_eq!(vaf, 0.0, "VAF must be 0 when total is 0");
+        assert_eq!(lo, 0.0, "CI lower must be 0 when total is 0");
+        assert_eq!(hi, 0.0, "CI upper must be 0 when total is 0");
+    }
+
+    // Test 51: estimate_vaf CI ordering invariant: lo < hi for any non-zero total.
+    // The Bayesian credible interval from Beta(k+1, m-k+1) always has lo < hi.
+    // The MLE point estimate k/m can sit outside the CI for edge cases (k=0
+    // gives MLE=0 but the posterior 2.5th percentile is > 0), so we only
+    // check lo < hi here.
+    #[test]
+    fn estimate_vaf_ci_ordering() {
+        for (k, m) in [(1, 100), (50, 100), (99, 100), (0, 100), (5, 1000)] {
+            let (_vaf, lo, hi) = estimate_vaf(k, m);
+            assert!(
+                lo < hi,
+                "k={k}, m={m}: CI lower ({lo}) must be < CI upper ({hi})"
+            );
+            assert!(
+                lo >= 0.0,
+                "k={k}, m={m}: CI lower ({lo}) must be >= 0"
+            );
+            assert!(
+                hi <= 1.0,
+                "k={k}, m={m}: CI upper ({hi}) must be <= 1.0"
+            );
+        }
+    }
+
+    // Test 52: compute_confidence returns 0.0 when k=0.
+    // Zero alt molecules provide zero evidence for the variant.
+    #[test]
+    fn compute_confidence_zero_alt_is_zero() {
+        let c = compute_confidence(0, 1000, 1e-4);
+        assert_eq!(c, 0.0, "zero alt molecules must give confidence 0.0");
+    }
+
+    // Test 53: compute_confidence returns 0.0 when m=0.
+    // No data at all means no confidence.
+    #[test]
+    fn compute_confidence_zero_total_is_zero() {
+        let c = compute_confidence(0, 0, 1e-4);
+        assert_eq!(c, 0.0, "zero total molecules must give confidence 0.0");
+    }
+
+    // Test 54: strand_bias_test with all zeros returns 1.0.
+    // When there are no reads at all, there can be no strand bias.
+    #[test]
+    fn strand_bias_all_zeros_returns_one() {
+        let p = strand_bias_test(0, 0, 0, 0);
+        assert_eq!(p, 1.0, "all-zero table must return p=1.0, got {p}");
+    }
+
+    // Test 55: CallerConfig default values match documented expectations.
+    // The defaults are public API and must not drift silently.
+    #[test]
+    fn caller_config_default_values() {
+        let cfg = CallerConfig::default();
+        assert_eq!(cfg.min_confidence, 0.99, "min_confidence");
+        assert_eq!(cfg.strand_bias_threshold, 0.01, "strand_bias_threshold");
+        assert_eq!(cfg.min_alt_molecules, 2, "min_alt_molecules");
+        assert_eq!(cfg.min_alt_duplex, 0, "min_alt_duplex");
+        assert_eq!(cfg.min_alt_duplex_for_single, Some(1), "duplex_for_single");
+        assert_eq!(cfg.max_vaf, None, "max_vaf");
+        assert_eq!(cfg.sv_min_confidence, 0.95, "sv_min_confidence");
+        assert_eq!(cfg.sv_min_alt_molecules, 1, "sv_min_alt_molecules");
+        assert_eq!(
+            cfg.sv_strand_bias_threshold, 1.0,
+            "sv_strand_bias_threshold"
+        );
+    }
 }

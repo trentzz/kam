@@ -144,7 +144,7 @@ Key columns:
 | Column | What to look for |
 |---|---|
 | `target_id` | Your junction header (e.g. `BCR_ABL1_patient_junction`) |
-| `variant_class` | `Fusion` or the detected SV type |
+| `variant_type` | `Fusion` or the detected SV type |
 | `vaf` | Variant allele frequency in the cfDNA sample |
 | `n_molecules_alt` | Number of molecules supporting the junction |
 | `n_duplex_alt` | Duplex-confirmed molecules (strongest evidence) |
@@ -203,7 +203,7 @@ In `results/plasma_T1/variants.tsv`, a positive result looks like:
 
 ```
 target_id                vaf      n_molecules_ref  n_molecules_alt  n_duplex_alt  confidence  filter
-BCR_ABL1_CML_patient     0.0034   112000           385              72            0.9999      PASS
+BCR_ABL1_CML_patient     0.0034   0                385              72            0.9999      PASS
 ```
 
 This indicates 385 molecules spanning the BCR-ABL1 junction at 0.34% VAF, with 72 duplex

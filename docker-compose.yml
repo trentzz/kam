@@ -21,7 +21,7 @@
 services:
   kam:
     # Use a locally built image by default. Override with KAM_IMAGE to pull
-    # a published image (e.g. KAM_IMAGE=ghcr.io/trentzz/kam:0.2.0).
+    # a published image (e.g. KAM_IMAGE=ghcr.io/trentzz/kam:0.3.0).
     build: .
     image: ${KAM_IMAGE:-kam:latest}
 

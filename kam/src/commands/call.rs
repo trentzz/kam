@@ -91,9 +91,12 @@ pub fn run_call(args: CallArgs) -> Result<(), Box<dyn std::error::Error>> {
             None
         };
 
-    if let Some(scorer_result) = scorer_result {
+    // Capture the model's pass threshold so it can be used when writing output.
+    // Defaults to 0.5 when no model is loaded.
+    let ml_threshold = if let Some(scorer_result) = scorer_result {
         match scorer_result {
             Ok(mut scorer) => {
+                let threshold = scorer.meta.ml_pass_threshold;
                 for call in &mut all_calls {
                     call.ml_prob = scorer.score(call);
                 }
@@ -101,12 +104,16 @@ pub fn run_call(args: CallArgs) -> Result<(), Box<dyn std::error::Error>> {
                     "[call] ML scoring applied: {} calls scored",
                     all_calls.len()
                 );
+                threshold
             }
             Err(e) => {
                 eprintln!("[call] WARNING: failed to load ML model: {}", e);
+                0.5
             }
         }
-    }
+    } else {
+        0.5
+    };
 
     // ── 5c. Apply tumour-informed filter if --target-variants provided ─────────
     if let Some(ref vcf_path) = args.target_variants {
@@ -138,7 +145,7 @@ pub fn run_call(args: CallArgs) -> Result<(), Box<dyn std::error::Error>> {
     if formats.len() == 1 {
         let file = File::create(&args.output)?;
         let mut writer = BufWriter::new(file);
-        write_variants(&all_calls, formats[0], &mut writer)?;
+        write_variants(&all_calls, formats[0], &mut writer, ml_threshold)?;
     } else {
         // Multiple formats: use the output path as base, add extension.
         let base = args.output.with_extension("");
@@ -147,7 +154,7 @@ pub fn run_call(args: CallArgs) -> Result<(), Box<dyn std::error::Error>> {
             let path = base.with_extension(ext);
             let file = File::create(&path)?;
             let mut writer = BufWriter::new(file);
-            write_variants(&all_calls, fmt, &mut writer)?;
+            write_variants(&all_calls, fmt, &mut writer, ml_threshold)?;
         }
     }
 
