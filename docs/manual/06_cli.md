@@ -15,6 +15,7 @@ kam <SUBCOMMAND> [OPTIONS]
 | `pathfind` | Walk de Bruijn graph paths |
 | `call` | Call variants from scored paths |
 | `run` | Run the full pipeline end-to-end |
+| `explore` | Interactively inspect bincode data files |
 | `models list` | List all built-in ML models |
 
 For most uses, `kam run` is the correct entry point. The individual subcommands are exposed for debugging, benchmarking individual stages, and integration with Nextflow.
@@ -1345,6 +1346,71 @@ Path to a custom ONNX model file. Same behaviour as the `kam run` flag.
 ```bash
 kam call --paths paths.bin --output variants.tsv \
   --custom-ml-model /models/lab_trained_v3.onnx
+```
+
+---
+
+## kam explore
+
+Open an interactive REPL for inspecting bincode data files produced by kam. The file type (molecules, k-mer index, or variant calls) is detected automatically from the bincode header.
+
+```
+kam explore <FILE>
+```
+
+### Arguments
+
+#### `<FILE>`
+
+Path to a bincode file. Accepts any `.bin` file produced by `kam assemble`, `kam index`, `kam call`, or `kam run`.
+
+### Commands
+
+Once inside the explorer, type `help` to see all available commands. Key commands: `summary`, `head N`, `show <id>`, `filter <expression>`, `stats <field>`, `histogram <field>`, `export`, `quit`.
+
+See the [Interactive explorer guide](guides/interactive-explorer.md) for full command reference and filter expression syntax.
+
+**Example 1: Explore assembled molecules**
+```bash
+kam explore results/molecules.bin
+```
+
+```
+kam explore v0.3.0
+Loaded: molecules.bin (612,847 molecules, 4,821,044 input reads)
+Type 'help' for commands, 'quit' to exit.
+
+molecules> summary
+  Total molecules: 612,847
+  Duplex families: 489,478 (79.8%)
+  ...
+```
+
+**Example 2: Explore variant calls and filter**
+```bash
+kam explore results/variants.bin
+```
+
+```
+variants> filter filter == PASS AND vaf > 0.001
+  Matched 12 variants
+
+variants> export --format tsv --output pass_calls.tsv
+  Exported 12 variants to pass_calls.tsv
+```
+
+**Example 3: Explore a k-mer index**
+```bash
+kam explore results/index.bin
+```
+
+```
+kmers> summary
+  Total k-mers:   1,247,891
+  K-mer size:     31
+  Target k-mers:  89,412
+  Junction k-mers: 1,247
+  ...
 ```
 
 ---

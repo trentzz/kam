@@ -1,25 +1,30 @@
 # NovelInsertion Classification Fix
 
-**Status**: inprogress
+**Status**: done
 **Epic**: SV-CLASSIFY
 
 ## Problem
 
 The `is_tandem_duplication()` function in `kam-call/src/caller.rs` incorrectly
-classifies genuine novel insertion sequences as tandem duplications. All
-NovelInsertion benchmark variants are reported with SVTYPE=DUP instead of
+classified genuine novel insertion sequences as tandem duplications. All
+NovelInsertion benchmark variants were reported with SVTYPE=DUP instead of
 SVTYPE=INS.
 
 ## Root Cause
 
-Under investigation (SV-CLS-001).
+The tandem duplication check searched for the inserted sequence anywhere in the
+reference window. Novel insertions with partial sequence similarity to the
+reference triggered the check, even when the match was too short to indicate a
+genuine tandem repeat.
 
 ## Fix
 
-Pending investigation results.
+Tightened the `is_tandem_duplication()` function to require at least 80% of the
+inserted sequence to match a contiguous reference segment. Partial matches below
+this threshold are classified as NovelInsertion.
 
 ## Verification
 
-- All existing unit tests pass
-- New regression tests cover benchmark-derived sequences
-- Full NovelInsertion benchmark re-run shows correct classification
+- [x] All existing unit tests pass
+- [x] New regression tests cover benchmark-derived sequences
+- [x] Full NovelInsertion benchmark re-run shows correct classification

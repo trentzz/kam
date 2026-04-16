@@ -78,6 +78,9 @@ Each stage of the pipeline is described in detail:
 - [Structural variant detection](guides/structural-variants.md) — detecting large deletions, inversions, duplications
 - [Fusion detection](guides/fusions.md) — detecting gene fusions and translocations
 - [Patient SV monitoring](guides/patient-sv-monitoring.md) — monitoring a fusion or SV from BAM observation in serial cfDNA
+- [Interactive explorer](guides/interactive-explorer.md) — inspecting bincode files with `kam explore`
+- [SV parameter tuning](guides/sv-parameter-tuning.md) — running k-mer and threshold sweeps for SV detection
+- [SV detection limits](guides/sv-detection-limits.md) — measuring detection floors at ultra-low VAF
 
 ### Reference
 

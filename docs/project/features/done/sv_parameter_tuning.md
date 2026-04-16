@@ -18,7 +18,8 @@ SV type.
 
 ## Deliverables
 
-- Heatmap: k-mer size vs VAF, coloured by sensitivity, per SV type
-- Heatmap: confidence threshold vs min_alt_molecules
-- Line plot: SV size vs sensitivity per type
-- Recommended configuration per SV type
+- [x] Heatmap: k-mer size vs VAF, coloured by sensitivity, per SV type
+- [x] Heatmap: confidence threshold vs min_alt_molecules
+- [x] Line plot: SV size vs sensitivity per type
+- [x] Recommended configuration per SV type
+- [x] User-facing guide: `docs/manual/guides/sv-parameter-tuning.md`
