@@ -25,7 +25,7 @@
 # Stage 1: Build
 # Uses the official Rust image to compile the workspace with ML support.
 # ---------------------------------------------------------------------------
-FROM rust:latest AS builder
+FROM rust:1.94-slim AS builder
 
 # Install build-time dependencies needed by openssl and other sys crates.
 RUN apt-get update && apt-get install -y --no-install-recommends \
