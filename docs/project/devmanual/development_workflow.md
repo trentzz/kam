@@ -22,13 +22,13 @@
 
 ## Task Queue Structure
 
+Tasks are tracked in `docs/project/tracking/` using a kanban layout:
+
 ```
-docs/claudeloop/
-├── queue/            # Tasks to be done (picked up in filename sort order)
-├── in_progress/      # Currently being worked on
+docs/project/tracking/
+├── todo/             # Tasks to be done
 ├── done/             # Completed and reviewed
-├── needs_review/     # Tasks Claude got stuck on
-└── open_questions.md # Design questions needing user input
+└── overallplans/     # Epics and overall plans
 ```
 
 ## Task File Format
@@ -103,11 +103,11 @@ The loop script (`claude_loop.sh`) does:
 ```bash
 git log --oneline main..HEAD      # What got done
 git diff main HEAD -- src/        # Quick diff review
-ls docs/claudeloop/needs_review/  # Stuck tasks
+ls docs/project/tracking/todo/    # Remaining tasks
 cargo test                         # Full test suite confirmation
 ```
 
-`needs_review/` items are morning's first tasks — understanding why it got stuck tells you if the task spec was ambiguous or if there's a genuine design question.
+Review the kanban board to understand what is done and what remains. If any tasks were left incomplete, the task file describes what was attempted.
 
 ## Realistic Expectations
 

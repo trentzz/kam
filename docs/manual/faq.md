@@ -33,15 +33,17 @@ kam detects 11 variant types:
 | `Insertion` (< 50 bp) | Standard graph walk |
 | `Deletion` (< 50 bp) | Standard graph walk |
 | `Complex` | Standard graph walk |
-| `LargeDeletion` (≥ 50 bp) | `sv_junctions` file with deletion junction sequences |
-| `TandemDuplication` (≥ 50 bp) | `sv_junctions` file with duplication junction sequences |
+| `LargeDeletion` (≥ 50 bp) | Standard graph walk |
+| `TandemDuplication` (≥ 50 bp) | Standard graph walk |
 | `Inversion` (≥ 50 bp) | `sv_junctions` file with inversion junction sequences |
 | `InvDel` (≥ 50 bp) | `sv_junctions` file with inversion-deletion junction sequences |
 | `NovelInsertion` (≥ 50 bp) | Standard graph walk with extended path length |
 | `Fusion` | `fusion_targets` file with synthetic breakpoint junction sequences |
 
-SNVs, MNVs, and short indels are detected from the standard de Bruijn graph walk and do not
-require any additional input files. Large SVs require pre-computed junction sequences.
+SNVs, MNVs, short indels, large deletions, tandem duplications, and novel insertions are all
+detected from the standard de Bruijn graph walk without additional input files. Only inversions
+and InvDel events require pre-computed junction sequences, because their breakpoints introduce
+reverse-complement k-mers that are absent from the panel target sequences.
 
 ---
 
@@ -181,19 +183,22 @@ A non-zero `n_duplex_alt` provides stronger evidence, but is not required by def
 
 ## How do I detect structural variants?
 
-SV detection requires additional input files:
+Large deletions, tandem duplications, and novel insertions (≥50 bp) are detected automatically
+by the standard de Bruijn graph path walk. No additional input is required — run `kam run` as
+normal and these variant types will appear in the output if present.
 
-1. **SV junction sequences** (`sv_junctions`): a FASTA of synthetic sequences that span the
-   breakpoints of LargeDeletion, TandemDuplication, Inversion, and InvDel events. These are
-   typically pre-computed for a panel and are specific to the structural variants being monitored.
+Inversions and InvDel events require junction sequences because their breakpoints create k-mers
+that are absent from the panel target sequences:
+
+1. **SV junction sequences** (`sv_junctions`): a FASTA of synthetic sequences spanning the
+   inversion or InvDel breakpoints. Typically pre-computed for a panel. Without this, inversions
+   and InvDels will not be detected.
 
 2. **Fusion target sequences** (`fusion_targets`): a FASTA of synthetic sequences encoding
    breakpoint junctions between two genomic loci. Each entry ID must follow the format
-   `{name}__{chromA}:{startA}-{endA}__{chromB}:{startB}-{endB}__fusion`.
+   `{name}__{chromA}:{startA}-{endA}__{chromB}:{startB}-{endB}__fusion`. Required only for
+   fusion/translocation detection.
 
 Set these in the `[input]` section of your config. The SV-specific calling thresholds
-(`sv_min_confidence`, `sv_min_alt_molecules`, `sv_strand_bias_threshold`) can be tuned
-independently from the SNV/indel thresholds.
-
-If you do not have pre-computed SV junction sequences, SVs will not be detected. The standard
-de Bruijn graph walk does not find structural variants that span beyond the target window.
+(`sv_min_confidence`, `sv_min_alt_molecules`, `sv_strand_bias_threshold`) apply to all large
+variant types and can be tuned independently from the SNV/indel thresholds.

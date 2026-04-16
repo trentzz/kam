@@ -265,6 +265,8 @@ impl MlScorer {
             ("is_cpg", is_cpg),
             ("gc_content_ref", gc_content_ref),
             ("homopolymer_run", homopolymer_run),
+            ("dust_score", compute_dust_score(&call.ref_sequence, 64)),
+            ("repeat_fraction", compute_repeat_fraction(&call.ref_sequence)),
         ]
         .into_iter()
         .collect();
@@ -430,4 +432,174 @@ fn ref_homopolymer_run(ref_seq: &[u8], alt_seq: &[u8], vt: VariantType) -> f32 {
         0
     };
     left_run.max(right_run) as f32
+}
+
+/// Compute a DUST-like sequence complexity score for the reference sequence.
+/// Higher values indicate more repetitive, low-complexity sequence.
+/// A score above 10 suggests borderline low complexity; above 30 is high repeat.
+///
+/// # Examples
+/// ```ignore
+/// // Poly-A sequence scores high (low complexity)
+/// let score = compute_dust_score(b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", 64);
+/// assert!(score > 10.0);
+/// // Random-looking sequence scores low
+/// let score = compute_dust_score(b"ACGTGCTAGCTAGCATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCG", 64);
+/// assert!(score < 10.0);
+/// ```
+#[cfg(feature = "ml")]
+fn compute_dust_score(seq: &[u8], window: usize) -> f32 {
+    if seq.len() < 3 {
+        return 0.0;
+    }
+    let mut max_score: f32 = 0.0;
+    let window = window.min(seq.len());
+    let n_windows = seq.len() - window + 1;
+    for start in 0..n_windows {
+        let end = start + window;
+        let w = &seq[start..end];
+        // Count all trinucleotides in this window.
+        let mut counts = [0u32; 64];
+        for i in 0..w.len().saturating_sub(2) {
+            let a = base_index(w[i]);
+            let b = base_index(w[i + 1]);
+            let c = base_index(w[i + 2]);
+            let idx = a * 16 + b * 4 + c;
+            counts[idx] += 1;
+        }
+        let denom = (w.len().saturating_sub(2)).max(1) as f32;
+        let score: f32 = counts
+            .iter()
+            .map(|&c| (c * c.saturating_sub(1) / 2) as f32)
+            .sum::<f32>()
+            / denom;
+        if score > max_score {
+            max_score = score;
+        }
+    }
+    max_score
+}
+
+/// Map a nucleotide byte to 0..=3 for trinucleotide indexing.
+/// Non-ACGT bases map to 0 (A).
+#[cfg(feature = "ml")]
+fn base_index(b: u8) -> usize {
+    match b.to_ascii_uppercase() {
+        b'A' => 0,
+        b'C' => 1,
+        b'G' => 2,
+        b'T' => 3,
+        _ => 0,
+    }
+}
+
+/// Compute the fraction of bases in the reference sequence that fall within
+/// homopolymer runs (≥3 identical bases) or dinucleotide repeat runs (≥6 bases).
+///
+/// # Examples
+/// ```ignore
+/// // Poly-A has high repeat fraction
+/// let f = compute_repeat_fraction(b"AAAAAACGT");
+/// assert!(f > 0.5);
+/// // Short sequence with no repeats
+/// let f = compute_repeat_fraction(b"ACGT");
+/// assert_eq!(f, 0.0);
+/// ```
+#[cfg(feature = "ml")]
+fn compute_repeat_fraction(seq: &[u8]) -> f32 {
+    if seq.is_empty() {
+        return 0.0;
+    }
+    let n = seq.len();
+    let mut in_repeat = vec![false; n];
+
+    // Homopolymer runs >= 3.
+    let mut i = 0;
+    while i < n {
+        let mut j = i + 1;
+        while j < n && seq[j] == seq[i] {
+            j += 1;
+        }
+        if j - i >= 3 {
+            in_repeat[i..j].iter_mut().for_each(|b| *b = true);
+        }
+        i = j;
+    }
+
+    // Dinucleotide repeats >= 3 units (>= 6 bases).
+    if n >= 6 {
+        for start in 0..n.saturating_sub(5) {
+            let di = &seq[start..start + 2];
+            let mut end = start + 2;
+            while end + 1 < n && seq[end] == di[0] && seq[end + 1] == di[1] {
+                end += 2;
+            }
+            if end - start >= 6 {
+                in_repeat[start..end].iter_mut().for_each(|b| *b = true);
+            }
+        }
+    }
+
+    let repeat_count = in_repeat.iter().filter(|&&b| b).count();
+    repeat_count as f32 / n as f32
+}
+
+#[cfg(all(test, feature = "ml"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dust_score_poly_a_is_high() {
+        let seq = b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+        assert!(
+            compute_dust_score(seq, 64) > 10.0,
+            "poly-A should have high DUST score"
+        );
+    }
+
+    #[test]
+    fn dust_score_complex_sequence_is_low() {
+        let seq = b"ACGTGCTAGCTAGCATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCG";
+        assert!(
+            compute_dust_score(seq, 64) < 10.0,
+            "complex sequence should have low DUST score"
+        );
+    }
+
+    #[test]
+    fn dust_score_empty_sequence_returns_zero() {
+        assert_eq!(compute_dust_score(b"", 64), 0.0);
+    }
+
+    #[test]
+    fn repeat_fraction_homopolymer() {
+        // "AAAAAA" is 6 bases of poly-A run, "CGT" is 3 bases non-repeat → 6/9.
+        let f = compute_repeat_fraction(b"AAAAAACGT");
+        assert!(
+            f > 0.5,
+            "poly-A region should give repeat fraction > 0.5, got {f}"
+        );
+    }
+
+    #[test]
+    fn repeat_fraction_dinucleotide() {
+        // ATATAT is 6 bases dinucleotide repeat.
+        let f = compute_repeat_fraction(b"ATATATATCG");
+        assert!(
+            f > 0.5,
+            "dinucleotide repeat should give fraction > 0.5, got {f}"
+        );
+    }
+
+    #[test]
+    fn repeat_fraction_no_repeats() {
+        // ACGT has no run >= 3.
+        let f = compute_repeat_fraction(b"ACGT");
+        assert_eq!(f, 0.0, "ACGT has no repeats");
+    }
+
+    #[test]
+    fn repeat_fraction_empty_is_zero() {
+        assert_eq!(compute_repeat_fraction(b""), 0.0);
+    }
 }

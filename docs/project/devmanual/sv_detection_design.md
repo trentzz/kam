@@ -3,10 +3,17 @@
 ## Motivation
 
 The current kam pipeline detects small variants (SNVs, indels up to ~30bp) within 100bp
-target windows. Structural variants (SVs) are a distinct class: rearrangements of 50bp or
-larger including deletions, insertions of foreign sequence, inversions, tandem
-duplications, and translocations. Each type manifests differently in the de Bruijn graph
-and requires targeted design decisions.
+target windows. Large deletions, tandem duplications, and novel insertions ≥50 bp are
+detected by the same mechanism as short indels: the standard de Bruijn graph path walk.
+The only differences are longer alt paths and adjusted scoring thresholds
+(`mean_variant_specific_molecules` instead of `min_molecules`, confidence 0.95,
+min_alt_molecules 1). The 50 bp threshold marks where these adjustments kick in, not a
+different detection mode.
+
+Inversions and fusions are a genuinely distinct case. Their breakpoints create k-mers that
+are absent from both the reference and the panel targets. These k-mers will never be in
+the standard allowlist, so the path walk cannot find the alt path without help. Junction
+k-mer injection via `--sv-junctions` is required for these types.
 
 This document:
 1. Defines which SV types to support in a first phase.

@@ -6,7 +6,7 @@ The scorer runs after the statistical calling stage and adds two output columns:
 - `ml_prob` — model confidence (0–1) that the call is a real variant.
 - `ml_filter` — PASS if `ml_prob` ≥ threshold, FAIL otherwise.
 
-Enable it with `--ml-model`:
+Enable it with `--ml-model`. For discovery mode on Twist duplex panels, use `twist-duplex-v2`:
 
 ```bash
 kam run \
@@ -14,7 +14,7 @@ kam run \
   --r2 sample_R2.fastq.gz \
   --targets panel_targets.fa \
   --output-dir results/ \
-  --ml-model single-strand-v1
+  --ml-model twist-duplex-v2
 ```
 
 To see all available built-in models:
@@ -31,6 +31,7 @@ kam models list
 |---|---|---|---|---|---|
 | `single-strand-v1` | Twist UMI duplex | ML3 single-strand consensus, 9,990 samples | 0.9998 | 0.9949 | Standard Twist UMI panels with single-strand consensus calling |
 | `twist-duplex-v1` | Twist UMI duplex | Duplex-mode calls, 10,000 samples | 0.6062 | 0.9001 | Twist UMI panels run with duplex consensus calling enabled |
+| `twist-duplex-v2` | Twist UMI duplex | Real-data retrained on 24-sample titration dataset, 49 features | 0.973 | — | Recommended for discovery mode on Twist duplex panels |
 
 ### `single-strand-v1`
 
@@ -97,15 +98,31 @@ kam models list
 
 The lower AUPRC compared to `single-strand-v1` reflects the harder setting: duplex-mode calls carry greater intrinsic noise and the test set is evaluated at full class imbalance (97.1% negatives). AUROC remains high at 0.90, showing the model ranks true positives well across the score range. At the default threshold of 0.5, recall is high (0.80) at the cost of precision (0.13); lower the threshold to trade recall for precision.
 
+### `twist-duplex-v2`
+
+**Architecture**: LightGBM, retrained on real data with GroupKFold cross-validation (4 folds, grouped by sample ID) and 50 Optuna hyperparameter trials.
+
+**Training set**: Real confirmed TP/FP calls from the 24-sample Twist cfDNA Pan-Cancer titration dataset (3 input masses, 8 VAF levels). Unlike v1 (trained on varforge simulations), v2 uses real sequencing data where the distinction between true somatic variants and background noise is observable.
+
+**Features** (49 total in v2; 51 total with locus difficulty features): the 33 features from v1 plus 16 sequence-context features including substitution type, trinucleotide context, CpG status, GC content, and homopolymer run length. Two additional locus difficulty features (`dust_score` and `repeat_fraction`) are available for new model training (see below).
+
+**Key improvement over v1**: `twist-duplex-v1` assigned ml_prob >= 0.9 to all PASS calls (both TP and FP) because it was trained on simulated data where all statistical PASS calls are real variants. `twist-duplex-v2` produces discriminating probability distributions that separate true positives from false positives. FP counts drop by 79-93% across negative controls while sensitivity is fully preserved.
+
+**Performance**: AUPRC 0.973 on the held-out 30 ng test set. Precision >= 0.969 at 1-2% VAF. See `docs/project/experiments/03-ml-twist-duplex-v2/results/` for full evaluation.
+
+**Default threshold**: 0.449 (optimised from training data).
+
 ---
 
 ## Using a custom model
 
-Pass a file path instead of a name to load a custom ONNX model:
+Use `--custom-ml-model` with a file path to load an external ONNX model:
 
 ```bash
-kam run ... --ml-model /path/to/custom_model.onnx
+kam run ... --custom-ml-model /path/to/custom_model.onnx
 ```
+
+The `--custom-ml-model` flag is mutually exclusive with `--ml-model` (which selects a built-in model by name).
 
 The companion metadata file must exist at the same path with a `.json` extension
 (e.g. `/path/to/custom_model.json`). It must have this structure:
@@ -138,5 +155,33 @@ includes:
 |---|---|
 | `single-strand-v1` | 656 KB |
 | `twist-duplex-v1` | 668 KB |
+| `twist-duplex-v2` | 2.3 MB |
 
-Total binary overhead from all bundled models: ~1.3 MB.
+Total binary overhead from all bundled models: ~3.6 MB.
+
+---
+
+## Locus difficulty features (features 50–51)
+
+Two features quantify sequence complexity at the variant locus. These are available for new
+model training but are not used by the current bundled models (`single-strand-v1`,
+`twist-duplex-v1`, `twist-duplex-v2`). When a model does not request these features in its
+metadata, they default to 0.0 in the input vector.
+
+| Feature | Name | Description |
+|---|---|---|
+| 50 | `dust_score` | DUST algorithm score over a 64 bp window centred on the variant. Computed from trinucleotide frequencies. Higher values indicate more repetitive sequence. Score < 2 is complex; 2–10 is moderate; > 10 is low-complexity (homopolymers, simple repeats). |
+| 51 | `repeat_fraction` | Fraction of bases in the reference window within a homopolymer run of ≥ 3 bases or a dinucleotide repeat of ≥ 6 bases. Range 0.0–1.0. A poly-A tract gives a high value; complex exonic sequence gives 0.0. |
+
+Both features are computed from `VariantCall.ref_sequence` without external reference data.
+
+**Why these features matter**: low-complexity regions generate excess background errors from
+polymerase slippage and sequencing artefacts. A call at 0.5% VAF in a poly-T tract is far less
+credible than the same call in complex exonic sequence. Without a direct complexity measure, the
+model must infer this indirectly from homopolymer run length and GC content. DUST score and
+repeat fraction capture the global complexity signal that those features miss.
+
+**Backward compatibility**: existing bundled models ignore unknown feature names. The feature
+extractor checks the model's metadata JSON for requested features. If `dust_score` or
+`repeat_fraction` are not listed, they are not computed and default to 0.0. New models trained
+with these features will list them in their `feature_names` array.

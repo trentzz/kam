@@ -137,15 +137,60 @@ kam run --config examples/no-umi.toml
 
 ---
 
+## Junction monitoring
+
+### Monitoring a fusion from BAM observation
+
+When you observe a fusion or structural variant in IGV, copy the chimeric read
+sequence and create a simple FASTA file. No coordinates or special header format
+needed.
+
+Create `junction_from_bam.fa`:
+
+```
+>BCR_ABL1_from_igv
+CAGAGGAAGAGCTGCAGACCATGCGTCTGTGGCCGCTGATCCTGTCGGAGCCATAATTAGCAGACCGGTACCTGAGGACTG
+>EML4_ALK_from_igv
+TGGAGCCTTGAGATCTTCAACTGCTGAAGACTTCTAGTCCTACAGATCAACAATTTACCCAG
+```
+
+Run the pipeline with `--junction-sequences`:
+
+```bash
+kam run \
+  --r1 plasma_R1.fastq.gz \
+  --r2 plasma_R2.fastq.gz \
+  --targets panel_targets.fa \
+  --junction-sequences junction_from_bam.fa \
+  --output-dir results/ \
+  --max-vaf 0.35 \
+  --output-format tsv,vcf
+```
+
+Each junction entry is walked as a standalone target. Check
+`results/variants.tsv` for rows where `target_id` matches your FASTA headers.
+The `vaf` and `n_molecules_alt` columns show whether the junction is detected
+and at what frequency.
+
+For serial monitoring across time points, use the same junction FASTA for every
+sample and compare the `vaf` values over time.
+
+See `guides/patient-sv-monitoring.md` for a complete walkthrough with tumour-
+informed filtering and troubleshooting.
+
+---
+
 ## SV detection
 
 ### sv-detection.toml
 
-SV mode for detecting large deletions, tandem duplications, and inversions
-alongside SNVs and indels. Requires an SV junction FASTA (`sv_junctions`)
-whose k-mers are added to the allowlist so that breakpoint-spanning reads
-are captured. SV thresholds are relaxed relative to SNV thresholds because
-breakpoint k-mers are naturally rare.
+SV mode for detecting large deletions, tandem duplications, novel insertions,
+inversions, and InvDel events alongside SNVs and indels. Large deletions,
+tandem duplications, and novel insertions are detected automatically without
+any extra input. Inversions and InvDel events require an SV junction FASTA
+(`sv_junctions`) whose k-mers are added to the allowlist so that
+breakpoint-spanning reads are captured. SV thresholds are relaxed relative to
+SNV thresholds because breakpoint k-mers are naturally rare.
 
 ```bash
 kam run --config examples/sv-detection.toml

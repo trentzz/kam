@@ -11,9 +11,7 @@ observed k-mers, and calls variants by scoring alternative paths against the
 reference path using molecule counts and strand composition. No reference
 alignment is performed. Called variants are left-normalised to standard VCF
 convention, enabling direct comparison against truth sets for SNVs, indels, and
-structural variants. Structural variant detection uses junction k-mer injection:
-breakpoint-spanning k-mers are added to the allowlist, making SV allele paths
-discoverable in the de Bruijn graph without specialised alignment.
+structural variants. Large deletions and insertions $\ge$50\,bp are detected by the same de Bruijn graph path walk as short indels; no additional input is required. Inversions and fusions require junction k-mer injection: breakpoint-spanning k-mers are added to the allowlist to make the structurally rearranged allele path discoverable.
 
 We evaluate kam in two operating modes on the Twist cfDNA Pan-Cancer Reference
 Standard v2 titration series (375 truth variants, 24 samples, 5--30\,ng input

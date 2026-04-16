@@ -13,11 +13,22 @@ real sequencing data is deferred until the FASTQ data set is available.
 ## Background
 
 The original kam pipeline detected small variants only: SNVs, MNVs, and
-indels up to roughly 30 bp. Structural variants are a distinct class. They
-span ≥ 50 bp and manifest differently in the de Bruijn graph. This document
-records the design decisions made, what was implemented, and what worked.
+indels up to roughly 30 bp. Large deletions, tandem duplications, and novel
+insertions ≥ 50 bp are not a distinct class mechanistically. They use the
+same de Bruijn graph path walk as short indels, with longer alt paths and
+adjusted scoring thresholds (`mean_variant_specific_molecules` instead of
+`min_molecules`, confidence 0.95, min_alt_molecules 1). The 50 bp threshold
+marks where these adjustments activate, not a different detection mode.
 
-The design was developed in `docs/research/sv_detection_design.md` before
+Inversions and fusions are the genuinely distinct case. Their breakpoints
+produce k-mers absent from both the reference and the panel targets. Without
+junction k-mer injection via `--sv-junctions`, the allowlist filter discards
+these k-mers and the alt path is invisible to the path walk.
+
+This document records the design decisions made, what was implemented, and
+what worked.
+
+The design was developed in `docs/project/devmanual/sv_detection_design.md` before
 implementation began. That document should be read alongside this one.
 
 ---
@@ -241,4 +252,4 @@ sequence is distant from both flanks and sensitivity may drop at low VAF.
 | `kam-call/src/caller.rs` | `LargeDeletion`, `TandemDuplication`, `Inversion` in `VariantType` |
 | `kam-call/src/output.rs` | Symbolic VCF alleles, SVTYPE/SVLEN, ALT headers |
 | `docs/benchmarking/scripts/make_sv_targets.py` | New script |
-| `docs/research/sv_detection_design.md` | Design document (written before implementation) |
+| `docs/project/devmanual/sv_detection_design.md` | Design document (written before implementation) |

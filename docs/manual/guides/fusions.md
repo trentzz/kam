@@ -12,6 +12,44 @@ molecules do.
 
 ---
 
+## Simpler input: junction sequences from BAM
+
+If you have observed a fusion in a BAM file (e.g. via IGV), the simplest approach is
+`--junction-sequences`. Copy the chimeric read sequence spanning the fusion junction and
+save it in a FASTA file with any header:
+
+```
+>BCR_ABL1_from_igv
+CAGAGGAAGAGCTGCAGACCATGCGTCTGTGGCCGCTGATCCTGTCGGAGCCATAATTAGCAGACCGGTACCTGAGGACTG
+```
+
+```bash
+kam run \
+  --r1 plasma_R1.fastq.gz \
+  --r2 plasma_R2.fastq.gz \
+  --targets panel_targets.fa \
+  --junction-sequences junction_from_bam.fa \
+  --output-dir results/ \
+  --output-format tsv,vcf
+```
+
+Key benefits over `--fusion-targets`:
+
+- **No coordinates needed.** Any FASTA header works.
+- **Strand orientation is automatic.** The observed sequence already encodes the correct
+  orientation.
+- **Inserted nucleotides are included.** Random bases at the junction from DNA repair are
+  part of the copied sequence.
+
+The trade-off: `--junction-sequences` uses total library depth as the VAF denominator, not
+partner-locus depth. For accurate partner-depth VAF, use `--fusion-targets` with coordinate
+headers. For monitoring (is the fusion present or absent), `--junction-sequences` is
+sufficient and far simpler.
+
+See `guides/patient-sv-monitoring.md` for a complete walkthrough.
+
+---
+
 ## How fusion detection works
 
 Fusion detection reuses the standard walk/score/call pipeline. The difference is in the VAF

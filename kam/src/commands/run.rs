@@ -159,6 +159,31 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
         Vec::new()
     };
 
+    // Augment allowlist with raw junction sequence k-mers when provided.
+    // Keep a separate canonical k-mer set so the branch filter in the guided
+    // alt path search can restrict exploration to known junction branches.
+    // Each sequence is also stored for standalone walking and calling after
+    // normal target processing.
+    let mut junction_seq_canonical_kmers: std::collections::HashSet<u64> =
+        std::collections::HashSet::new();
+    let junction_seq_data: Vec<(String, Vec<u8>)> =
+        if let Some(ref jseq_path) = cfg.input.junction_sequences {
+            let seqs = read_fasta(jseq_path)?;
+            let jseq_slices: Vec<&[u8]> = seqs.iter().map(|(_id, seq)| seq.as_slice()).collect();
+            let jseq_allowlist = build_allowlist(&jseq_slices, k);
+            let n_jseq = jseq_allowlist.len();
+            junction_seq_canonical_kmers = jseq_allowlist.clone();
+            allowlist.extend(jseq_allowlist);
+            eprintln!(
+            "[run/index] junction_sequences: added {n_jseq} k-mers from {} sequences ({} total)",
+            seqs.len(),
+            allowlist.len()
+        );
+            seqs
+        } else {
+            vec![]
+        };
+
     let n_target_kmers = allowlist.len() as u64;
 
     // Two-pass indexing: include ALL k-mers from molecules that overlap a
@@ -448,12 +473,14 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             .map(|p| p.kmers.clone());
         let mut paths = paths;
         if let Some(ref_kmers) = ref_path_kmers {
-            // Branch filter: when junction k-mers are available, only explore
-            // branches that are known junction k-mers (prevents running DFS
-            // from every error-bubble branch, which causes 5-minute runtimes).
+            // Branch filter: when junction k-mers are available (from either
+            // sv_junctions or junction_sequences), only explore branches that
+            // are known junction k-mers. This prevents running DFS from every
+            // error-bubble branch, which causes 5-minute runtimes.
             // Without junction k-mers, fall back to a generous evidence
             // threshold.
-            let use_junction_filter = !junction_canonical_kmers.is_empty();
+            let use_junction_filter =
+                !junction_canonical_kmers.is_empty() || !junction_seq_canonical_kmers.is_empty();
 
             let guided = find_alt_paths_from_reference(
                 &graph,
@@ -476,7 +503,8 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
                         // spurious accidental k-mer collisions between the
                         // junction allowlist and the target graph, which would
                         // cause an exhaustive search over the full graph.
-                        junction_canonical_kmers.contains(&can_km)
+                        (junction_canonical_kmers.contains(&can_km)
+                            || junction_seq_canonical_kmers.contains(&can_km))
                             && index
                                 .get(can_km)
                                 .map(|e| e.n_molecules >= 3)
@@ -762,6 +790,172 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
                     n_duplex_alt: fusion_call.n_duplex,
                     n_simplex_alt: fusion_call.n_molecules.saturating_sub(fusion_call.n_duplex),
                     // Strand-level breakdown is not available from FusionCall; zero-fill.
+                    n_simplex_fwd_alt: 0,
+                    n_simplex_rev_alt: 0,
+                    n_duplex_ref: 0,
+                    n_simplex_ref: 0,
+                    mean_alt_error_prob: 0.0,
+                    min_variant_specific_duplex: fusion_call.n_duplex,
+                    mean_variant_specific_molecules: fusion_call.n_molecules as f32,
+                    confidence: fusion_call.confidence,
+                    strand_bias_p: 1.0,
+                    filter: fusion_call.filter,
+                    ml_prob: None,
+                    call_source: CallSource::Called,
+                    rescue_min_alt_molecules: None,
+                    rescue_alt_duplex: None,
+                    rescue_approx_vaf: None,
+                    rescue_kmers_found: None,
+                    rescue_kmers_total: None,
+                });
+            }
+        }
+    }
+
+    // ── Junction sequence walking and calling ─────────────────────────────────
+    // Raw junction sequences are walked as standalone targets. The VAF
+    // denominator is the mean total depth across all normal targets, since
+    // partner locus coordinates are unknown for these sequences.
+    if !junction_seq_data.is_empty() {
+        // Compute mean total library depth from reference path depths.
+        let mean_total_depth = if target_depths.is_empty() {
+            0.0
+        } else {
+            target_depths.values().copied().sum::<f64>() / target_depths.len() as f64
+        };
+
+        eprintln!(
+            "[run/call] processing {} junction sequences (mean library depth: {:.1})",
+            junction_seq_data.len(),
+            mean_total_depth
+        );
+
+        for (jseq_name, jseq_seq) in &junction_seq_data {
+            let (start_offset, start_raw) = match find_soft_anchor(jseq_seq, k, &graph, false, 10) {
+                Some(v) => v,
+                None => {
+                    eprintln!("[run/jseq] {jseq_name}: no start anchor in graph");
+                    continue;
+                }
+            };
+            let (end_offset, end_raw) = match find_soft_anchor(jseq_seq, k, &graph, true, 10) {
+                Some(v) => v,
+                None => {
+                    eprintln!("[run/jseq] {jseq_name}: no end anchor in graph");
+                    continue;
+                }
+            };
+
+            if start_raw == end_raw {
+                eprintln!("[run/jseq] {jseq_name}: start and end anchors are identical, skipping");
+                continue;
+            }
+
+            let effective_len = jseq_seq.len() - start_offset - end_offset;
+            let max_path = if k > 1 {
+                effective_len.saturating_sub(k - 1) + 50
+            } else {
+                150
+            };
+            let walk_config = WalkConfig {
+                max_path_length: max_path,
+                max_expansions: 2_000_000,
+                ..Default::default()
+            };
+
+            let (raw_paths, _) =
+                walk_paths_biased(&graph, start_raw, end_raw, &walk_config, |raw_km| {
+                    index
+                        .get(canonical(raw_km, k))
+                        .map(|e| e.n_molecules)
+                        .unwrap_or(0)
+                });
+
+            if raw_paths.is_empty() {
+                eprintln!("[run/jseq] {jseq_name}: no paths found (junction absent)");
+                continue;
+            }
+
+            // Pad paths with the soft-anchor prefix/suffix.
+            let prefix = &jseq_seq[..start_offset];
+            let suffix = &jseq_seq[jseq_seq.len() - end_offset..];
+            let paths: Vec<GraphPath> = if start_offset == 0 && end_offset == 0 {
+                raw_paths
+            } else {
+                raw_paths
+                    .into_iter()
+                    .map(|mut p| {
+                        let mut padded =
+                            Vec::with_capacity(prefix.len() + p.sequence.len() + suffix.len());
+                        padded.extend_from_slice(prefix);
+                        padded.extend_from_slice(&p.sequence);
+                        padded.extend_from_slice(suffix);
+                        p.sequence = padded;
+                        p
+                    })
+                    .collect()
+            };
+
+            // Score all paths. The path matching the junction sequence is the
+            // junction allele (flagged as is_reference by score_and_rank_paths).
+            let scored = score_and_rank_paths(paths, &index, jseq_seq, k);
+
+            // Use the path closest to the junction sequence as the evidence.
+            let junction_path = scored
+                .iter()
+                .find(|p| p.is_reference)
+                .or_else(|| scored.first());
+
+            let Some(jp) = junction_path else {
+                eprintln!("[run/jseq] {jseq_name}: scored paths empty after scoring");
+                continue;
+            };
+
+            // Build a minimal FusionTarget so we can reuse call_fusion.
+            // Partner loci are unknown; use sentinel values (empty chrom, pos 0).
+            use kam_call::fusion::{FusionTarget, GenomicLocus};
+            let sentinel_locus = GenomicLocus {
+                chrom: String::new(),
+                start: 0,
+                end: 0,
+            };
+            let synthetic_ft = FusionTarget {
+                name: jseq_name.clone(),
+                locus_a: sentinel_locus.clone(),
+                locus_b: sentinel_locus.clone(),
+                sequence: jseq_seq.clone(),
+                breakpoint_pos: jseq_seq.len() / 2,
+            };
+
+            let context = FusionContext {
+                partner_a_depth: mean_total_depth,
+                partner_b_depth: mean_total_depth,
+            };
+
+            if let Some(fusion_call) = call_fusion(
+                &jp.aggregate_evidence,
+                &context,
+                &synthetic_ft,
+                &caller_config,
+            ) {
+                eprintln!(
+                    "[run/jseq] {}: VAF={:.4} molecules={}",
+                    fusion_call.name, fusion_call.vaf, fusion_call.n_molecules
+                );
+                use kam_call::caller::{CallSource, VariantCall, VariantType};
+                all_calls.push(VariantCall {
+                    // Use the FASTA sequence name directly as the call target_id.
+                    target_id: jseq_name.clone(),
+                    variant_type: VariantType::Fusion,
+                    ref_sequence: jseq_seq.clone(),
+                    alt_sequence: jp.path.sequence.clone(),
+                    vaf: fusion_call.vaf,
+                    vaf_ci_low: fusion_call.vaf_ci_low,
+                    vaf_ci_high: fusion_call.vaf_ci_high,
+                    n_molecules_ref: 0,
+                    n_molecules_alt: fusion_call.n_molecules,
+                    n_duplex_alt: fusion_call.n_duplex,
+                    n_simplex_alt: fusion_call.n_molecules.saturating_sub(fusion_call.n_duplex),
                     n_simplex_fwd_alt: 0,
                     n_simplex_rev_alt: 0,
                     n_duplex_ref: 0,
@@ -1435,6 +1629,7 @@ mod tests {
             max_vaf: None,
             sv_junctions: None,
             fusion_targets: None,
+            junction_sequences: None,
             target_variants: None,
             ti_position_tolerance_override: None,
             ti_rescue: false,
@@ -1660,6 +1855,7 @@ min_umi_quality = 0
             max_vaf: None,
             sv_junctions: None,
             fusion_targets: None,
+            junction_sequences: None,
             target_variants: None,
             ti_position_tolerance_override: None,
             ti_rescue: false,
@@ -1752,6 +1948,7 @@ min_umi_quality = 0
             max_vaf: None,
             sv_junctions: None,
             fusion_targets: None,
+            junction_sequences: None,
             target_variants: None,
             ti_position_tolerance_override: None,
             ti_rescue: false,
@@ -1899,5 +2096,78 @@ min_umi_quality = 0
         assert_eq!(rc_seq(b"CCCC"), b"GGGG");
         assert_eq!(rc_seq(b"ATCG"), b"CGAT");
         assert_eq!(rc_seq(b""), b"" as &[u8]);
+    }
+
+    // ── junction_sequences tests ───────────────────────────────────────────────
+
+    /// K-mers from a junction sequence are added to the allowlist.
+    ///
+    /// Builds an allowlist from a target sequence and a separate junction
+    /// sequence, then checks that k-mers from the junction are present in the
+    /// combined allowlist but absent from the target-only allowlist.
+    #[test]
+    fn junction_sequences_kmers_added_to_allowlist() {
+        use kam_index::allowlist::build_allowlist;
+
+        let target_seq: &[u8] = b"ACGTACGTACGTACGTACGTACGT";
+        let junc_seq: &[u8] = b"TTTTTTTTTTTTTTTTTTTTTTTT";
+        let k = 8;
+
+        let target_allowlist = build_allowlist(&[target_seq], k);
+        let junc_allowlist = build_allowlist(&[junc_seq], k);
+
+        // Junction k-mers should be absent from the target-only allowlist.
+        for km in &junc_allowlist {
+            assert!(
+                !target_allowlist.contains(km),
+                "junction k-mer {km} should not be in target-only allowlist"
+            );
+        }
+
+        // Combined allowlist contains both.
+        let mut combined = target_allowlist;
+        combined.extend(&junc_allowlist);
+        for km in &junc_allowlist {
+            assert!(
+                combined.contains(km),
+                "junction k-mer {km} should be in combined allowlist"
+            );
+        }
+    }
+
+    /// Full pipeline completes when junction_sequences is set, even if the
+    /// junction sequence is absent from the reads (graceful no-call).
+    #[test]
+    fn junction_sequences_pipeline_completes() {
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        let template = "ACGTACGTACGTACGTACGTACGT";
+        let r1_seq = format!("ACGTATG{template}");
+        let r2_seq = format!("TGCATAG{template}");
+        let qual = "I".repeat(r1_seq.len());
+
+        let r1_path = dir.path().join("R1.fq");
+        let r2_path = dir.path().join("R2.fq");
+        write_fastq(&r1_path, &[("read1", &r1_seq, &qual)]);
+        write_fastq(&r2_path, &[("read1", &r2_seq, &qual)]);
+
+        let targets_path = dir.path().join("targets.fa");
+        write_fasta(&targets_path, &[("target1", template)]);
+
+        // Junction sequence absent from reads — pipeline should complete without error.
+        let jseq_path = dir.path().join("jseq.fa");
+        write_fasta(
+            &jseq_path,
+            &[("junc1", "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT")],
+        );
+
+        let output_dir = dir.path().join("results");
+
+        let mut args = minimal_run_args(r1_path, r2_path, targets_path, output_dir.clone());
+        args.kmer_size_override = Some(8);
+        args.junction_sequences = Some(jseq_path);
+
+        run_pipeline(args).expect("run_pipeline with junction_sequences should succeed");
+        assert!(output_dir.join("variants.tsv").exists(), "variants.tsv");
     }
 }

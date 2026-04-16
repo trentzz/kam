@@ -114,12 +114,14 @@ FEATURE_NAMES: list[str] = [
     "duplex_vaf",
     "simplex_vaf",
     "duplex_simplex_vaf_delta",
-    # Category A: 5 sequence-context features
+    # Category A: 7 sequence-context features
     "subst_type",
     "trinuc_context",
     "is_cpg",
     "gc_content_ref",
     "homopolymer_run",
+    "dust_score",
+    "repeat_fraction",
 ]
 
 
@@ -510,10 +512,98 @@ def compute_homopolymer_run(row: pd.Series) -> int:
     return max(left_run, right_run)
 
 
+def compute_dust_score(ref_seq: str, window: int = 64) -> float:
+    """Compute a DUST-like sequence complexity score.
+
+    Higher values indicate more repetitive, low-complexity sequence.
+    Uses trinucleotide frequency analysis over a sliding window.
+
+    Args:
+        ref_seq: Reference sequence string.
+        window: Sliding window size in bases.
+
+    Returns:
+        Float >= 0.0. Values above 10 suggest borderline low complexity;
+        above 30 indicates high repeat content.
+
+    Example:
+        >>> compute_dust_score("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA") > 10
+        True
+        >>> compute_dust_score("ACGTGCTAGCTAGCATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCG") < 10
+        True
+    """
+    if not ref_seq or len(ref_seq) < 3:
+        return 0.0
+    seq = ref_seq.upper().encode("ascii", errors="replace")
+    base_map = {ord(b"A"): 0, ord(b"C"): 1, ord(b"G"): 2, ord(b"T"): 3}
+    max_score = 0.0
+    win = min(window, len(seq))
+    n_windows = max(1, len(seq) - win + 1)
+    for start in range(n_windows):
+        w = seq[start : start + win]
+        counts: dict[tuple[int, int, int], int] = {}
+        for i in range(len(w) - 2):
+            tri = (
+                base_map.get(w[i], 0),
+                base_map.get(w[i + 1], 0),
+                base_map.get(w[i + 2], 0),
+            )
+            counts[tri] = counts.get(tri, 0) + 1
+        denom = max(1, len(w) - 2)
+        score = sum(c * (c - 1) // 2 for c in counts.values()) / denom
+        max_score = max(max_score, score)
+    return max_score
+
+
+def compute_repeat_fraction(ref_seq: str) -> float:
+    """Compute fraction of bases in homopolymer (>=3) or dinucleotide (>=6) repeats.
+
+    Args:
+        ref_seq: Reference sequence string.
+
+    Returns:
+        Float in [0.0, 1.0]. Returns 0.0 for empty strings.
+
+    Example:
+        >>> compute_repeat_fraction("AAAAAACGT") > 0.5
+        True
+        >>> compute_repeat_fraction("ACGT")
+        0.0
+    """
+    if not ref_seq:
+        return 0.0
+    seq = ref_seq.upper()
+    n = len(seq)
+    in_repeat = [False] * n
+
+    # Homopolymer runs >= 3.
+    i = 0
+    while i < n:
+        j = i + 1
+        while j < n and seq[j] == seq[i]:
+            j += 1
+        if j - i >= 3:
+            for k in range(i, j):
+                in_repeat[k] = True
+        i = j
+
+    # Dinucleotide repeats >= 3 units (>= 6 bases).
+    for start in range(n - 5):
+        di = seq[start : start + 2]
+        end = start + 2
+        while end + 1 < n and seq[end] == di[0] and seq[end + 1] == di[1]:
+            end += 2
+        if end - start >= 6:
+            for k in range(start, end):
+                in_repeat[k] = True
+
+    return sum(in_repeat) / n
+
+
 # ── Feature computation ────────────────────────────────────────────────────────
 
 def compute_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Compute all 49 features and return a new DataFrame with exactly those columns.
+    """Compute all 51 features and return a new DataFrame with exactly those columns.
 
     The input DataFrame must have all required raw TSV columns. NaN values
     in numeric columns are filled with 0 before computation.
@@ -522,7 +612,7 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
         df: Raw TSV rows (PASS-filtered) with all expected columns.
 
     Returns:
-        DataFrame with exactly the 49 columns listed in FEATURE_NAMES.
+        DataFrame with exactly the 51 columns listed in FEATURE_NAMES.
 
     Example:
         >>> import pandas as pd
@@ -624,6 +714,10 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
 
     out["gc_content_ref"] = df["ref_seq"].fillna("").astype(str).map(compute_gc_content)
     out["homopolymer_run"] = df.apply(compute_homopolymer_run, axis=1)
+    out["dust_score"] = df["ref_seq"].fillna("").astype(str).apply(compute_dust_score)
+    out["repeat_fraction"] = (
+        df["ref_seq"].fillna("").astype(str).apply(compute_repeat_fraction)
+    )
 
     return out[FEATURE_NAMES]
 

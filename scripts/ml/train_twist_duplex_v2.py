@@ -112,6 +112,8 @@ FEATURE_NAMES: list[str] = [
     "is_cpg",
     "gc_content_ref",
     "homopolymer_run",
+    "dust_score",
+    "repeat_fraction",
 ]
 
 # Metadata columns to exclude from the feature matrix.

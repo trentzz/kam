@@ -15,6 +15,7 @@ kam <SUBCOMMAND> [OPTIONS]
 | `pathfind` | Walk de Bruijn graph paths |
 | `call` | Call variants from scored paths |
 | `run` | Run the full pipeline end-to-end |
+| `models list` | List all built-in ML models |
 
 For most uses, `kam run` is the correct entry point. The individual subcommands are exposed for debugging, benchmarking individual stages, and integration with Nextflow.
 
@@ -36,6 +37,7 @@ kam run --r1 <R1.fastq.gz> --r2 <R2.fastq.gz> --targets <targets.fa> --output-di
 | `--r2` | Path | R2 input FASTQ file (gzip-compressed or plain) |
 | `--targets` | Path | Target sequences FASTA file |
 | `--output-dir` | Path | Directory for all pipeline outputs |
+| `--config` | Path | Optional TOML config file. Pipeline parameters are loaded from the file first, then CLI flags override individual values. When absent, the four flags above are required on the command line. |
 
 ### Assembly options
 
@@ -62,6 +64,26 @@ kam run --r1 <R1.fastq.gz> --r2 <R2.fastq.gz> --targets <targets.fa> --output-di
 | `--min-alt-duplex` | 0 | Minimum variant-specific duplex molecules. Counts only duplex molecules whose k-mers are at the variant site (alt-specific k-mers), not at the flanking anchor k-mers. Default 0 disables this filter. Set to 1 to require at least one duplex confirmation at the variant site. Recommended only at duplex fractions ≥15% or depth ≥5M reads. |
 | `--max-vaf` | (none) | Maximum VAF for a PASS call. Calls with VAF above this are labelled HighVaf. For ctDNA somatic calling, germline heterozygous variants have VAF ≈ 0.5. Setting `--max-vaf 0.35` eliminates them while retaining all low-VAF somatic calls. |
 | `--target-variants` | (none) | VCF file of expected somatic variants. When set, only calls matching a `(CHROM, POS, REF, ALT)` entry in this VCF are marked PASS. All other quality-passing calls are labelled NotTargeted. This is tumour-informed monitoring mode. Use it when the somatic variant panel is known from a prior tissue biopsy. Produces near-zero false positives. |
+| `--ti-position-tolerance` | 0 | Position tolerance in bp for tumour-informed matching. When > 0, a call also passes the TI filter if its position is within this many bp of any target variant position, regardless of REF/ALT. Useful for large SVs with breakpoint ambiguity. |
+| `--ti-rescue` | false | Enable rescue probing for TI targets that produce no matching call. When set alongside `--target-variants`, the k-mer index is queried directly for each undetected TI variant. Results appear with `call_source=RESCUED` or `call_source=NO_EVIDENCE`. |
+
+### SV and fusion options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--sv-junctions` | (none) | FASTA of SV junction sequences to augment the k-mer allowlist. Required for detecting inversions and InvDel events whose breakpoint k-mers are absent from the panel targets. Not needed for large deletions, tandem duplications, or novel insertions. |
+| `--fusion-targets` | (none) | FASTA of synthetic fusion target sequences. Each entry ID must follow the format `{name}__{chromA}:{startA}-{endA}__{chromB}:{startB}-{endB}__fusion`. K-mers from these sequences are added to the allowlist so fusion-spanning reads are captured. |
+| `--junction-sequences` | (none) | FASTA of raw junction sequences for monitoring fusions or SVs observed in BAM/IGV. Any FASTA header format is accepted. Each sequence is added to the k-mer allowlist and walked as a standalone target with total library depth as the VAF denominator. Use this when you have the observed junction sequence but not exact genomic coordinates. See `guides/patient-sv-monitoring.md`. |
+| `--sv-min-confidence` | 0.95 | Minimum posterior probability for a structural variant PASS call. Applies to LargeDeletion, TandemDuplication, Inversion, InvDel, and NovelInsertion. |
+| `--sv-min-alt-molecules` | 1 | Minimum alt-supporting molecules for a structural variant PASS call. |
+| `--sv-strand-bias-threshold` | 1.0 | Fisher p-value threshold for strand bias on SV-type variants. Default 1.0 disables the filter. Inversion junction reads are structurally strand-biased, so the standard threshold is inappropriate. |
+
+### ML options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ml-model` | (none) | Built-in model name for variant re-scoring (e.g. `twist-duplex-v2`, `single-strand-v1`). Adds `ml_prob` and `ml_filter` columns to output. Mutually exclusive with `--custom-ml-model`. |
+| `--custom-ml-model` | (none) | Path to a custom ONNX model file. The companion `.json` metadata file must exist at the same path. Mutually exclusive with `--ml-model`. |
 
 ### Output options
 
@@ -140,6 +162,8 @@ kam index --input <molecules.bin> --targets <targets.fa> --output <index.bin> [O
 | Flag | Default | Description |
 |------|---------|-------------|
 | `-k` / `--kmer-size` | 31 | K-mer length (1–31) |
+| `--sv-junctions` | (none) | FASTA of SV junction sequences to augment the k-mer allowlist. Same as the `kam run` flag. |
+| `--junction-sequences` | (none) | FASTA of raw junction sequences. Same as the `kam run` flag. |
 
 The index stage writes `index_qc.json` to the same directory as `--output`.
 
@@ -193,8 +217,14 @@ Same calling options as `kam run` above:
 | `--strand-bias-threshold` | (CallerConfig default: 0.01) |
 | `--min-alt-molecules` | (CallerConfig default: 2) |
 | `--min-alt-duplex` | (CallerConfig default: 0) |
+| `--sv-min-confidence` | (CallerConfig default: 0.95) |
+| `--sv-min-alt-molecules` | (CallerConfig default: 1) |
+| `--sv-strand-bias-threshold` | (default: 1.0, disabled) |
 | `--max-vaf` | (none) |
 | `--target-variants` | (none) |
+| `--ti-position-tolerance` | (default: 0) |
+| `--ml-model` | (none) |
+| `--custom-ml-model` | (none) |
 
 The call stage writes `call_qc.json` to the same directory as `--output`.
 

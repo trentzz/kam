@@ -80,7 +80,7 @@ NotTargeted.
 ## Folder structure
 
 ```
-sv/
+02-sv-core/
 ├── README.md             — this file
 ├── configs/              — varforge simulation configs (one per VAF level)
 │   ├── sim_vaf005.yaml

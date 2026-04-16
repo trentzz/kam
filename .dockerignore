@@ -1,0 +1,29 @@
+# Rust build artefacts — large and not needed in the image context.
+target/
+
+# Large generated data — never sent to Docker daemon.
+bigdata/
+
+# Benchmark data — can be hundreds of gigabytes.
+docs/benchmarking/
+
+# Git history.
+.git/
+.gitignore
+
+# Root-level markdown files — documentation is not needed at build time.
+*.md
+
+# Environment files — never include secrets in an image.
+.env
+.env.*
+
+# Editor and IDE artefacts.
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS artefacts.
+.DS_Store
+Thumbs.db

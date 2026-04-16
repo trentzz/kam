@@ -24,3 +24,5 @@ Developer reference for contributing to kam. Read the relevant file before start
 | `sv_detection_implementation.md` | SV detection implementation details |
 | `output_format_specs.md` | Annotated FASTQ tag definitions, QC JSON schemas, TSV/VCF/JSON output |
 | `hash_partition_umi_grouping.md` | Hash-partition UMI grouping algorithm |
+| `ml_gradient_boosting.md` | Gradient boosting for variant re-scoring |
+| `ml_integration_design.md` | ML integration design: ONNX runtime, feature extraction, bundled models |
