@@ -309,7 +309,7 @@ pub fn duplex_consensus(
     // template), but must not panic in library code. Return None with a
     // diagnostic message so the caller can log and skip the molecule.
     if fwd_ssc.len() != rev_ssc.len() {
-        eprintln!(
+        log::warn!(
             "duplex_consensus: length mismatch (fwd={}, rev={}) — skipping molecule",
             fwd_ssc.len(),
             rev_ssc.len()

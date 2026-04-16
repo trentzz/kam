@@ -18,8 +18,6 @@
 # Place input files in ./data/ and results will appear in ./results/.
 # Override the image tag by setting KAM_IMAGE in your environment or a .env file.
 
-version: "3.8"
-
 services:
   kam:
     # Use a locally built image by default. Override with KAM_IMAGE to pull
