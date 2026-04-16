@@ -25,6 +25,7 @@ fn main() {
         Commands::Call(args) => commands::call::run_call(args),
         Commands::Run(args) => commands::run::run_pipeline(*args),
         Commands::Models(args) => commands::models::run_models(args),
+        Commands::Explore(args) => commands::explore::run_explore(args),
     };
 
     if let Err(e) = result {

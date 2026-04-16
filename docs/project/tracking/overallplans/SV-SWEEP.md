@@ -1,6 +1,6 @@
 # SV-SWEEP: Parameter and Size Sweep Experiments
 
-**Status**: todo
+**Status**: in-progress
 **Priority**: medium
 **Branch**: epic/SV-SWEEP
 
@@ -21,17 +21,35 @@ operating points.
 
 | ID | File | Status |
 |----|------|--------|
-| SV-SWP-001 | todo/sv_swp_001_kmer_script.md | todo |
+| SV-SWP-001 | done/sv_swp_001_kmer_script.md | done |
 | SV-SWP-002 | todo/sv_swp_002_kmer_run.md | todo |
-| SV-SWP-003 | todo/sv_swp_003_threshold_script.md | todo |
+| SV-SWP-003 | done/sv_swp_003_threshold_script.md | done |
 | SV-SWP-004 | todo/sv_swp_004_threshold_run.md | todo |
-| SV-SWP-005 | todo/sv_swp_005_size_configs.md | todo |
+| SV-SWP-005 | done/sv_swp_005_size_configs.md | done |
 | SV-SWP-006 | todo/sv_swp_006_size_run.md | todo |
-| SV-SWP-007 | todo/sv_swp_007_aggregate.md | todo |
+| SV-SWP-007 | done/sv_swp_007_aggregate.md | done |
+
+## Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/benchmarking/sv_kmer_sweep.sh` | K-mer size sweep (k=21,25,27,31,35,41) |
+| `scripts/benchmarking/sv_threshold_sweep.sh` | Confidence and min-alt-molecules sweep |
+| `scripts/benchmarking/sv_detection_limits.sh` | Ultra-low VAF detection limit runner |
+| `scripts/benchmarking/aggregate_sweep.py` | Aggregate results, produce heatmaps and recommendations |
+| `scripts/benchmarking/generate_size_sweep_configs.py` | Generate size sweep varforge configs |
+| `scripts/benchmarking/generate_ultra_low_vaf_configs.py` | Generate ultra-low VAF varforge configs |
+
+## Configs
+
+| Directory | Contents |
+|-----------|----------|
+| `scripts/benchmarking/sv_size_sweep_configs/` | 28 configs: DEL/DUP at 5 sizes, INV at 4 sizes (>= 50 bp), 2 replicates each |
+| `docs/benchmarking/03-sv-extended/configs/ultra_low_vaf/` | 48 configs: 6 SV types x 4 VAF levels (0.01-0.04%) x 2 replicates |
 
 ## Scope
 
-- `docs/benchmarking/sv_new/scripts/` — sweep runner and scoring scripts
-- `docs/benchmarking/sv_new/configs/` — size-sweep configs
-- `docs/benchmarking/sv_new/results/sweep_*/` — sweep results
-- `docs/benchmarking/sv_new/figures/` — heatmaps and line plots
+- `scripts/benchmarking/` — sweep runner, scoring, and aggregation scripts
+- `scripts/benchmarking/sv_size_sweep_configs/` — size-sweep varforge configs
+- `docs/benchmarking/03-sv-extended/configs/ultra_low_vaf/` — ultra-low VAF configs
+- `docs/benchmarking/03-sv-extended/` — extended SV benchmark data and results

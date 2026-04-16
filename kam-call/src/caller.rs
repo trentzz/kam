@@ -775,6 +775,17 @@ fn is_tandem_duplication(ref_seq: &[u8], alt_seq: &[u8]) -> bool {
         return false;
     }
 
+    // Verify suffix: the alt sequence after the insertion must match the
+    // reference from the divergence point onwards. A true tandem duplication
+    // has matching prefix + duplicated segment + matching suffix that rejoins
+    // the reference. Without this check, novel inserted sequences can match
+    // by coincidence in the doubled reference.
+    let alt_suffix = &alt_seq[diverge + ins_len..];
+    let ref_suffix = &ref_seq[diverge..];
+    if alt_suffix.len() != ref_suffix.len() || alt_suffix != ref_suffix {
+        return false;
+    }
+
     // Search for the inserted sequence as a substring of (ref + ref).
     // This handles the case where the inserted length exceeds the reference length
     // but the inserted bases are a contiguous tiling of a reference repeat unit
@@ -2162,5 +2173,45 @@ mod tests {
             cfg.sv_strand_bias_threshold, 1.0,
             "sv_strand_bias_threshold"
         );
+    }
+
+    // ─── Tandem duplication suffix-check regression tests ─────────────────────
+
+    // Test 56: novel insertion whose inserted bytes happen to appear in the
+    // doubled reference, but whose alt suffix does not rejoin the reference.
+    // Must not be misclassified as a tandem duplication.
+    #[test]
+    fn novel_insertion_not_classified_as_dup() {
+        let ref_seq = b"ACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGT";
+        // Insert 50 random bases that do not rejoin the reference cleanly.
+        let mut alt = ref_seq[..25].to_vec();
+        alt.extend_from_slice(b"NNNNNNNNNNTTTTTTTTTTCCCCCCCCCCGGGGGGGGGGAAAAAAAAAA"); // 50 novel bases
+        alt.extend_from_slice(b"XYZXYZXYZXYZXYZ"); // suffix does not match ref
+        assert!(!is_tandem_duplication(ref_seq, &alt));
+    }
+
+    // Test 57: a true tandem duplication (prefix matches, inserted segment
+    // from ref, suffix matches) is still correctly classified.
+    #[test]
+    fn true_tandem_dup_still_classified() {
+        let ref_seq = b"AAAAACCCCCGGGGGTTTTTNNNNN"; // 25 bp
+        let mut alt = ref_seq.to_vec();
+        // Insert "CCCCCGGGGG" (10 bp from ref) at position 10.
+        let dup_segment = b"CCCCCGGGGG";
+        alt.splice(10..10, dup_segment.iter().copied());
+        assert!(is_tandem_duplication(ref_seq, &alt));
+    }
+
+    // Test 58: classify_variant assigns NovelInsertion when the alt is longer
+    // than the ref by >= 50 bp and the inserted content is novel.
+    #[test]
+    fn classify_variant_novel_insertion_type() {
+        let ref_seq = vec![b'A'; 100];
+        let mut alt = ref_seq[..50].to_vec();
+        // Insert 60 novel bases (above SV_LENGTH_THRESHOLD of 50).
+        alt.extend_from_slice(&[b'T'; 60]);
+        alt.extend_from_slice(&ref_seq[50..]);
+        let vt = classify_variant(&ref_seq, &alt);
+        assert_eq!(vt, VariantType::NovelInsertion);
     }
 }

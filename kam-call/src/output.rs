@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 
 use crate::allele::extract_minimal_allele;
 use crate::caller::{VariantCall, VariantFilter, VariantType};
-use crate::fusion::FusionCall;
+use crate::fusion::{BndOrientation, FusionCall};
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
@@ -350,10 +350,15 @@ fn write_sv_vcf_record(
 /// Write two paired VCF BND records for a fusion call.
 ///
 /// Emits one record per partner breakpoint following VCF 4.3 BND notation.
-/// The two records are linked by `MATEID`. Assumes forward-forward orientation
-/// (bracket placement `t]p]` for record 1 and `]p]t` for record 2), which is
-/// the correct representation for a 5′→3′ fusion where partner A contributes
-/// the upstream sequence and partner B the downstream sequence.
+/// The two records are linked by `MATEID`. The bracket placement depends on
+/// the call's [`BndOrientation`]:
+///
+/// | Orientation | Record 1 ALT | Record 2 ALT |
+/// |-------------|-------------|-------------|
+/// | FF          | `t]p]`      | `]p]t`      |
+/// | FR          | `t[p[`      | `[p[t`      |
+/// | RF          | `]p]t`      | `t]p]`      |
+/// | RR          | `[p[t`      | `t[p[`      |
 ///
 /// The `writer` target must already contain a VCF header (use `write_vcf` for
 /// full-pipeline output, which writes the header automatically).
@@ -361,7 +366,7 @@ fn write_sv_vcf_record(
 /// # Example
 /// ```
 /// use kam_call::output::write_fusion_bnd_records;
-/// use kam_call::fusion::{FusionCall, GenomicLocus};
+/// use kam_call::fusion::{BndOrientation, FusionCall, GenomicLocus};
 /// use kam_call::caller::VariantFilter;
 ///
 /// let call = FusionCall {
@@ -375,6 +380,7 @@ fn write_sv_vcf_record(
 ///     n_duplex: 5,
 ///     confidence: 0.999,
 ///     filter: VariantFilter::Pass,
+///     orientation: BndOrientation::ForwardForward,
 /// };
 /// let mut buf = Vec::new();
 /// write_fusion_bnd_records(&call, &mut buf).unwrap();
@@ -404,36 +410,47 @@ pub fn write_fusion_bnd_records(call: &FusionCall, writer: &mut dyn Write) -> io
         call.confidence,
     );
 
-    // Record 1: partner A breakpoint. ALT = ref_base]chrom_b:pos_b]
-    // (forward-forward orientation: closing bracket on right).
+    let pos_a = call.locus_a.start + 1; // 0-based to 1-based VCF POS
+    let pos_b = call.locus_b.start + 1;
+    let chrom_a = &call.locus_a.chrom;
+    let chrom_b = &call.locus_b.chrom;
+
+    // Format ALT fields per VCF 4.3 BND bracket notation.
+    //
+    // The four orientations encode which strand each partner contributes:
+    //   FF: t]p]  and  ]p]t   (both forward)
+    //   FR: t[p[  and  [p[t   (A forward, B reverse)
+    //   RF: ]p]t  and  t]p]   (A reverse, B forward)
+    //   RR: [p[t  and  t[p[   (both reverse)
+    let (alt_1, alt_2) = match call.orientation {
+        BndOrientation::ForwardForward => (
+            format!("{ref_a}]{chrom_b}:{pos_b}]"),
+            format!("]{chrom_a}:{pos_a}]{ref_b}"),
+        ),
+        BndOrientation::ForwardReverse => (
+            format!("{ref_a}[{chrom_b}:{pos_b}["),
+            format!("[{chrom_a}:{pos_a}[{ref_b}"),
+        ),
+        BndOrientation::ReverseForward => (
+            format!("]{chrom_b}:{pos_b}]{ref_a}"),
+            format!("{ref_b}]{chrom_a}:{pos_a}]"),
+        ),
+        BndOrientation::ReverseReverse => (
+            format!("[{chrom_b}:{pos_b}[{ref_a}"),
+            format!("{ref_b}[{chrom_a}:{pos_a}["),
+        ),
+    };
+
+    // Record 1: partner A breakpoint.
     writeln!(
         writer,
-        "{chrom_a}\t{pos_a}\t{id1}\t{ref_a}\t{ref_a}]{chrom_b}:{pos_b}]\t.\t{filter}\t{info};MATEID={id2}",
-        chrom_a = call.locus_a.chrom,
-        pos_a = call.locus_a.start + 1, // convert 0-based to 1-based VCF POS
-        id1 = id_1,
-        ref_a = ref_a,
-        chrom_b = call.locus_b.chrom,
-        pos_b = call.locus_b.start + 1,
-        filter = filter_str,
-        info = base_info,
-        id2 = id_2,
+        "{chrom_a}\t{pos_a}\t{id_1}\t{ref_a}\t{alt_1}\t.\t{filter_str}\t{base_info};MATEID={id_2}",
     )?;
 
-    // Record 2: partner B breakpoint. ALT = ]chrom_a:pos_a]ref_base
-    // (forward-forward orientation: closing bracket on left).
+    // Record 2: partner B breakpoint.
     writeln!(
         writer,
-        "{chrom_b}\t{pos_b}\t{id2}\t{ref_b}\t]{chrom_a}:{pos_a}]{ref_b}\t.\t{filter}\t{info};MATEID={id1}",
-        chrom_b = call.locus_b.chrom,
-        pos_b = call.locus_b.start + 1,
-        id2 = id_2,
-        ref_b = ref_b,
-        chrom_a = call.locus_a.chrom,
-        pos_a = call.locus_a.start + 1,
-        filter = filter_str,
-        info = base_info,
-        id1 = id_1,
+        "{chrom_b}\t{pos_b}\t{id_2}\t{ref_b}\t{alt_2}\t.\t{filter_str}\t{base_info};MATEID={id_1}",
     )?;
 
     Ok(())
@@ -1200,6 +1217,7 @@ mod tests {
             n_duplex: 5,
             confidence: 0.999,
             filter: VariantFilter::Pass,
+            orientation: crate::fusion::BndOrientation::ForwardForward,
         };
         let mut buf = Vec::new();
         write_fusion_bnd_records(&fusion_call, &mut buf).expect("write");
@@ -1221,6 +1239,86 @@ mod tests {
             lines[1].contains("MATEID=bnd_BCR_ABL1_1"),
             "record 2 MATEID must point to record 1"
         );
+    }
+
+    // ── BND orientation bracket tests ────────────────────────────────────────
+
+    /// Helper to build a FusionCall with a given orientation.
+    fn make_fusion_call(orientation: crate::fusion::BndOrientation) -> FusionCall {
+        FusionCall {
+            name: "TEST".to_string(),
+            locus_a: crate::fusion::GenomicLocus {
+                chrom: "chr1".to_string(),
+                start: 99, // 0-based → VCF POS 100
+                end: 149,
+            },
+            locus_b: crate::fusion::GenomicLocus {
+                chrom: "chr2".to_string(),
+                start: 199, // 0-based → VCF POS 200
+                end: 249,
+            },
+            vaf: 0.01,
+            vaf_ci_low: 0.005,
+            vaf_ci_high: 0.02,
+            n_molecules: 5,
+            n_duplex: 2,
+            confidence: 0.99,
+            filter: VariantFilter::Pass,
+            orientation,
+        }
+    }
+
+    /// Extract ALT field (column 5, 0-indexed 4) from a VCF line.
+    fn extract_alt(line: &str) -> &str {
+        line.split('\t').nth(4).expect("ALT column missing")
+    }
+
+    /// FF orientation: record 1 = `N]chr2:200]`, record 2 = `]chr1:100]N`.
+    #[test]
+    fn fusion_bnd_ff_bracket_syntax() {
+        let call = make_fusion_call(crate::fusion::BndOrientation::ForwardForward);
+        let mut buf = Vec::new();
+        write_fusion_bnd_records(&call, &mut buf).expect("write");
+        let text = String::from_utf8(buf).expect("UTF-8");
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(extract_alt(lines[0]), "N]chr2:200]", "FF record 1 ALT");
+        assert_eq!(extract_alt(lines[1]), "]chr1:100]N", "FF record 2 ALT");
+    }
+
+    /// FR orientation: record 1 = `N[chr2:200[`, record 2 = `[chr1:100[N`.
+    #[test]
+    fn fusion_bnd_fr_bracket_syntax() {
+        let call = make_fusion_call(crate::fusion::BndOrientation::ForwardReverse);
+        let mut buf = Vec::new();
+        write_fusion_bnd_records(&call, &mut buf).expect("write");
+        let text = String::from_utf8(buf).expect("UTF-8");
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(extract_alt(lines[0]), "N[chr2:200[", "FR record 1 ALT");
+        assert_eq!(extract_alt(lines[1]), "[chr1:100[N", "FR record 2 ALT");
+    }
+
+    /// RF orientation: record 1 = `]chr2:200]N`, record 2 = `N]chr1:100]`.
+    #[test]
+    fn fusion_bnd_rf_bracket_syntax() {
+        let call = make_fusion_call(crate::fusion::BndOrientation::ReverseForward);
+        let mut buf = Vec::new();
+        write_fusion_bnd_records(&call, &mut buf).expect("write");
+        let text = String::from_utf8(buf).expect("UTF-8");
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(extract_alt(lines[0]), "]chr2:200]N", "RF record 1 ALT");
+        assert_eq!(extract_alt(lines[1]), "N]chr1:100]", "RF record 2 ALT");
+    }
+
+    /// RR orientation: record 1 = `[chr2:200[N`, record 2 = `N[chr1:100[`.
+    #[test]
+    fn fusion_bnd_rr_bracket_syntax() {
+        let call = make_fusion_call(crate::fusion::BndOrientation::ReverseReverse);
+        let mut buf = Vec::new();
+        write_fusion_bnd_records(&call, &mut buf).expect("write");
+        let text = String::from_utf8(buf).expect("UTF-8");
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(extract_alt(lines[0]), "[chr2:200[N", "RR record 1 ALT");
+        assert_eq!(extract_alt(lines[1]), "N[chr1:100[", "RR record 2 ALT");
     }
 
     // Test 23: JSON output for an empty call list is exactly "[]".

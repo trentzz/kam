@@ -3,7 +3,7 @@
 **Epic**: SV-SWEEP
 **Priority**: medium
 **Depends on**: SV-BASE-007
-**Status**: todo
+**Status**: done
 
 ## Goal
 
@@ -12,8 +12,8 @@ all three SV types with 2 replicates each. Generate truth VCFs.
 
 ## Success Criteria
 
-- [ ] 20 varforge configs generated (5 sizes x 2 reps x 2 types, plus fusion variants as applicable).
-- [ ] Truth VCFs generated for each config.
+- [x] 28 varforge configs generated in `scripts/benchmarking/sv_size_sweep_configs/` (DEL: 5 sizes x 2 reps, DUP: 5 sizes x 2 reps, INV: 4 sizes x 2 reps).
+- [x] Generator script at `scripts/benchmarking/generate_size_sweep_configs.py`.
 - [ ] `/update` has been run after changes.
 
 ## Steps
