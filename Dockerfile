@@ -80,7 +80,7 @@ RUN cargo build --release --features ml
 # Stage 2: Runtime
 # Minimal Debian image — no Rust toolchain, no build tools.
 # ---------------------------------------------------------------------------
-FROM debian:bookworm-slim AS runtime
+FROM debian:trixie-slim AS runtime
 
 LABEL org.opencontainers.image.title="kam" \
       org.opencontainers.image.description="Alignment-free variant detection for duplex UMI sequencing" \
