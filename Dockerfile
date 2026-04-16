@@ -85,10 +85,13 @@ LABEL org.opencontainers.image.title="kam" \
       org.opencontainers.image.version="0.3.0" \
       org.opencontainers.image.source="https://github.com/trentzz/kam"
 
-# Copy required shared libraries from the builder stage rather than
-# installing via apt-get (avoids network dependency during build).
-COPY --from=builder /lib/x86_64-linux-gnu/libssl.so.3 /lib/x86_64-linux-gnu/
-COPY --from=builder /lib/x86_64-linux-gnu/libcrypto.so.3 /lib/x86_64-linux-gnu/
+# Install runtime libraries required by the binary and the ONNX Runtime.
+# Note: if build fails here with "Unable to locate package", try building
+# with --network host (e.g. docker build --network host -t kam .)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libssl3 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy the compiled binary from the builder stage.
 COPY --from=builder /build/target/release/kam /usr/local/bin/kam
