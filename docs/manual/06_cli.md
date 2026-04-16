@@ -43,7 +43,7 @@ kam run --r1 <R1.fastq.gz> --r2 <R2.fastq.gz> --targets <targets.fa> --output-di
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--chemistry` | `twist-umi-duplex` | Chemistry preset. Currently only `twist-umi-duplex` is supported. Determines the UMI length (5 bp), skip length (2 bp), and template start position (7 bp). |
+| `--chemistry-override` | `twist-umi-duplex` | Chemistry preset. Currently only `twist-umi-duplex` is supported. Determines the UMI length (5 bp), skip length (2 bp), and template start position (7 bp). |
 | `--min-umi-quality` | 20 | Minimum Phred quality for UMI bases. Read pairs with any UMI base below this quality are dropped before grouping. Set to 0 to disable. |
 | `--min-family-size` | 1 | Minimum reads per UMI family. Families with fewer reads are discarded. Setting to 2 eliminates true singletons but reduces sensitivity at low depth. |
 | `--min-template-length` | (none) | Minimum template length in bases. Templates shorter than this on either R1 or R2 are dropped. Useful for filtering very short inserts. Not set by default; the k-mer extraction stage handles minimum effective length implicitly. |
