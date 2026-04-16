@@ -225,7 +225,7 @@ All config file fields can be overridden via CLI flags. CLI flags always win.
 | `--junction-sequences` | `[input] junction_sequences` |
 | `--output-dir` | `[output] output_dir` |
 | `--output-format` | `[output] output_format` |
-| `--chemistry` | `[chemistry] preset` |
+| `--chemistry-override` | `[chemistry] preset` |
 | `--min-umi-quality` | `[chemistry] min_umi_quality` |
 | `--min-template-length` | `[chemistry] min_template_length` |
 | `--min-family-size` | `[assembly] min_family_size` |
