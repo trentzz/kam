@@ -3,7 +3,7 @@
 **Epic**: SV-SWEEP
 **Priority**: medium
 **Depends on**: SV-BASE-007
-**Status**: todo
+**Status**: done
 
 ## Goal
 
@@ -13,8 +13,8 @@ replicates.
 
 ## Success Criteria
 
-- [ ] Executable script at `docs/benchmarking/sv_new/scripts/run_threshold_sweep.sh`.
-- [ ] Script parameterises confidence and min_alt_molecules values.
+- [x] Executable script at `scripts/benchmarking/sv_threshold_sweep.sh`.
+- [x] Script parameterises confidence and min_alt_molecules values.
 - [ ] `/update` has been run after changes.
 
 ## Steps

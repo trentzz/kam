@@ -41,6 +41,8 @@ pub enum Commands {
     Run(Box<RunArgs>),
     /// List and manage built-in ML models.
     Models(ModelsArgs),
+    /// Interactively explore a bincode data file (molecules, k-mer index, paths, calls).
+    Explore(ExploreArgs),
 }
 
 /// Arguments for the `assemble` subcommand.
@@ -517,6 +519,13 @@ pub struct ModelsArgs {
 pub enum ModelsCommands {
     /// List all built-in ML models.
     List,
+}
+
+/// Arguments for the `explore` subcommand.
+#[derive(Parser, Debug)]
+pub struct ExploreArgs {
+    /// Path to a kam bincode file to explore.
+    pub file: PathBuf,
 }
 
 #[cfg(test)]

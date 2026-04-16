@@ -1,5 +1,7 @@
 # Feature: Interactive CLI Explorer (`kam explore`)
 
+**Status**: done
+
 ## Summary
 
 A REPL-style interactive terminal interface for exploring kam's binary data files (bincode-serialized molecules, k-mer indices, variant calls). Reads directly from bincode without requiring full export. Inspired by the feel of gdb/claude code — type commands, get pretty-printed results, selectively export what you need.
