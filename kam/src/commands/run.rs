@@ -925,6 +925,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
                 locus_b: sentinel_locus.clone(),
                 sequence: jseq_seq.clone(),
                 breakpoint_pos: jseq_seq.len() / 2,
+                orientation: kam_call::fusion::BndOrientation::default(),
             };
 
             let context = FusionContext {

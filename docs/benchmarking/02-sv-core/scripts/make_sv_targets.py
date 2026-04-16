@@ -38,6 +38,10 @@ Supported SV types
   spans the duplication boundary (end of duplicated region + start).
 - Inversions (ALT = <INV> or same length): junction target spans the
   inversion breakpoint (left flank + rev-comp of the inversion start).
+- Fusions/translocations (ALT contains BND bracket notation or SVTYPE=BND):
+  junction target concatenates the partner A and partner B segments. The BND
+  strand orientation (FF, FR, RF, RR) determines whether either segment is
+  reverse-complemented before concatenation.
 
 Requirements
 ------------
@@ -48,6 +52,7 @@ If pysam is not available, a minimal VCF parser is used.
 """
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -130,6 +135,9 @@ def sv_type(ref: str, alt: str, info: dict) -> str | None:
         return "DUP"
     if alt.upper() in ("<INV>", "INV") or info.get("SVTYPE") == "INV":
         return "INV"
+    # BND / fusion: recognised by SVTYPE=BND or bracket notation in ALT.
+    if info.get("SVTYPE") == "BND" or "[" in alt or "]" in alt:
+        return "BND"
     # Sequence-level classification.
     if len(ref) > len(alt) + 49:  # deletion ≥ 50 bp
         return "DEL"
@@ -360,6 +368,164 @@ def make_inversion_junction_kmer_seq(
     return left_junc + right_junc
 
 
+# ── BND / fusion helpers ─────────────────────────────────────────────────────
+
+
+# Regex to parse VCF BND ALT fields. The four forms are:
+#   t]chr:pos]   (FF)
+#   t[chr:pos[   (FR)
+#   ]chr:pos]t   (RF)
+#   [chr:pos[t   (RR)
+_BND_RE = re.compile(
+    r"^(?:"
+    r"(?P<ff_base>[A-Za-z]+)\](?P<ff_chr>[^:]+):(?P<ff_pos>\d+)\]"
+    r"|(?P<fr_base>[A-Za-z]+)\[(?P<fr_chr>[^:]+):(?P<fr_pos>\d+)\["
+    r"|\](?P<rf_chr>[^:]+):(?P<rf_pos>\d+)\](?P<rf_base>[A-Za-z]+)"
+    r"|\[(?P<rr_chr>[^:]+):(?P<rr_pos>\d+)\[(?P<rr_base>[A-Za-z]+)"
+    r")$"
+)
+
+
+def parse_bnd_alt(alt: str) -> tuple[str, int, str] | None:
+    """Parse a VCF BND ALT field and return (mate_chrom, mate_pos, orientation).
+
+    mate_pos is 1-based (VCF convention). orientation is one of
+    "FF", "FR", "RF", "RR".
+
+    Returns None if the ALT field does not match any known BND pattern.
+    """
+    m = _BND_RE.match(alt)
+    if m is None:
+        return None
+    if m.group("ff_chr"):
+        return m.group("ff_chr"), int(m.group("ff_pos")), "FF"
+    if m.group("fr_chr"):
+        return m.group("fr_chr"), int(m.group("fr_pos")), "FR"
+    if m.group("rf_chr"):
+        return m.group("rf_chr"), int(m.group("rf_pos")), "RF"
+    if m.group("rr_chr"):
+        return m.group("rr_chr"), int(m.group("rr_pos")), "RR"
+    return None
+
+
+def make_fusion_junction(
+    ref_path: Path,
+    chrom_a: str,
+    pos_a: int,
+    chrom_b: str,
+    pos_b: int,
+    orientation: str,
+    window: int,
+) -> tuple[str, str] | None:
+    """Construct a fusion junction target from two partner breakpoints.
+
+    Each partner contributes ``window // 2`` bases around its breakpoint.
+    Partner A contributes bases ending at the breakpoint; partner B contributes
+    bases starting at the breakpoint.
+
+    The orientation controls reverse-complementing of segments:
+      - FF: both segments used as-is (forward-forward).
+      - FR: partner B's segment is reverse-complemented.
+      - RF: partner A's segment is reverse-complemented.
+      - RR: both segments are reverse-complemented.
+
+    pos_a and pos_b are 1-based (VCF convention).
+    """
+    half = window // 2
+
+    # Partner A: half bases ending at the breakpoint.
+    a_end = pos_a  # 0-based exclusive (pos_a in 0-based = pos_a - 1, plus 1 for exclusive)
+    a_start = a_end - half
+    if a_start < 0:
+        return None
+
+    # Partner B: half bases starting at the breakpoint.
+    b_start = pos_b - 1  # 0-based inclusive
+    b_end = b_start + half
+
+    try:
+        seg_a = fetch_reference(ref_path, chrom_a, a_start, a_end)
+        seg_b = fetch_reference(ref_path, chrom_b, b_start, b_end)
+    except Exception as e:
+        print(
+            f"  WARNING: could not fetch reference for BND "
+            f"{chrom_a}:{pos_a} / {chrom_b}:{pos_b}: {e}",
+            file=sys.stderr,
+        )
+        return None
+
+    # Apply orientation-dependent reverse-complementing.
+    if orientation == "FR":
+        seg_b = reverse_complement(seg_b)
+    elif orientation == "RF":
+        seg_a = reverse_complement(seg_a)
+    elif orientation == "RR":
+        seg_a = reverse_complement(seg_a)
+        seg_b = reverse_complement(seg_b)
+    # FF: no transformation needed.
+
+    junction_seq = seg_a + seg_b
+
+    if len(junction_seq) < 2:
+        return None
+
+    orient_suffix = f"__{orientation}" if orientation != "FF" else ""
+    target_id = (
+        f"BND__{chrom_a}:{a_start}-{a_end}__{chrom_b}:{b_start}-{b_end}"
+        f"__fusion{orient_suffix}"
+    )
+    return target_id, junction_seq
+
+
+def make_fusion_junction_kmer_seq(
+    ref_path: Path,
+    chrom_a: str,
+    pos_a: int,
+    chrom_b: str,
+    pos_b: int,
+    orientation: str,
+    k: int,
+) -> str | None:
+    """Return the synthetic junction k-mer sequence for a fusion breakpoint.
+
+    This is ``k-1`` bases from partner A (ending at the breakpoint) joined with
+    ``k-1`` bases from partner B (starting at the breakpoint). The orientation
+    controls reverse-complementing exactly as in ``make_fusion_junction``.
+
+    pos_a and pos_b are 1-based (VCF convention).
+    """
+    flank = k - 1
+
+    a_end = pos_a
+    a_start = a_end - flank
+    if a_start < 0:
+        return None
+
+    b_start = pos_b - 1
+    b_end = b_start + flank
+
+    try:
+        seg_a = fetch_reference(ref_path, chrom_a, a_start, a_end)
+        seg_b = fetch_reference(ref_path, chrom_b, b_start, b_end)
+    except Exception as e:
+        print(
+            f"  WARNING: BND junction k-mer fetch failed for "
+            f"{chrom_a}:{pos_a} / {chrom_b}:{pos_b}: {e}",
+            file=sys.stderr,
+        )
+        return None
+
+    if orientation == "FR":
+        seg_b = reverse_complement(seg_b)
+    elif orientation == "RF":
+        seg_a = reverse_complement(seg_a)
+    elif orientation == "RR":
+        seg_a = reverse_complement(seg_a)
+        seg_b = reverse_complement(seg_b)
+
+    return seg_a + seg_b
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 
@@ -408,6 +574,10 @@ def main() -> None:
     n_written = 0
     n_junction_kmers = 0
 
+    # Track BND mate IDs already processed. Each BND pair produces two VCF
+    # records; we only need to emit one junction target per pair.
+    seen_bnd_mates: set[str] = set()
+
     with open(args.out_targets, "w") as ft, open(args.out_junctions, "w") as fj:
         for chrom, pos, ref, alt, info in parse_vcf(args.vcf):
             n_total += 1
@@ -417,6 +587,55 @@ def main() -> None:
                     f"  SKIP {chrom}:{pos} — not a supported SV type (ref={ref[:10]}, alt={alt[:10]})",
                     file=sys.stderr,
                 )
+                continue
+
+            # BND records have a separate code path: no SVLEN, partner
+            # coordinates are parsed from the ALT field.
+            if stype == "BND":
+                parsed = parse_bnd_alt(alt)
+                if parsed is None:
+                    print(
+                        f"  SKIP {chrom}:{pos} — could not parse BND ALT field: {alt}",
+                        file=sys.stderr,
+                    )
+                    continue
+
+                mate_chrom, mate_pos, orientation = parsed
+
+                # Deduplicate BND mate pairs. Use a canonical key so that
+                # whichever record we see first produces the junction.
+                pair_key = tuple(sorted([
+                    (chrom, pos),
+                    (mate_chrom, mate_pos),
+                ]))
+                if pair_key in seen_bnd_mates:
+                    continue
+                seen_bnd_mates.add(pair_key)
+
+                result = make_fusion_junction(
+                    args.ref, chrom, pos, mate_chrom, mate_pos,
+                    orientation, args.window,
+                )
+                if result is None:
+                    print(
+                        f"  SKIP {chrom}:{pos} — BND junction construction failed",
+                        file=sys.stderr,
+                    )
+                    continue
+
+                target_id, junction_window = result
+                ft.write(f">{target_id}\n{junction_window}\n")
+                n_written += 1
+
+                junc_seq = make_fusion_junction_kmer_seq(
+                    args.ref, chrom, pos, mate_chrom, mate_pos,
+                    orientation, args.kmer_size,
+                )
+                if junc_seq is not None and len(junc_seq) >= args.kmer_size:
+                    junc_id = f"{chrom}:{pos}_{mate_chrom}:{mate_pos}_BND_junction"
+                    fj.write(f">{junc_id}\n{junc_seq}\n")
+                    n_junction_kmers += 1
+
                 continue
 
             length = svlen(ref, alt, info, stype)
