@@ -109,7 +109,9 @@ somatic variants. CHROM should match the `target_id` format in your target FASTA
 
 ### SV detection: adding junction k-mers
 
-Structural variant detection requires breakpoint sequences via `--sv-junctions`. See
+Large deletions, tandem duplications, and novel insertions are detected automatically — no extra
+flags needed. Junction sequences are only required for **inversions and InvDel events**, where
+the breakpoint k-mers are absent from the standard panel targets. See
 `guides/structural-variants.md` for how to create junction sequences.
 
 ```bash
