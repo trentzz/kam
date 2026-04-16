@@ -16,11 +16,17 @@ runtime via bind mounts.
 
 ## Quick start
 
-Pull and run:
+No pre-built image is published to a registry. Build from source first:
 
 ```bash
-docker pull kam:latest
+git clone https://github.com/trentzz/kam
+cd kam
+docker build -t kam:latest .
+```
 
+Then run:
+
+```bash
 docker run --rm \
   -v $(pwd)/data:/data \
   -v $(pwd)/results:/results \
@@ -62,14 +68,14 @@ bind mounts for common directories.
 
 ```bash
 # Run the full pipeline
-docker-compose run --rm kam run \
+docker compose run --rm kam run \
   --r1 /data/R1.fastq.gz \
   --r2 /data/R2.fastq.gz \
   --targets /data/panel.fa \
   --output-dir /results/
 
 # List available models
-docker-compose run --rm kam models list
+docker compose run --rm kam models list
 ```
 
 The compose file mounts `./data` to `/data` and `./results` to `/results` inside the container.
@@ -78,7 +84,7 @@ Place your input files in `./data` and find outputs in `./results`.
 To use different host directories, override the mount paths:
 
 ```bash
-docker-compose run --rm \
+docker compose run --rm \
   -v /path/to/my/fastqs:/data \
   -v /path/to/my/output:/results \
   kam run \
