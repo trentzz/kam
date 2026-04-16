@@ -896,4 +896,292 @@ mod tests {
         write_variants(&calls, OutputFormat::Vcf, &mut vcf_buf).unwrap();
         assert!(String::from_utf8(vcf_buf).unwrap().contains("##fileformat"));
     }
+
+    // ── Additional edge-case tests ───────────────────────────────────────────
+
+    // Test 11: TSV header contains all expected column names in the correct order.
+    // Column order matters because downstream parsers (e.g. Python pandas) rely
+    // on positional indexing.
+    #[test]
+    fn tsv_header_has_all_columns_in_order() {
+        let mut buf = Vec::new();
+        write_tsv(&[], &mut buf).expect("write should succeed");
+        let text = String::from_utf8(buf).expect("valid UTF-8");
+        let header = text.lines().next().expect("at least one line");
+        let cols: Vec<&str> = header.split('\t').collect();
+        assert_eq!(cols[0], "target_id", "first column");
+        assert_eq!(cols[1], "variant_type", "second column");
+        assert_eq!(cols[2], "ref_seq", "third column");
+        assert_eq!(cols[3], "alt_seq", "fourth column");
+        assert_eq!(cols[4], "vaf", "fifth column");
+        // Check key later columns by name presence rather than exact index.
+        assert!(
+            cols.contains(&"ml_prob"),
+            "header must contain ml_prob column"
+        );
+        assert!(
+            cols.contains(&"ml_filter"),
+            "header must contain ml_filter column"
+        );
+        assert!(
+            cols.contains(&"call_source"),
+            "header must contain call_source column"
+        );
+        assert!(
+            cols.contains(&"rescue_min_alt_molecules"),
+            "header must contain rescue column"
+        );
+    }
+
+    // Test 12: ml_filter column says "." when ml_prob is None (no model loaded).
+    // This is the default case when the ML feature is not used.
+    #[test]
+    fn tsv_ml_filter_dot_when_no_model() {
+        let call = make_call("t1", b"A", b"T");
+        assert!(call.ml_prob.is_none(), "precondition: no ml_prob");
+        let mut buf = Vec::new();
+        write_tsv(&[call], &mut buf).expect("write");
+        let text = String::from_utf8(buf).expect("UTF-8");
+        let data_line = text.lines().nth(1).expect("data line");
+        let fields: Vec<&str> = data_line.split('\t').collect();
+        // ml_prob and ml_filter are columns 21 and 22 (0-indexed).
+        assert_eq!(fields[21], ".", "ml_prob should be '.' when None");
+        assert_eq!(fields[22], ".", "ml_filter should be '.' when None");
+    }
+
+    // Test 13: ml_filter says ML_PASS when ml_prob >= 0.5 (default threshold).
+    // The hardcoded threshold in write_delimited is 0.5.
+    #[test]
+    fn tsv_ml_filter_pass_at_default_threshold() {
+        let mut call = make_call("t1", b"A", b"T");
+        call.ml_prob = Some(0.5);
+        let mut buf = Vec::new();
+        write_tsv(&[call], &mut buf).expect("write");
+        let text = String::from_utf8(buf).expect("UTF-8");
+        let data_line = text.lines().nth(1).expect("data line");
+        let fields: Vec<&str> = data_line.split('\t').collect();
+        assert_eq!(
+            fields[22], "ML_PASS",
+            "ml_prob=0.5 must produce ML_PASS at default threshold"
+        );
+    }
+
+    // Test 14: ml_filter says ML_FILTER when ml_prob < 0.5 (default threshold).
+    #[test]
+    fn tsv_ml_filter_fail_below_threshold() {
+        let mut call = make_call("t1", b"A", b"T");
+        call.ml_prob = Some(0.499);
+        let mut buf = Vec::new();
+        write_tsv(&[call], &mut buf).expect("write");
+        let text = String::from_utf8(buf).expect("UTF-8");
+        let data_line = text.lines().nth(1).expect("data line");
+        let fields: Vec<&str> = data_line.split('\t').collect();
+        assert_eq!(
+            fields[22], "ML_FILTER",
+            "ml_prob=0.499 must produce ML_FILTER at default threshold"
+        );
+    }
+
+    // Test 15: JSON output includes all expected keys and respects ml_filter.
+    // Verifying the JSON schema matters because external tools parse it.
+    #[test]
+    fn json_output_has_all_keys_and_ml_filter() {
+        let mut call = make_call("gene1", b"C", b"A");
+        call.ml_prob = Some(0.8);
+        let mut buf = Vec::new();
+        write_json(&[call], &mut buf).expect("write");
+        let text = String::from_utf8(buf).expect("UTF-8");
+        let parsed: serde_json::Value = serde_json::from_str(&text).expect("valid JSON");
+        let obj = &parsed[0];
+        // Check essential keys exist.
+        assert!(obj.get("target_id").is_some(), "must have target_id");
+        assert!(obj.get("vaf").is_some(), "must have vaf");
+        assert!(obj.get("confidence").is_some(), "must have confidence");
+        assert!(obj.get("ml_prob").is_some(), "must have ml_prob");
+        assert!(obj.get("ml_filter").is_some(), "must have ml_filter");
+        assert!(obj.get("call_source").is_some(), "must have call_source");
+        // Verify ml_filter value.
+        assert_eq!(
+            obj["ml_filter"], "ML_PASS",
+            "ml_prob=0.8 should give ML_PASS"
+        );
+    }
+
+    // Test 16: VCF header contains required lines: ##fileformat, ##INFO, #CHROM.
+    #[test]
+    fn vcf_header_required_lines() {
+        let mut buf = Vec::new();
+        write_vcf(&[], &mut buf).expect("write");
+        let text = String::from_utf8(buf).expect("UTF-8");
+        assert!(
+            text.contains("##fileformat=VCFv4.3"),
+            "must contain fileformat"
+        );
+        assert!(text.contains("##INFO=<ID=VAF"), "must contain VAF INFO");
+        assert!(
+            text.contains("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO"),
+            "must contain column header"
+        );
+        assert!(
+            text.contains("##FILTER=<ID=PASS"),
+            "must contain PASS filter definition"
+        );
+    }
+
+    // Test 17: VCF FILTER column says "PASS" for passing calls.
+    #[test]
+    fn vcf_filter_pass_for_passing_call() {
+        let call = make_call("simple_target", b"A", b"T");
+        assert_eq!(call.filter, VariantFilter::Pass, "precondition");
+        let mut buf = Vec::new();
+        write_vcf(&[call], &mut buf).expect("write");
+        let text = String::from_utf8(buf).expect("UTF-8");
+        let data: Vec<&str> = text.lines().filter(|l| !l.starts_with('#')).collect();
+        assert_eq!(data.len(), 1, "one data line");
+        let fields: Vec<&str> = data[0].split('\t').collect();
+        assert_eq!(fields[6], "PASS", "FILTER column must say PASS");
+    }
+
+    // Test 18: VCF FILTER column shows filter name for filtered calls.
+    #[test]
+    fn vcf_filter_shows_filter_name() {
+        let mut call = make_call("simple_target", b"A", b"T");
+        call.filter = VariantFilter::StrandBias;
+        let mut buf = Vec::new();
+        write_vcf(&[call], &mut buf).expect("write");
+        let text = String::from_utf8(buf).expect("UTF-8");
+        let data: Vec<&str> = text.lines().filter(|l| !l.starts_with('#')).collect();
+        let fields: Vec<&str> = data[0].split('\t').collect();
+        assert_eq!(
+            fields[6], "StrandBias",
+            "FILTER column must show StrandBias"
+        );
+    }
+
+    // Test 19: CSV uses commas (not tabs) and has the same columns as TSV.
+    // This is a structural test: CSV and TSV must have identical schemas.
+    #[test]
+    fn csv_same_column_count_as_tsv() {
+        let calls = vec![make_call("t1", b"A", b"T")];
+        let mut tsv_buf = Vec::new();
+        write_tsv(&calls, &mut tsv_buf).expect("tsv");
+        let tsv_text = String::from_utf8(tsv_buf).expect("UTF-8");
+        let tsv_cols = tsv_text
+            .lines()
+            .next()
+            .expect("header")
+            .split('\t')
+            .count();
+
+        let mut csv_buf = Vec::new();
+        write_csv(&calls, &mut csv_buf).expect("csv");
+        let csv_text = String::from_utf8(csv_buf).expect("UTF-8");
+        let csv_cols = csv_text
+            .lines()
+            .next()
+            .expect("header")
+            .split(',')
+            .count();
+
+        assert_eq!(
+            tsv_cols, csv_cols,
+            "TSV and CSV must have the same number of columns"
+        );
+    }
+
+    // Test 20: Call with all optional fields None (rescue fields) does not panic
+    // and fills those columns with ".".
+    #[test]
+    fn call_with_all_optional_none_outputs_dots() {
+        let call = make_call("t1", b"A", b"T");
+        // make_call already sets rescue_* to None.
+        assert!(call.rescue_min_alt_molecules.is_none(), "precondition");
+        let mut buf = Vec::new();
+        write_tsv(&[call], &mut buf).expect("write should not panic");
+        let text = String::from_utf8(buf).expect("UTF-8");
+        let data_line = text.lines().nth(1).expect("data line");
+        // rescue columns are the last 5 fields.
+        let fields: Vec<&str> = data_line.split('\t').collect();
+        let n = fields.len();
+        for (offset, field) in fields[n - 5..].iter().enumerate() {
+            assert_eq!(
+                *field, ".",
+                "rescue field at offset {offset} from end must be '.' when None"
+            );
+        }
+    }
+
+    // Test 21: SV call (LargeDeletion) produces correct SVLEN in VCF INFO.
+    // SVLEN must be negative for deletions per VCF spec.
+    #[test]
+    fn vcf_large_deletion_svlen_is_negative() {
+        let ref_seq: Vec<u8> = vec![b'A'; 100];
+        let alt_seq: Vec<u8> = vec![b'A'; 40]; // 60 bp deletion
+        let mut call = make_call("chrX:1000-1099", &ref_seq, &alt_seq);
+        call.variant_type = VariantType::LargeDeletion;
+        let mut buf = Vec::new();
+        write_vcf(&[call], &mut buf).expect("write");
+        let text = String::from_utf8(buf).expect("UTF-8");
+        // SVLEN should be -60.
+        assert!(
+            text.contains("SVLEN=-60"),
+            "LargeDeletion SVLEN must be negative: {text}"
+        );
+    }
+
+    // Test 22: Fusion call produces two BND records with MATEID linking them.
+    // This tests the dedicated write_fusion_bnd_records function.
+    #[test]
+    fn fusion_bnd_records_linked_by_mateid() {
+        let fusion_call = FusionCall {
+            name: "BCR_ABL1".to_string(),
+            locus_a: crate::fusion::GenomicLocus {
+                chrom: "chr22".to_string(),
+                start: 23_632_500,
+                end: 23_632_550,
+            },
+            locus_b: crate::fusion::GenomicLocus {
+                chrom: "chr9".to_string(),
+                start: 130_854_000,
+                end: 130_854_050,
+            },
+            vaf: 0.01,
+            vaf_ci_low: 0.005,
+            vaf_ci_high: 0.02,
+            n_molecules: 10,
+            n_duplex: 5,
+            confidence: 0.999,
+            filter: VariantFilter::Pass,
+        };
+        let mut buf = Vec::new();
+        write_fusion_bnd_records(&fusion_call, &mut buf).expect("write");
+        let text = String::from_utf8(buf).expect("UTF-8");
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines.len(), 2, "must produce exactly two BND records");
+        // First record: chr22, second: chr9.
+        assert!(lines[0].starts_with("chr22\t"), "first record is partner A");
+        assert!(lines[1].starts_with("chr9\t"), "second record is partner B");
+        // Both records have SVTYPE=BND.
+        assert!(lines[0].contains("SVTYPE=BND"), "record 1 SVTYPE");
+        assert!(lines[1].contains("SVTYPE=BND"), "record 2 SVTYPE");
+        // MATEIDs cross-reference each other.
+        assert!(
+            lines[0].contains("MATEID=bnd_BCR_ABL1_2"),
+            "record 1 MATEID must point to record 2"
+        );
+        assert!(
+            lines[1].contains("MATEID=bnd_BCR_ABL1_1"),
+            "record 2 MATEID must point to record 1"
+        );
+    }
+
+    // Test 23: JSON output for an empty call list is exactly "[]".
+    // Downstream JSON parsers must handle this without error.
+    #[test]
+    fn json_empty_is_empty_array() {
+        let mut buf = Vec::new();
+        write_json(&[], &mut buf).expect("write");
+        let text = String::from_utf8(buf).expect("UTF-8");
+        assert_eq!(text.trim(), "[]", "empty calls must produce '[]'");
+    }
 }
