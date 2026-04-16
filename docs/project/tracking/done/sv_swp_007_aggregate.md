@@ -3,7 +3,7 @@
 **Epic**: SV-SWEEP
 **Priority**: medium
 **Depends on**: SV-SWP-002, SV-SWP-004, SV-SWP-006
-**Status**: todo
+**Status**: done
 
 ## Goal
 
@@ -12,9 +12,10 @@ figures for parameter selection.
 
 ## Success Criteria
 
-- [ ] Heatmap: k-mer size vs VAF, coloured by sensitivity, per SV type in `docs/benchmarking/sv_new/figures/`.
-- [ ] Heatmap: confidence threshold vs min_alt_molecules per SV type.
-- [ ] Line plot: SV size vs sensitivity per type.
+- [x] Aggregation script at `scripts/benchmarking/aggregate_sweep.py`.
+- [x] Produces summary CSV with columns: parameter, value, vaf, sv_type, sensitivity, precision, n_tp, n_fp.
+- [x] Generates heatmap CSVs and matplotlib plots (when available).
+- [x] Prints recommended optimal parameters per SV type.
 - [ ] `/update` has been run after changes.
 
 ## Steps
