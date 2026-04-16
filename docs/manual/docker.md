@@ -19,7 +19,7 @@ runtime via bind mounts.
 Pull the image from Docker Hub:
 
 ```bash
-docker pull trentzz/kam:0.3.0
+docker pull trentzz/kam:latest
 ```
 
 Then run:
@@ -28,7 +28,7 @@ Then run:
 docker run --rm \
   -v $(pwd)/data:/data \
   -v $(pwd)/results:/results \
-  trentzz/kam:0.3.0 run \
+  trentzz/kam:latest run \
   --r1 /data/R1.fastq.gz \
   --r2 /data/R2.fastq.gz \
   --targets /data/panel.fa \
@@ -103,7 +103,7 @@ docker run --rm \
   -v $(pwd)/data:/data \
   -v $(pwd)/results:/results \
   -v $(pwd)/config:/config \
-  trentzz/kam:0.3.0 run \
+  trentzz/kam:latest run \
   --config /config/kam.toml \
   --output-dir /results/
 ```
@@ -135,7 +135,7 @@ other inputs:
 docker run --rm \
   -v $(pwd)/data:/data \
   -v $(pwd)/results:/results \
-  trentzz/kam:0.3.0 run \
+  trentzz/kam:latest run \
   --r1 /data/plasma_R1.fastq.gz \
   --r2 /data/plasma_R2.fastq.gz \
   --targets /data/panel.fa \
@@ -157,7 +157,7 @@ Mount additional input files for SV junctions or fusion targets:
 docker run --rm \
   -v $(pwd)/data:/data \
   -v $(pwd)/results:/results \
-  trentzz/kam:0.3.0 run \
+  trentzz/kam:latest run \
   --r1 /data/R1.fastq.gz \
   --r2 /data/R2.fastq.gz \
   --targets /data/panel.fa \
@@ -191,7 +191,7 @@ All outputs go to the directory specified by `--output-dir`, which maps to the m
 docker run --rm \
   -v $(pwd)/data:/data \
   -v $(pwd)/results:/results \
-  trentzz/kam:0.3.0 run \
+  trentzz/kam:latest run \
   --r1 /data/plasma_R1.fastq.gz \
   --r2 /data/plasma_R2.fastq.gz \
   --targets /data/panel.fa \
@@ -211,7 +211,7 @@ Built-in models are bundled inside the binary. Select one by name:
 docker run --rm \
   -v $(pwd)/data:/data \
   -v $(pwd)/results:/results \
-  trentzz/kam:0.3.0 run \
+  trentzz/kam:latest run \
   --r1 /data/R1.fastq.gz \
   --r2 /data/R2.fastq.gz \
   --targets /data/panel.fa \
@@ -226,7 +226,7 @@ docker run --rm \
   -v $(pwd)/data:/data \
   -v $(pwd)/results:/results \
   -v $(pwd)/models:/models \
-  trentzz/kam:0.3.0 run \
+  trentzz/kam:latest run \
   --r1 /data/R1.fastq.gz \
   --r2 /data/R2.fastq.gz \
   --targets /data/panel.fa \
@@ -256,7 +256,7 @@ Set memory limits in Docker if running multiple containers:
 docker run --rm --memory=4g \
   -v $(pwd)/data:/data \
   -v $(pwd)/results:/results \
-  trentzz/kam:0.3.0 run \
+  trentzz/kam:latest run \
   --r1 /data/R1.fastq.gz \
   --r2 /data/R2.fastq.gz \
   --targets /data/panel.fa \
@@ -274,7 +274,7 @@ for sample in sample1 sample2 sample3; do
   docker run --rm \
     -v $(pwd)/data:/data \
     -v $(pwd)/results:/results \
-    trentzz/kam:0.3.0 run \
+    trentzz/kam:latest run \
     --r1 "/data/${sample}_R1.fastq.gz" \
     --r2 "/data/${sample}_R2.fastq.gz" \
     --targets /data/panel.fa \
