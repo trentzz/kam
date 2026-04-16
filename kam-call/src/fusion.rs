@@ -16,6 +16,75 @@ use kam_pathfind::score::PathEvidence;
 
 use crate::caller::{assign_filter, compute_confidence, estimate_vaf, CallerConfig, VariantType};
 
+// ─── BND orientation ─────────────────────────────────────────────────────────
+
+/// Strand orientation of a BND (translocation/fusion) breakpoint.
+///
+/// Controls the bracket notation in VCF BND ALT fields:
+///   - FF (forward-forward): `t]p]` and `]p]t`
+///   - FR (forward-reverse): `t[p[` and `[p[t`
+///   - RF (reverse-forward): `]p]t` and `t]p]`
+///   - RR (reverse-reverse): `[p[t` and `t[p[`
+///
+/// The default is `ForwardForward`, matching the standard 5'-to-3' fusion.
+///
+/// # Example
+/// ```
+/// use kam_call::fusion::BndOrientation;
+/// let o: BndOrientation = Default::default();
+/// assert_eq!(o, BndOrientation::ForwardForward);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BndOrientation {
+    /// Forward-forward: `t]p]` / `]p]t`.
+    #[default]
+    ForwardForward,
+    /// Forward-reverse: `t[p[` / `[p[t`.
+    ForwardReverse,
+    /// Reverse-forward: `]p]t` / `t]p]`.
+    ReverseForward,
+    /// Reverse-reverse: `[p[t` / `t[p[`.
+    ReverseReverse,
+}
+
+impl BndOrientation {
+    /// Parse a two-character orientation code ("FF", "FR", "RF", "RR").
+    ///
+    /// Returns `None` for unrecognised values.
+    ///
+    /// # Example
+    /// ```
+    /// use kam_call::fusion::BndOrientation;
+    /// assert_eq!(BndOrientation::from_code("FR"), Some(BndOrientation::ForwardReverse));
+    /// assert_eq!(BndOrientation::from_code("XY"), None);
+    /// ```
+    pub fn from_code(code: &str) -> Option<Self> {
+        match code {
+            "FF" => Some(Self::ForwardForward),
+            "FR" => Some(Self::ForwardReverse),
+            "RF" => Some(Self::ReverseForward),
+            "RR" => Some(Self::ReverseReverse),
+            _ => None,
+        }
+    }
+
+    /// Return the two-character code for this orientation.
+    ///
+    /// # Example
+    /// ```
+    /// use kam_call::fusion::BndOrientation;
+    /// assert_eq!(BndOrientation::ForwardReverse.code(), "FR");
+    /// ```
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::ForwardForward => "FF",
+            Self::ForwardReverse => "FR",
+            Self::ReverseForward => "RF",
+            Self::ReverseReverse => "RR",
+        }
+    }
+}
+
 // ─── Error type ───────────────────────────────────────────────────────────────
 
 /// Errors that can occur when parsing fusion target definitions.
@@ -68,13 +137,14 @@ pub struct GenomicLocus {
 ///
 /// # Example
 /// ```
-/// use kam_call::fusion::{FusionTarget, GenomicLocus};
+/// use kam_call::fusion::{BndOrientation, FusionTarget, GenomicLocus};
 /// let target = FusionTarget {
 ///     name: "BCR_ABL1".to_string(),
 ///     locus_a: GenomicLocus { chrom: "chr22".to_string(), start: 23_632_500, end: 23_632_550 },
 ///     locus_b: GenomicLocus { chrom: "chr9".to_string(), start: 130_854_000, end: 130_854_050 },
 ///     sequence: b"ACGT".repeat(25).to_vec(),
 ///     breakpoint_pos: 50,
+///     orientation: BndOrientation::ForwardForward,
 /// };
 /// assert_eq!(target.name, "BCR_ABL1");
 /// assert_eq!(target.breakpoint_pos, 50);
@@ -91,6 +161,8 @@ pub struct FusionTarget {
     pub sequence: Vec<u8>,
     /// Length of the partner A segment (index of the breakpoint in the sequence).
     pub breakpoint_pos: usize,
+    /// BND strand orientation for VCF output.
+    pub orientation: BndOrientation,
 }
 
 /// Context required to estimate VAF for a fusion call.
@@ -116,7 +188,7 @@ pub struct FusionContext {
 ///
 /// # Example
 /// ```
-/// use kam_call::fusion::{FusionCall, GenomicLocus};
+/// use kam_call::fusion::{BndOrientation, FusionCall, GenomicLocus};
 /// use kam_call::caller::VariantFilter;
 /// let call = FusionCall {
 ///     name: "BCR_ABL1".to_string(),
@@ -129,6 +201,7 @@ pub struct FusionContext {
 ///     n_duplex: 5,
 ///     confidence: 0.999,
 ///     filter: VariantFilter::Pass,
+///     orientation: BndOrientation::ForwardForward,
 /// };
 /// assert_eq!(call.n_molecules, 10);
 /// ```
@@ -154,31 +227,49 @@ pub struct FusionCall {
     pub confidence: f64,
     /// Quality filter outcome.
     pub filter: crate::caller::VariantFilter,
+    /// BND strand orientation for VCF output.
+    pub orientation: BndOrientation,
 }
 
 // ─── Public functions ─────────────────────────────────────────────────────────
 
 /// Return true when `target_id` identifies a fusion target.
 ///
-/// Fusion target IDs carry the suffix `__fusion` (two underscores, then
-/// "fusion"). This sentinel distinguishes them from normal targets and SV
-/// junction targets.
+/// Fusion target IDs carry `__fusion` as either the final segment or the
+/// second-to-last segment (followed by an orientation code such as `__FF`).
+/// This sentinel distinguishes them from normal targets and SV junction
+/// targets.
 ///
 /// # Example
 /// ```
 /// use kam_call::fusion::is_fusion_target;
 /// assert!(is_fusion_target("BCR_ABL1__chr22:23632500-23632550__chr9:130854000-130854050__fusion"));
+/// assert!(is_fusion_target("BCR_ABL1__chr22:23632500-23632550__chr9:130854000-130854050__fusion__FR"));
 /// assert!(!is_fusion_target("TP53_exon7"));
 /// assert!(!is_fusion_target("chr5:1000-2000__del_junction"));
 /// ```
 pub fn is_fusion_target(target_id: &str) -> bool {
-    target_id.ends_with("__fusion")
+    if target_id.ends_with("__fusion") {
+        return true;
+    }
+    // Check for __fusion__XX orientation suffix.
+    if let Some(prefix) = target_id.strip_suffix("__FF")
+        .or_else(|| target_id.strip_suffix("__FR"))
+        .or_else(|| target_id.strip_suffix("__RF"))
+        .or_else(|| target_id.strip_suffix("__RR"))
+    {
+        return prefix.ends_with("__fusion");
+    }
+    false
 }
 
 /// Parse a fusion target FASTA header into a [`FusionTarget`] (without sequence).
 ///
 /// Expected format:
-/// `{name}__{chromA}:{startA}-{endA}__{chromB}:{startB}-{endB}__fusion`
+/// `{name}__{chromA}:{startA}-{endA}__{chromB}:{startB}-{endB}__fusion[__ORIENTATION]`
+///
+/// The optional orientation suffix is one of `FF`, `FR`, `RF`, or `RR`. When
+/// absent, the orientation defaults to `ForwardForward`.
 ///
 /// The sequence and `breakpoint_pos` are populated separately because the
 /// header alone does not contain the sequence. `breakpoint_pos` is set to the
@@ -191,7 +282,7 @@ pub fn is_fusion_target(target_id: &str) -> bool {
 ///
 /// # Example
 /// ```
-/// use kam_call::fusion::parse_fusion_header;
+/// use kam_call::fusion::{BndOrientation, parse_fusion_header};
 /// let target = parse_fusion_header(
 ///     "BCR_ABL1__chr22:23632500-23632550__chr9:130854000-130854050__fusion"
 /// ).unwrap();
@@ -203,11 +294,16 @@ pub fn is_fusion_target(target_id: &str) -> bool {
 /// assert_eq!(target.locus_b.start, 130_854_000);
 /// assert_eq!(target.locus_b.end, 130_854_050);
 /// assert_eq!(target.breakpoint_pos, 50);
+/// assert_eq!(target.orientation, BndOrientation::ForwardForward);
+///
+/// let target_fr = parse_fusion_header(
+///     "BCR_ABL1__chr22:23632500-23632550__chr9:130854000-130854050__fusion__FR"
+/// ).unwrap();
+/// assert_eq!(target_fr.orientation, BndOrientation::ForwardReverse);
 /// ```
 pub fn parse_fusion_header(header: &str) -> Result<FusionTarget, FusionError> {
-    // Strip the __fusion suffix.
-    let body = header
-        .strip_suffix("__fusion")
+    // Try to strip an orientation suffix first, then strip __fusion.
+    let (body, orientation) = strip_fusion_suffix(header)
         .ok_or_else(|| FusionError::InvalidHeader(header.to_string()))?;
 
     // Split on double underscores: name, locusA, locusB.
@@ -226,6 +322,7 @@ pub fn parse_fusion_header(header: &str) -> Result<FusionTarget, FusionError> {
         locus_b,
         sequence: Vec::new(),
         breakpoint_pos,
+        orientation,
     })
 }
 
@@ -294,7 +391,7 @@ pub fn parse_fusion_targets(path: &Path) -> Result<Vec<FusionTarget>, FusionErro
 ///
 /// # Example
 /// ```
-/// use kam_call::fusion::{FusionContext, FusionTarget, GenomicLocus, call_fusion};
+/// use kam_call::fusion::{BndOrientation, FusionContext, FusionTarget, GenomicLocus, call_fusion};
 /// use kam_call::caller::CallerConfig;
 /// use kam_pathfind::score::PathEvidence;
 ///
@@ -304,6 +401,7 @@ pub fn parse_fusion_targets(path: &Path) -> Result<Vec<FusionTarget>, FusionErro
 ///     locus_b: GenomicLocus { chrom: "chr9".to_string(), start: 130_854_000, end: 130_854_050 },
 ///     sequence: b"ACGT".repeat(25).to_vec(),
 ///     breakpoint_pos: 50,
+///     orientation: BndOrientation::ForwardForward,
 /// };
 /// let context = FusionContext { partner_a_depth: 1000.0, partner_b_depth: 900.0 };
 /// let ev = PathEvidence {
@@ -364,10 +462,31 @@ pub fn call_fusion(
         n_duplex,
         confidence,
         filter,
+        orientation: target.orientation,
     })
 }
 
 // ─── Private helpers ──────────────────────────────────────────────────────────
+
+/// Strip the `__fusion` (and optional orientation) suffix from a header string.
+///
+/// Returns `(body, orientation)` where `body` is the portion before `__fusion`
+/// and `orientation` is the parsed [`BndOrientation`]. If the header does not
+/// contain a valid `__fusion` marker, returns `None`.
+fn strip_fusion_suffix(header: &str) -> Option<(&str, BndOrientation)> {
+    // Try __fusion__XX first (orientation suffix present).
+    for code in &["FF", "FR", "RF", "RR"] {
+        let suffix = format!("__fusion__{code}");
+        if let Some(body) = header.strip_suffix(suffix.as_str()) {
+            // from_code is infallible here since we control the codes.
+            return Some((body, BndOrientation::from_code(code).unwrap()));
+        }
+    }
+    // Fall back to bare __fusion (default FF).
+    header
+        .strip_suffix("__fusion")
+        .map(|body| (body, BndOrientation::default()))
+}
 
 /// Parse a single genomic locus from the format `chrom:start-end`.
 fn parse_locus(s: &str, header: &str) -> Result<GenomicLocus, FusionError> {
@@ -438,6 +557,7 @@ mod tests {
             },
             sequence: b"ACGT".repeat(25).to_vec(),
             breakpoint_pos: 50,
+            orientation: BndOrientation::default(),
         }
     }
 
@@ -756,5 +876,118 @@ mod tests {
             call.vaf,
             call.vaf_ci_high
         );
+    }
+
+    // ── BND orientation parsing ──────────────────────────────────────────────
+
+    /// Explicit FF suffix parses to ForwardForward.
+    #[test]
+    fn parse_fusion_header_with_ff_orientation() {
+        let target = parse_fusion_header(
+            "BCR_ABL1__chr22:23632500-23632550__chr9:130854000-130854050__fusion__FF",
+        )
+        .expect("should parse");
+        assert_eq!(target.orientation, BndOrientation::ForwardForward);
+        assert_eq!(target.name, "BCR_ABL1");
+    }
+
+    /// FR suffix parses to ForwardReverse.
+    #[test]
+    fn parse_fusion_header_with_fr_orientation() {
+        let target = parse_fusion_header(
+            "BCR_ABL1__chr22:23632500-23632550__chr9:130854000-130854050__fusion__FR",
+        )
+        .expect("should parse");
+        assert_eq!(target.orientation, BndOrientation::ForwardReverse);
+        assert_eq!(target.name, "BCR_ABL1");
+    }
+
+    /// Missing orientation suffix defaults to ForwardForward.
+    #[test]
+    fn parse_fusion_header_without_orientation_defaults_ff() {
+        let target = parse_fusion_header(
+            "BCR_ABL1__chr22:23632500-23632550__chr9:130854000-130854050__fusion",
+        )
+        .expect("should parse");
+        assert_eq!(target.orientation, BndOrientation::ForwardForward);
+    }
+
+    /// An unrecognised suffix after __fusion is treated as an invalid header
+    /// (the entire string does not match the expected format).
+    #[test]
+    fn parse_fusion_header_with_invalid_orientation_defaults_ff() {
+        // "XY" is not a valid orientation code. Without a valid __fusion or
+        // __fusion__XX tail, parse_fusion_header returns an error. Callers
+        // that build headers should omit the suffix to get the default.
+        let result = parse_fusion_header(
+            "BCR_ABL1__chr22:23632500-23632550__chr9:130854000-130854050__fusion__XY",
+        );
+        // The string does not end with __fusion or __fusion__<valid>, so it is
+        // rejected. This is acceptable; invalid codes should not silently default.
+        assert!(result.is_err(), "invalid orientation code should be rejected");
+    }
+
+    /// is_fusion_target recognises headers with an orientation suffix.
+    #[test]
+    fn is_fusion_target_with_orientation_suffix() {
+        assert!(is_fusion_target(
+            "BCR_ABL1__chr22:23632500-23632550__chr9:130854000-130854050__fusion__FR"
+        ));
+        assert!(is_fusion_target(
+            "BCR_ABL1__chr22:23632500-23632550__chr9:130854000-130854050__fusion__RR"
+        ));
+    }
+
+    /// RF and RR orientations parse correctly.
+    #[test]
+    fn parse_fusion_header_with_rf_and_rr_orientation() {
+        let rf = parse_fusion_header(
+            "FGFR3_TACC3__chr4:1803548-1803598__chr4:1739323-1739373__fusion__RF",
+        )
+        .expect("RF should parse");
+        assert_eq!(rf.orientation, BndOrientation::ReverseForward);
+
+        let rr = parse_fusion_header(
+            "FGFR3_TACC3__chr4:1803548-1803598__chr4:1739323-1739373__fusion__RR",
+        )
+        .expect("RR should parse");
+        assert_eq!(rr.orientation, BndOrientation::ReverseReverse);
+    }
+
+    /// call_fusion propagates orientation from target to call.
+    #[test]
+    fn call_fusion_propagates_orientation() {
+        let ev = make_evidence(10.0, 5);
+        let ctx = FusionContext {
+            partner_a_depth: 1000.0,
+            partner_b_depth: 900.0,
+        };
+        let mut target = bcr_abl1_target();
+        target.orientation = BndOrientation::ForwardReverse;
+        let config = CallerConfig::default();
+        let call = call_fusion(&ev, &ctx, &target, &config).expect("call");
+        assert_eq!(call.orientation, BndOrientation::ForwardReverse);
+    }
+
+    /// parse_fusion_targets loads orientation from FASTA headers.
+    #[test]
+    fn parse_fusion_targets_with_orientation() {
+        use std::io::Write;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("fusion_orient.fa");
+        {
+            let mut f = std::fs::File::create(&path).expect("create");
+            writeln!(
+                f,
+                ">BCR_ABL1__chr22:23632500-23632550__chr9:130854000-130854050__fusion__FR"
+            )
+            .unwrap();
+            writeln!(f, "{}", "A".repeat(100)).unwrap();
+        }
+
+        let targets = parse_fusion_targets(&path).expect("parse");
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].orientation, BndOrientation::ForwardReverse);
     }
 }
