@@ -68,6 +68,7 @@ COPY kam-pathfind/src kam-pathfind/src
 COPY kam-call/src     kam-call/src
 COPY kam-ml/src       kam-ml/src
 COPY kam/src          kam/src
+COPY kam/models       kam/models
 
 # Touch source files so cargo knows they changed after the stub build.
 RUN find . -name "*.rs" -exec touch {} +
