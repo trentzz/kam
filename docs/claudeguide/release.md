@@ -121,12 +121,7 @@ After the GitHub release is created:
    git checkout dev     && git merge --no-ff main && git push origin dev
    ```
 
-4. Delete the release branch:
-
-   ```bash
-   git push origin --delete release/vX.Y.Z
-   git branch -d release/vX.Y.Z
-   ```
+4. Keep the release branch. Do not delete it.
 
 ---
 
