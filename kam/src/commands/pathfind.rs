@@ -361,6 +361,7 @@ mod tests {
             output: index_path.clone(),
             kmer_size: k,
             sv_junctions: None,
+            junction_sequences: None,
         };
         run_index(idx_args).expect("run_index should succeed");
 

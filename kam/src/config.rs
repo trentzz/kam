@@ -51,6 +51,13 @@ pub struct InputConfig {
     /// K-mers from these sequences are added to the allowlist alongside normal
     /// target k-mers so that fusion-spanning reads are captured during indexing.
     pub fusion_targets: Option<PathBuf>,
+    /// FASTA of raw junction sequences for allowlist augmentation and standalone walking.
+    ///
+    /// Each sequence is added to the k-mer allowlist and walked as a standalone
+    /// target using total library depth as the VAF denominator. Useful when a
+    /// junction sequence is observed directly in a BAM or IGV session without
+    /// known genomic coordinates.
+    pub junction_sequences: Option<PathBuf>,
 }
 
 /// Output settings.
@@ -296,6 +303,7 @@ impl KamConfig {
         cfg.input.sv_junctions = args.sv_junctions.clone();
         cfg.input.target_variants = args.target_variants.clone();
         cfg.input.fusion_targets = args.fusion_targets.clone();
+        cfg.input.junction_sequences = args.junction_sequences.clone();
 
         cfg.output.output_dir = args.output_dir.clone();
         cfg.output.output_format = args.output_format_override.clone();
@@ -371,6 +379,9 @@ impl KamConfig {
         }
         if let Some(ref v) = args.fusion_targets {
             self.input.fusion_targets = Some(v.clone());
+        }
+        if let Some(ref v) = args.junction_sequences {
+            self.input.junction_sequences = Some(v.clone());
         }
 
         // Output fields.

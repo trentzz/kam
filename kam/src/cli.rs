@@ -114,6 +114,11 @@ pub struct IndexArgs {
     /// whose breakpoint k-mers are not in the reference target sequences.
     #[arg(long)]
     pub sv_junctions: Option<PathBuf>,
+
+    /// Path to FASTA of raw junction sequences for augmenting the allowlist.
+    /// Sequences may use any header format — no coordinate syntax required.
+    #[arg(long)]
+    pub junction_sequences: Option<PathBuf>,
 }
 
 /// Arguments for the `pathfind` subcommand.
@@ -446,6 +451,13 @@ pub struct RunArgs {
     #[arg(long)]
     pub fusion_targets: Option<PathBuf>,
 
+    /// Path to FASTA of raw junction sequences. Each sequence is added to the
+    /// k-mer allowlist and walked as a standalone target. Useful when you have
+    /// observed a junction sequence directly in a BAM/IGV without knowing exact
+    /// genomic coordinates.
+    #[arg(long)]
+    pub junction_sequences: Option<PathBuf>,
+
     /// Output format(s), comma-separated (tsv, csv, json, vcf).
     ///
     /// Overrides the config file value when set.
@@ -775,6 +787,46 @@ mod tests {
             result.is_err(),
             "missing --r2 and --output should be an error"
         );
+    }
+
+    /// Verify `--junction-sequences` is accepted by `run` and parsed correctly.
+    #[test]
+    fn run_args_junction_sequences_parses() {
+        let cli = Cli::try_parse_from([
+            "kam",
+            "run",
+            "--r1",
+            "r1.fq",
+            "--junction-sequences",
+            "/tmp/foo.fa",
+        ])
+        .expect("run --junction-sequences should parse");
+        let Commands::Run(args) = cli.command else {
+            panic!("expected Run subcommand");
+        };
+        assert_eq!(args.junction_sequences, Some(PathBuf::from("/tmp/foo.fa")));
+    }
+
+    /// Verify `--junction-sequences` on the `index` subcommand is accepted.
+    #[test]
+    fn index_args_junction_sequences_parses() {
+        let cli = Cli::try_parse_from([
+            "kam",
+            "index",
+            "--input",
+            "molecules.bin",
+            "--targets",
+            "targets.fa",
+            "--output",
+            "index.bin",
+            "--junction-sequences",
+            "/tmp/jseq.fa",
+        ])
+        .expect("index --junction-sequences should parse");
+        let Commands::Index(args) = cli.command else {
+            panic!("expected Index subcommand");
+        };
+        assert_eq!(args.junction_sequences, Some(PathBuf::from("/tmp/jseq.fa")));
     }
 
     /// Verify repeatable --log flag accumulates values.
