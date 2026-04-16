@@ -319,4 +319,123 @@ mod tests {
         assert_eq!(index.molecule_count(42), 3);
         assert_eq!(index.len(), 1);
     }
+
+    // ── New edge-case tests ──────────────────────────────────────────────────
+
+    // Test 11: Insert same k-mer with different molecule counts. The last
+    // write wins because HashKmerIndex::insert overwrites.
+    // If two molecules both carry the same k-mer, the caller must accumulate
+    // evidence before inserting. The index itself does not merge.
+    #[test]
+    fn insert_overwrites_does_not_accumulate() {
+        let mut index = HashKmerIndex::new();
+        index.insert(50, evidence(3));
+        index.insert(50, evidence(7));
+        assert_eq!(
+            index.molecule_count(50),
+            7,
+            "last insert should overwrite, not accumulate"
+        );
+        assert_eq!(index.len(), 1, "overwriting does not create a second entry");
+    }
+
+    // Test 12: Query absent k-mer via get returns None.
+    #[test]
+    fn get_absent_kmer_returns_none() {
+        let index = HashKmerIndex::new();
+        assert!(
+            index.get(12345).is_none(),
+            "absent k-mer must return None from get()"
+        );
+    }
+
+    // Test 13: Empty index. All queries return None / 0 / false.
+    #[test]
+    fn empty_index_all_queries_return_defaults() {
+        let index = HashKmerIndex::new();
+        assert!(index.get(0).is_none());
+        assert!(!index.contains(0));
+        assert_eq!(index.molecule_count(0), 0);
+        assert!(index.is_empty());
+        assert_eq!(index.len(), 0);
+        assert_eq!(index.iter().count(), 0);
+    }
+
+    // Test 14: entry() on two distinct k-mers yields independent values.
+    #[test]
+    fn entry_independent_for_different_kmers() {
+        let mut index = HashKmerIndex::new();
+        index.entry(1).n_molecules = 10;
+        index.entry(2).n_molecules = 20;
+        assert_eq!(index.molecule_count(1), 10);
+        assert_eq!(index.molecule_count(2), 20);
+        assert_eq!(index.len(), 2);
+    }
+
+    // Test 15: Insert and retrieve evidence with all fields populated.
+    // Verifies that none of the MoleculeEvidence fields are silently dropped.
+    #[test]
+    fn insert_preserves_all_evidence_fields() {
+        let mut index = HashKmerIndex::new();
+        let full_ev = MoleculeEvidence {
+            n_molecules: 42,
+            n_duplex: 20,
+            n_simplex_fwd: 11,
+            n_simplex_rev: 11,
+            min_base_error_prob: 0.001,
+            mean_base_error_prob: 0.005,
+        };
+        index.insert(77, full_ev.clone());
+        let got = index.get(77).expect("evidence should be present");
+        assert_eq!(*got, full_ev, "all fields must survive the round-trip");
+    }
+
+    // Test 16: entry() can accumulate molecule counts across multiple calls.
+    // This is the intended usage pattern for building evidence incrementally.
+    #[test]
+    fn entry_accumulates_across_calls() {
+        let mut index = HashKmerIndex::new();
+        index.entry(99).n_molecules += 3;
+        index.entry(99).n_molecules += 7;
+        index.entry(99).n_duplex += 2;
+        assert_eq!(index.molecule_count(99), 10);
+        assert_eq!(
+            index.get(99).expect("present").n_duplex,
+            2
+        );
+        assert_eq!(index.len(), 1, "only one k-mer entry exists");
+    }
+
+    // Test 17: Large number of distinct k-mers (1000). Verifies that the
+    // index scales without issues and len() is correct.
+    #[test]
+    fn large_number_of_distinct_kmers() {
+        let mut index = HashKmerIndex::new();
+        for i in 0u64..1000 {
+            index.insert(i, evidence(i as u32));
+        }
+        assert_eq!(index.len(), 1000);
+        assert!(!index.is_empty());
+
+        // Spot-check a few entries.
+        assert_eq!(index.molecule_count(0), 0);
+        assert_eq!(index.molecule_count(500), 500);
+        assert_eq!(index.molecule_count(999), 999);
+        assert!(!index.contains(1000));
+    }
+
+    // Test 18: molecule_count after overwrite reflects the new value, not the old.
+    #[test]
+    fn molecule_count_after_overwrite_reflects_new_value() {
+        let mut index = HashKmerIndex::new();
+        index.insert(7, evidence(100));
+        assert_eq!(index.molecule_count(7), 100);
+
+        index.insert(7, evidence(1));
+        assert_eq!(
+            index.molecule_count(7),
+            1,
+            "molecule_count must reflect the overwritten evidence"
+        );
+    }
 }

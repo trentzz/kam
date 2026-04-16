@@ -779,4 +779,251 @@ min_family_size = 3
         let cfg: KamConfig = toml::from_str(minimal_config_str()).expect("parse");
         assert_eq!(cfg.output_format(), "tsv");
     }
+
+    // ── New config tests ─────────────────────────────────────────────────────
+
+    /// Build a minimal RunArgs with all fields set to None/default except
+    /// the four required paths.
+    fn minimal_run_args() -> crate::cli::RunArgs {
+        crate::cli::RunArgs {
+            config: None,
+            r1: Some(PathBuf::from("r1.fq")),
+            r2: Some(PathBuf::from("r2.fq")),
+            targets: Some(PathBuf::from("targets.fa")),
+            output_dir: Some(PathBuf::from("results")),
+            chemistry_override: None,
+            min_umi_quality_override: None,
+            min_family_size_override: None,
+            min_template_length: None,
+            kmer_size_override: None,
+            min_confidence: None,
+            strand_bias_threshold: None,
+            min_alt_molecules: None,
+            min_alt_duplex: None,
+            sv_min_confidence: None,
+            sv_min_alt_molecules: None,
+            sv_strand_bias_threshold_override: None,
+            max_vaf: None,
+            sv_junctions: None,
+            fusion_targets: None,
+            junction_sequences: None,
+            target_variants: None,
+            ti_position_tolerance_override: None,
+            ti_rescue: false,
+            output_format_override: None,
+            qc_output: None,
+            log_dir: None,
+            log: vec![],
+            threads: None,
+            ml_model: None,
+            custom_ml_model: None,
+        }
+    }
+
+    /// from_cli() with junction_sequences set populates InputConfig.
+    #[test]
+    fn from_cli_junction_sequences_set() {
+        let mut args = minimal_run_args();
+        args.junction_sequences = Some(PathBuf::from("/data/jseq.fa"));
+        let cfg = KamConfig::from_cli(&args);
+        assert_eq!(
+            cfg.input.junction_sequences,
+            Some(PathBuf::from("/data/jseq.fa")),
+            "from_cli should carry junction_sequences through"
+        );
+    }
+
+    /// from_cli() with junction_sequences absent leaves InputConfig.junction_sequences as None.
+    #[test]
+    fn from_cli_junction_sequences_absent() {
+        let args = minimal_run_args();
+        let cfg = KamConfig::from_cli(&args);
+        assert!(
+            cfg.input.junction_sequences.is_none(),
+            "from_cli should leave junction_sequences as None when CLI does not provide it"
+        );
+    }
+
+    /// merge_cli_overrides: CLI junction_sequences overrides config file value.
+    #[test]
+    fn merge_cli_overrides_junction_sequences_overrides() {
+        let toml = r#"
+[input]
+r1 = "r1.fq"
+r2 = "r2.fq"
+targets = "t.fa"
+junction_sequences = "/config/jseq.fa"
+[output]
+output_dir = "out"
+"#;
+        let mut cfg: KamConfig = toml::from_str(toml).expect("parse");
+        let mut args = minimal_run_args();
+        args.junction_sequences = Some(PathBuf::from("/cli/jseq.fa"));
+        cfg.merge_cli_overrides(&args);
+        assert_eq!(
+            cfg.input.junction_sequences,
+            Some(PathBuf::from("/cli/jseq.fa")),
+            "CLI junction_sequences should override the config file value"
+        );
+    }
+
+    /// merge_cli_overrides: CLI junction_sequences = None does NOT override the config value.
+    #[test]
+    fn merge_cli_overrides_junction_sequences_none_preserves_config() {
+        let toml = r#"
+[input]
+r1 = "r1.fq"
+r2 = "r2.fq"
+targets = "t.fa"
+junction_sequences = "/config/jseq.fa"
+[output]
+output_dir = "out"
+"#;
+        let mut cfg: KamConfig = toml::from_str(toml).expect("parse");
+        let args = minimal_run_args(); // junction_sequences = None
+        cfg.merge_cli_overrides(&args);
+        assert_eq!(
+            cfg.input.junction_sequences,
+            Some(PathBuf::from("/config/jseq.fa")),
+            "config file junction_sequences should be preserved when CLI is None"
+        );
+    }
+
+    /// validate() succeeds when all required fields are present.
+    #[test]
+    fn validate_ok_with_all_required_fields() {
+        let cfg: KamConfig = toml::from_str(minimal_config_str()).expect("parse minimal config");
+        assert!(
+            cfg.validate().is_ok(),
+            "validate should pass with all required fields"
+        );
+    }
+
+    /// validate() fails with an error mentioning r1 when r1 is missing.
+    #[test]
+    fn validate_fails_mentions_r1() {
+        let mut cfg = KamConfig::default();
+        cfg.input.r2 = Some(PathBuf::from("r2.fq"));
+        cfg.input.targets = Some(PathBuf::from("t.fa"));
+        cfg.output.output_dir = Some(PathBuf::from("out"));
+        let err = cfg.validate().unwrap_err();
+        assert!(err.contains("r1"), "error should mention r1: {err}");
+    }
+
+    /// validate() fails with an error mentioning targets when targets is missing.
+    #[test]
+    fn validate_fails_mentions_targets() {
+        let mut cfg = KamConfig::default();
+        cfg.input.r1 = Some(PathBuf::from("r1.fq"));
+        cfg.input.r2 = Some(PathBuf::from("r2.fq"));
+        cfg.output.output_dir = Some(PathBuf::from("out"));
+        let err = cfg.validate().unwrap_err();
+        assert!(
+            err.contains("targets"),
+            "error should mention targets: {err}"
+        );
+    }
+
+    /// Config round-trip: a TOML string with all sections parses and
+    /// fields match expectations.
+    #[test]
+    fn config_round_trip_full_toml() {
+        let toml = r#"
+[input]
+r1 = "/data/R1.fq"
+r2 = "/data/R2.fq"
+targets = "/data/targets.fa"
+sv_junctions = "/data/sv.fa"
+junction_sequences = "/data/jseq.fa"
+
+[output]
+output_dir = "/results"
+output_format = "tsv,vcf"
+
+[chemistry]
+preset = "custom-chem"
+umi_length = 6
+skip_length = 3
+duplex = true
+min_umi_quality = 15
+
+[assembly]
+min_family_size = 2
+
+[indexing]
+kmer_size = 21
+
+[calling]
+min_confidence = 0.90
+strand_bias_threshold = 0.01
+min_alt_molecules = 3
+ti_position_tolerance = 5
+ti_rescue = true
+
+[logging]
+log_dir = "/logs"
+
+[runtime]
+threads = 4
+"#;
+        let cfg: KamConfig = toml::from_str(toml).expect("parse full TOML");
+        assert_eq!(cfg.input.r1, Some(PathBuf::from("/data/R1.fq")));
+        assert_eq!(
+            cfg.input.junction_sequences,
+            Some(PathBuf::from("/data/jseq.fa"))
+        );
+        assert_eq!(cfg.output.output_format, Some("tsv,vcf".to_string()));
+        assert_eq!(cfg.chemistry.umi_length, 6);
+        assert_eq!(cfg.chemistry.skip_length, 3);
+        assert_eq!(cfg.chemistry.min_umi_quality, Some(15));
+        assert_eq!(cfg.assembly.min_family_size, Some(2));
+        assert_eq!(cfg.indexing.kmer_size, Some(21));
+        assert_eq!(cfg.kmer_size(), 21);
+        assert_eq!(cfg.calling.min_confidence, Some(0.90));
+        assert_eq!(cfg.calling.ti_position_tolerance, Some(5));
+        assert!(cfg.calling.ti_rescue);
+        assert_eq!(cfg.runtime.threads, Some(4));
+        assert!(cfg.validate().is_ok());
+    }
+
+    /// merge_cli_overrides: kmer_size_override takes precedence over config file.
+    #[test]
+    fn merge_cli_overrides_kmer_size_override_wins() {
+        let toml = r#"
+[input]
+r1 = "r1.fq"
+r2 = "r2.fq"
+targets = "t.fa"
+[output]
+output_dir = "out"
+[indexing]
+kmer_size = 31
+"#;
+        let mut cfg: KamConfig = toml::from_str(toml).expect("parse");
+        assert_eq!(cfg.kmer_size(), 31, "config file sets kmer_size = 31");
+
+        let mut args = minimal_run_args();
+        args.kmer_size_override = Some(21);
+        cfg.merge_cli_overrides(&args);
+        assert_eq!(
+            cfg.kmer_size(),
+            21,
+            "CLI kmer_size_override = 21 should override config file value"
+        );
+    }
+
+    /// merge_cli_overrides: ti_rescue is merged correctly.
+    /// CLI ti_rescue = true should override config default of false.
+    #[test]
+    fn merge_cli_overrides_ti_rescue() {
+        let mut cfg: KamConfig = toml::from_str(minimal_config_str()).expect("parse");
+        assert!(!cfg.calling.ti_rescue, "default ti_rescue should be false");
+        let mut args = minimal_run_args();
+        args.ti_rescue = true;
+        cfg.merge_cli_overrides(&args);
+        assert!(
+            cfg.calling.ti_rescue,
+            "ti_rescue should be true after merge"
+        );
+    }
 }

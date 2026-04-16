@@ -993,4 +993,196 @@ mod tests {
         assert_eq!(mol.umi_fwd, b"ACGTACGTACGT");
         assert_eq!(mol.umi_rev, b"TGCATGCATGCA");
     }
+
+    // ── New edge-case tests ──────────────────────────────────────────────────
+
+    // Two reads with same canonical UMI, same fingerprint: form one molecule.
+    #[test]
+    fn same_umi_same_fingerprint_one_molecule() {
+        let template = b"ACGTACGTACGTACGTACGT";
+        let p1 = make_pair(b"GGGGA", b"TTTTT", template);
+        let p2 = make_pair(b"GGGGA", b"TTTTT", template);
+        let (molecules, stats) = assemble_molecules(vec![p1, p2], &AssemblerConfig::default());
+        assert_eq!(molecules.len(), 1, "same UMI + same fingerprint = one molecule");
+        assert_eq!(stats.n_umi_collisions_detected, 0);
+    }
+
+    // min_family_size = 1: singletons are kept.
+    #[test]
+    fn min_family_size_one_keeps_singletons() {
+        let pair = make_pair(b"ACGTA", b"TGCAT", b"NNNNNNNNNNNNNNNNNNNNNNNNNN");
+        let config = AssemblerConfig {
+            min_family_size: 1,
+            ..AssemblerConfig::default()
+        };
+        let (molecules, stats) = assemble_molecules(vec![pair], &config);
+        assert_eq!(molecules.len(), 1, "singleton should be kept with min_family_size=1");
+        assert_eq!(stats.n_families_below_min_size, 0);
+    }
+
+    // min_family_size = 2: a pair with 2 reads passes, singleton is filtered.
+    #[test]
+    fn min_family_size_two_pair_passes_singleton_filtered() {
+        let p1 = make_pair(b"ACGTA", b"TGCAT", b"ACGTACGTACGTACGTACGT");
+        let p2 = make_pair(b"ACGTA", b"TGCAT", b"ACGTACGTACGTACGTACGT");
+        let single = make_pair(b"GGGGG", b"CCCCC", b"NNNNNNNNNNNNNNNNNNNNNNNNNN");
+
+        let config = AssemblerConfig {
+            min_family_size: 2,
+            ..AssemblerConfig::default()
+        };
+        let (molecules, stats) = assemble_molecules(vec![p1, p2, single], &config);
+        assert_eq!(molecules.len(), 1, "only the family of 2 should survive");
+        assert_eq!(stats.n_families_below_min_size, 1, "singleton should be filtered");
+    }
+
+    // Hamming distance = 2 at threshold 1: UMIs are NOT merged.
+    #[test]
+    fn umi_hamming_distance_two_not_merged_at_threshold_one() {
+        let p1 = make_pair(b"ACGTA", b"TGCAT", b"AAAAAAAAAAAAAAAAAAAAAAAAA");
+        let p2 = make_pair(b"ACGCC", b"TGCAT", b"AAAAAAAAAAAAAAAAAAAAAAAAA");
+
+        let config = AssemblerConfig {
+            max_hamming_distance: 1,
+            ..AssemblerConfig::default()
+        };
+        let (molecules, _stats) = assemble_molecules(vec![p1, p2], &config);
+        assert!(
+            molecules.len() >= 2,
+            "Hamming distance 2 at threshold 1 should not be merged: got {} molecules",
+            molecules.len()
+        );
+    }
+
+    // All reads have unique UMIs: each forms its own singleton.
+    #[test]
+    fn all_unique_umis_each_singleton() {
+        let umis: Vec<(&[u8], &[u8])> = vec![
+            (b"ACGTA", b"TGCAT"),
+            (b"GGGGG", b"CCCCC"),
+            (b"AAAAA", b"TTTTT"),
+            (b"CCCCG", b"GGGGA"),
+        ];
+        let pairs: Vec<ParsedReadPair> = umis
+            .into_iter()
+            .map(|(u1, u2)| make_pair(u1, u2, b"NNNNNNNNNNNNNNNNNNNNNNNNNN"))
+            .collect();
+        let n = pairs.len();
+        let (molecules, stats) = assemble_molecules(pairs, &AssemblerConfig::default());
+        assert_eq!(
+            molecules.len(),
+            n,
+            "all unique UMIs should produce one molecule each"
+        );
+        assert_eq!(stats.n_singletons, n as u64);
+    }
+
+    // Stress test: 100 reads with the same UMI. Should not panic.
+    #[test]
+    fn hundred_reads_same_umi_no_panic() {
+        let template = b"ACGTACGTACGTACGTACGTACGTACGT";
+        let pairs: Vec<ParsedReadPair> = (0..100)
+            .map(|_| make_pair(b"ACGTA", b"TGCAT", template))
+            .collect();
+        let (molecules, stats) = assemble_molecules(pairs, &AssemblerConfig::default());
+        assert_eq!(
+            molecules.len(),
+            1,
+            "100 reads with same UMI should form one molecule"
+        );
+        assert_eq!(stats.n_molecules, 1);
+    }
+
+    // Hamming distance = 0 clustering: no merging even for distance-1 pairs.
+    #[test]
+    fn hamming_zero_no_merging() {
+        let p1 = make_pair(b"ACGTA", b"TGCAT", b"AAAAAAAAAAAAAAAAAAAAAAAAA");
+        let p2 = make_pair(b"ACGTT", b"TGCAT", b"AAAAAAAAAAAAAAAAAAAAAAAAA");
+
+        let config = AssemblerConfig {
+            max_hamming_distance: 0,
+            ..AssemblerConfig::default()
+        };
+        let (molecules, _stats) = assemble_molecules(vec![p1, p2], &config);
+        assert_eq!(
+            molecules.len(),
+            2,
+            "Hamming distance 0 should not merge distance-1 pairs"
+        );
+    }
+
+    // Molecule id is deterministic: same input always produces the same id.
+    #[test]
+    fn molecule_id_deterministic() {
+        let template = b"ACGTACGTACGTACGTACGT";
+        let p1 = make_pair(b"ACGTA", b"TGCAT", template);
+        let p2 = make_pair(b"ACGTA", b"TGCAT", template);
+        let (mols_a, _) = assemble_molecules(vec![p1], &AssemblerConfig::default());
+        let (mols_b, _) = assemble_molecules(vec![p2], &AssemblerConfig::default());
+        assert_eq!(
+            mols_a[0].id, mols_b[0].id,
+            "same canonical UMI must produce the same molecule id"
+        );
+    }
+
+    // Molecules are sorted by id for deterministic output.
+    #[test]
+    fn output_sorted_by_molecule_id() {
+        let pairs = vec![
+            make_pair(b"ZZZZZ", b"YYYYY", b"NNNNNNNNNNNNNNNNNNNNNNNNNN"),
+            make_pair(b"AAAAA", b"BBBBB", b"NNNNNNNNNNNNNNNNNNNNNNNNNN"),
+            make_pair(b"GGGGG", b"HHHHH", b"NNNNNNNNNNNNNNNNNNNNNNNNNN"),
+        ];
+        let (molecules, _) = assemble_molecules(pairs, &AssemblerConfig::default());
+        for window in molecules.windows(2) {
+            assert!(
+                window[0].id <= window[1].id,
+                "molecules must be sorted by id: {} > {}",
+                window[0].id,
+                window[1].id
+            );
+        }
+    }
+
+    // Three reads: two form one strand, third forms the other strand. Duplex.
+    #[test]
+    fn three_reads_two_fwd_one_rev_duplex() {
+        let template = b"ACGTACGTACGTACGTACGT";
+        let fwd1 = make_pair(b"ACGTA", b"TGCAT", template);
+        let fwd2 = make_pair(b"ACGTA", b"TGCAT", template);
+        let rev = make_pair(b"TGCAT", b"ACGTA", template);
+
+        let (molecules, stats) =
+            assemble_molecules(vec![fwd1, fwd2, rev], &AssemblerConfig::default());
+        assert_eq!(molecules.len(), 1, "should form one duplex molecule");
+        assert_eq!(stats.n_duplex, 1);
+        let mol = &molecules[0];
+        assert!(mol.consensus_fwd.is_some());
+        assert!(mol.consensus_rev.is_some());
+        let fwd_cr = mol.consensus_fwd.as_ref().expect("fwd consensus");
+        assert_eq!(fwd_cr.family_size, (2, 1));
+    }
+
+    // min_duplex_reads = 2: a pair with 1 fwd and 1 rev should NOT produce
+    // duplex consensus.
+    #[test]
+    fn min_duplex_reads_two_suppresses_duplex_with_one_per_strand() {
+        let template = b"ACGTACGTACGTACGTACGT";
+        let fwd = make_pair(b"ACGTA", b"TGCAT", template);
+        let rev = make_pair(b"TGCAT", b"ACGTA", template);
+
+        let config = AssemblerConfig {
+            min_duplex_reads: 2,
+            ..AssemblerConfig::default()
+        };
+        let (molecules, _stats) = assemble_molecules(vec![fwd, rev], &config);
+        assert_eq!(molecules.len(), 1);
+        let mol = &molecules[0];
+        assert!(
+            mol.duplex_consensus.is_none(),
+            "min_duplex_reads=2 should suppress duplex with only 1 read per strand"
+        );
+        assert!(mol.consensus_fwd.is_some());
+        assert!(mol.consensus_rev.is_some());
+    }
 }

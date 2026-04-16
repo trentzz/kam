@@ -646,4 +646,191 @@ mod tests {
             refp.aggregate_evidence.mean_variant_specific_molecules
         );
     }
+
+    // Test 10: Score path with all k-mers at 0 molecules (absent from index).
+    // All aggregate values should be 0 or 0.0, with no panics or NaN.
+    #[test]
+    fn score_path_all_zero_molecules_no_nan() {
+        let index = HashKmerIndex::new(); // empty index
+        let raw1 = enc(b"AAAA");
+        let raw2 = enc(b"CCCC");
+        let path = simple_path(vec![raw1, raw2], b"AAAACCCC".to_vec());
+        let scored = score_path(&path, &index, K);
+
+        assert_eq!(scored.aggregate_evidence.min_molecules, 0);
+        assert_eq!(scored.aggregate_evidence.mean_molecules, 0.0);
+        assert!(!scored.aggregate_evidence.mean_molecules.is_nan());
+        assert_eq!(scored.aggregate_evidence.min_duplex, 0);
+        assert_eq!(scored.aggregate_evidence.mean_duplex, 0.0);
+        assert!(!scored.aggregate_evidence.mean_duplex.is_nan());
+        assert_eq!(scored.weakest_kmer.evidence.n_molecules, 0);
+    }
+
+    // Test 11: score_and_rank_paths with an empty paths list returns empty,
+    // no panic.
+    #[test]
+    fn score_and_rank_empty_paths_list() {
+        let index = HashKmerIndex::new();
+        let ranked = score_and_rank_paths(vec![], &index, b"ACGT", K);
+        assert!(ranked.is_empty(), "empty input must produce empty output");
+    }
+
+    // Test 12: Tie-breaking. Paths with the same min_molecules are sorted by
+    // mean_molecules descending.
+    #[test]
+    fn tie_breaking_by_mean_molecules() {
+        let raw_a = enc(b"AAAC");
+        let raw_b = enc(b"CCCC");
+        let raw_c = enc(b"TTTT");
+
+        let mut index = HashKmerIndex::new();
+        // Path A: k-mers with molecules [5, 5]. min=5, mean=5.0
+        index.insert(canonical(raw_a, K), ev(5, 2));
+        // Path B has two k-mers: one at 5, one at 10. min=5, mean=7.5
+        index.insert(canonical(raw_b, K), ev(5, 2));
+        index.insert(canonical(raw_c, K), ev(10, 5));
+
+        let path_a = simple_path(vec![raw_a], b"AAAC".to_vec());
+        let path_b = simple_path(vec![raw_b, raw_c], b"CCCCTTTT".to_vec());
+
+        // Neither matches reference sequence "ZZZZ", so fallback marks
+        // strongest as reference.
+        let ranked = score_and_rank_paths(vec![path_a, path_b], &index, b"ZZZZ", K);
+        assert_eq!(ranked.len(), 2);
+
+        // Both have min_molecules=5. Path B has mean=7.5 > path A mean=5.0.
+        // Path B should be ranked first.
+        assert!(
+            ranked[0].aggregate_evidence.mean_molecules > ranked[1].aggregate_evidence.mean_molecules,
+            "tie on min_molecules should break by mean_molecules descending"
+        );
+    }
+
+    // Test 13: Duplex fields (min_duplex, mean_duplex) are correctly aggregated.
+    #[test]
+    fn duplex_fields_aggregated_correctly() {
+        let raw1 = enc(b"ACGT");
+        let raw2 = enc(b"CGTA");
+        let raw3 = enc(b"GTAC");
+
+        let mut index = HashKmerIndex::new();
+        index.insert(canonical(raw1, K), ev(10, 8));
+        index.insert(canonical(raw2, K), ev(10, 3));
+        index.insert(canonical(raw3, K), ev(10, 6));
+
+        let path = simple_path(vec![raw1, raw2, raw3], b"ACGTACGTAC".to_vec());
+        let scored = score_path(&path, &index, K);
+
+        assert_eq!(
+            scored.aggregate_evidence.min_duplex, 3,
+            "min_duplex should be the smallest duplex count across all k-mers"
+        );
+        // mean_duplex = (8 + 3 + 6) / 3 ≈ 5.667
+        let expected_mean = (8.0 + 3.0 + 6.0) / 3.0;
+        assert!(
+            (scored.aggregate_evidence.mean_duplex - expected_mean).abs() < 1e-3,
+            "expected mean_duplex ≈ {expected_mean}, got {}",
+            scored.aggregate_evidence.mean_duplex
+        );
+    }
+
+    // Test 14: Fallback reference detection when no path's sequence matches
+    // the provided reference_seq. The strongest path (by min_molecules then
+    // mean_molecules) should be marked as reference.
+    #[test]
+    fn fallback_reference_detection_marks_strongest() {
+        let raw_strong = enc(b"AAAC");
+        let raw_weak = enc(b"TTTT");
+
+        let mut index = HashKmerIndex::new();
+        index.insert(canonical(raw_strong, K), ev(50, 25));
+        index.insert(canonical(raw_weak, K), ev(2, 1));
+
+        let strong = simple_path(vec![raw_strong], b"AAAC".to_vec());
+        let weak = simple_path(vec![raw_weak], b"TTTT".to_vec());
+
+        // Reference sequence "XXXX" matches neither path.
+        let ranked = score_and_rank_paths(vec![weak, strong], &index, b"XXXX", K);
+        assert_eq!(ranked.len(), 2);
+
+        // Exactly one path should be marked as reference (the strongest).
+        let ref_count = ranked.iter().filter(|p| p.is_reference).count();
+        assert_eq!(ref_count, 1, "exactly one path should be marked as reference");
+
+        let ref_path = ranked.iter().find(|p| p.is_reference).expect("reference present");
+        assert_eq!(
+            ref_path.aggregate_evidence.min_molecules, 50,
+            "the strongest path should be the fallback reference"
+        );
+    }
+
+    // Test 15: score_path with a single k-mer whose canonical form differs
+    // from the raw form. The lookup must canonicalise before querying the index.
+    // This tests the canonicalisation path directly.
+    #[test]
+    fn score_path_canonicalises_before_lookup() {
+        let raw = enc(b"TTTT"); // raw = TTTT
+        let canon = canonical(raw, K); // canonical = AAAA (smaller)
+        assert_ne!(raw, canon, "TTTT should not equal its canonical form AAAA");
+
+        let mut index = HashKmerIndex::new();
+        // Insert under the canonical key only.
+        index.insert(canon, ev(42, 21));
+
+        let path = simple_path(vec![raw], b"TTTT".to_vec());
+        let scored = score_path(&path, &index, K);
+        assert_eq!(
+            scored.aggregate_evidence.min_molecules, 42,
+            "score_path must canonicalise the raw k-mer to find evidence"
+        );
+    }
+
+    // Test 16: Score path with simplex strand counts. Verify min_simplex_fwd
+    // and min_simplex_rev are the minimums across all k-mers.
+    #[test]
+    fn simplex_strand_counts_aggregated() {
+        let raw1 = enc(b"ACGT");
+        let raw2 = enc(b"CGTA");
+
+        let mut index = HashKmerIndex::new();
+        index.insert(
+            canonical(raw1, K),
+            MoleculeEvidence {
+                n_molecules: 10,
+                n_duplex: 5,
+                n_simplex_fwd: 3,
+                n_simplex_rev: 2,
+                min_base_error_prob: 0.001,
+                mean_base_error_prob: 0.002,
+            },
+        );
+        index.insert(
+            canonical(raw2, K),
+            MoleculeEvidence {
+                n_molecules: 10,
+                n_duplex: 5,
+                n_simplex_fwd: 1,
+                n_simplex_rev: 4,
+                min_base_error_prob: 0.001,
+                mean_base_error_prob: 0.003,
+            },
+        );
+
+        let path = simple_path(vec![raw1, raw2], b"ACGTCGTA".to_vec());
+        let scored = score_path(&path, &index, K);
+
+        assert_eq!(
+            scored.aggregate_evidence.min_simplex_fwd, 1,
+            "min_simplex_fwd should be the minimum across k-mers"
+        );
+        assert_eq!(
+            scored.aggregate_evidence.min_simplex_rev, 2,
+            "min_simplex_rev should be the minimum across k-mers"
+        );
+        // mean_error_prob = (0.002 + 0.003) / 2 = 0.0025
+        assert!(
+            (scored.aggregate_evidence.mean_error_prob - 0.0025).abs() < 1e-6,
+            "mean_error_prob should be the average across k-mers"
+        );
+    }
 }

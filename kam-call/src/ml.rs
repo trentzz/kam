@@ -602,4 +602,125 @@ mod tests {
     fn repeat_fraction_empty_is_zero() {
         assert_eq!(compute_repeat_fraction(b""), 0.0);
     }
+
+    // ── Additional edge-case tests ───────────────────────────────────────────
+
+    // Test: DUST score for a pure homopolymer run (64 A's) must be very high (> 25).
+    // A 64-bp poly-A sequence has only one trinucleotide type (AAA), producing
+    // the maximum possible score for that window size. The DUST formula yields
+    // C(62,2) / 62 = (62 * 61 / 2) / 62 = 30.5 for a 64-bp homopolymer.
+    #[test]
+    fn dust_score_pure_homopolymer_very_high() {
+        let seq = b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+        let score = compute_dust_score(seq, 64);
+        assert!(
+            score > 25.0,
+            "pure 64-bp homopolymer must have DUST > 25, got {score}"
+        );
+    }
+
+    // Test: DUST score for a dinucleotide repeat (ATATATATAT...) should be high.
+    // Dinucleotide repeats are low-complexity and must score well above the
+    // "borderline" threshold of 10.
+    #[test]
+    fn dust_score_dinucleotide_repeat_is_high() {
+        let seq: Vec<u8> = b"AT".repeat(32).to_vec(); // 64 bp
+        let score = compute_dust_score(&seq, 64);
+        assert!(
+            score > 10.0,
+            "dinucleotide repeat (AT)x32 must have DUST > 10, got {score}"
+        );
+    }
+
+    // Test: DUST score for a trinucleotide repeat (ACGACGACG...) should be moderate.
+    // Trinucleotide repeats have 3 distinct trinucleotide types (ACG, CGA, GAC),
+    // so the score is above random but below a pure homopolymer.
+    #[test]
+    fn dust_score_trinucleotide_repeat_moderate() {
+        let seq: Vec<u8> = b"ACG".repeat(21).to_vec(); // 63 bp
+        let score = compute_dust_score(&seq, 64);
+        assert!(
+            score > 3.0,
+            "trinucleotide repeat must have noticeable DUST score, got {score}"
+        );
+        // Should be lower than a homopolymer.
+        let homo_score = compute_dust_score(&[b'A'; 63], 63);
+        assert!(
+            score < homo_score,
+            "trinucleotide DUST ({score}) must be less than homopolymer DUST ({homo_score})"
+        );
+    }
+
+    // Test: DUST score for a very short sequence (< 3 bases) returns 0.0.
+    // The algorithm requires trinucleotides; shorter inputs produce no windows.
+    #[test]
+    fn dust_score_short_sequence_returns_zero() {
+        assert_eq!(
+            compute_dust_score(b"AC", 64),
+            0.0,
+            "2-base sequence must return 0.0"
+        );
+        assert_eq!(
+            compute_dust_score(b"A", 64),
+            0.0,
+            "1-base sequence must return 0.0"
+        );
+    }
+
+    // Test: DUST score with N bases must not panic and must return a finite value.
+    // Ambiguous bases (N) map to A (index 0) via base_index; the function must
+    // remain numerically stable.
+    #[test]
+    fn dust_score_with_n_bases_does_not_panic() {
+        let seq = b"NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN";
+        let score = compute_dust_score(seq, 64);
+        assert!(
+            score.is_finite(),
+            "DUST score with N bases must be finite, got {score}"
+        );
+    }
+
+    // Test: repeat_fraction for all-same-base (AAAAAAA) returns 1.0.
+    // A pure homopolymer of length >= 3 is entirely a repeat.
+    #[test]
+    fn repeat_fraction_all_same_base_is_one() {
+        let f = compute_repeat_fraction(b"AAAAAAA");
+        assert!(
+            (f - 1.0).abs() < 1e-6,
+            "pure homopolymer must have repeat fraction 1.0, got {f}"
+        );
+    }
+
+    // Test: repeat_fraction for alternating dinucleotide repeat of length 8.
+    // ACACACAC is a dinucleotide repeat of 4 units (8 bases, >= 6 threshold).
+    #[test]
+    fn repeat_fraction_dinucleotide_repeat_of_eight() {
+        let f = compute_repeat_fraction(b"ACACACAC");
+        assert!(
+            f > 0.5,
+            "AC dinucleotide repeat (8 bp) must have repeat fraction > 0.5, got {f}"
+        );
+    }
+
+    // Test: repeat_fraction for a completely non-repetitive sequence.
+    // ACGTTGCA has no homopolymer run >= 3 and no dinucleotide repeat >= 6.
+    #[test]
+    fn repeat_fraction_random_sequence_is_zero() {
+        let f = compute_repeat_fraction(b"ACGTTGCA");
+        assert_eq!(
+            f, 0.0,
+            "non-repetitive sequence must have repeat fraction 0.0, got {f}"
+        );
+    }
+
+    // Test: repeat_fraction for a mixed sequence (AAAAACGT).
+    // 5-base A run (>= 3 threshold) covers 5 of 8 bases = 0.625.
+    #[test]
+    fn repeat_fraction_mixed_sequence() {
+        let f = compute_repeat_fraction(b"AAAAACGT");
+        assert!(
+            (f - 5.0 / 8.0).abs() < 1e-6,
+            "AAAAACGT must have repeat fraction 5/8 = 0.625, got {f}"
+        );
+    }
 }

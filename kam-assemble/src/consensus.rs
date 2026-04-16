@@ -619,4 +619,178 @@ mod tests {
         assert_eq!(duplex[0].fwd_depth, 5);
         assert_eq!(duplex[0].rev_depth, 3);
     }
+
+    // ── New edge-case tests ──────────────────────────────────────────────
+
+    // Majority vote: 3 reads say A, 1 says C at equal quality. A wins.
+    #[test]
+    fn majority_vote_three_a_one_c() {
+        let cfg = ConsensusConfig::default();
+        let seqs = &[b"A".as_ref(), b"A".as_ref(), b"A".as_ref(), b"C".as_ref()];
+        let quals = &[b"?".as_ref(), b"?".as_ref(), b"?".as_ref(), b"?".as_ref()]; // all Q=30
+        let result = single_strand_consensus(seqs, quals, &cfg).unwrap();
+        assert_eq!(result[0].base, b'A', "majority of 3 A vs 1 C should yield A");
+        assert!(
+            result[0].error_prob < 0.3,
+            "error prob should be < 0.3 with 3:1 majority, got {}",
+            result[0].error_prob
+        );
+    }
+
+    // Tie-breaking is deterministic: 2 A vs 2 T at equal quality.
+    // Run it 10 times to verify determinism.
+    #[test]
+    fn tie_breaking_deterministic() {
+        let cfg = ConsensusConfig::default();
+        let seqs = &[b"A".as_ref(), b"A".as_ref(), b"T".as_ref(), b"T".as_ref()];
+        let quals = &[b"?".as_ref(), b"?".as_ref(), b"?".as_ref(), b"?".as_ref()];
+
+        let results: Vec<u8> = (0..10)
+            .map(|_| {
+                single_strand_consensus(seqs, quals, &cfg)
+                    .unwrap()[0]
+                    .base
+            })
+            .collect();
+
+        assert!(
+            results.windows(2).all(|w| w[0] == w[1]),
+            "tie-breaking must be deterministic: got {:?}",
+            results
+        );
+    }
+
+    // All bases are N at a position: result is N with error_prob = 1.0.
+    #[test]
+    fn all_n_bases_gives_n_and_error_one() {
+        let cfg = ConsensusConfig::default();
+        let seqs = &[b"N".as_ref(), b"N".as_ref(), b"N".as_ref()];
+        let quals = &[b"I".as_ref(), b"I".as_ref(), b"I".as_ref()]; // Q=40
+        let result = single_strand_consensus(seqs, quals, &cfg).unwrap();
+        assert_eq!(result[0].base, b'N');
+        assert_eq!(result[0].error_prob, 1.0, "all N bases should give error_prob = 1.0");
+    }
+
+    // Quality-weighted: a high-quality C beats a low-quality A.
+    // A at Q=3 (w=0.5), C at Q=40 (w=0.9999). C wins.
+    #[test]
+    fn quality_weighted_high_quality_c_beats_low_quality_a() {
+        let cfg = ConsensusConfig {
+            min_base_quality: 1,
+            max_consensus_quality: 60,
+        };
+        let seqs = &[b"A".as_ref(), b"C".as_ref()];
+        // Q=3 for A (Phred+33 = ASCII 36 = '$'), Q=40 for C (Phred+33 = 'I')
+        let quals = &[b"$".as_ref(), b"I".as_ref()];
+        let result = single_strand_consensus(seqs, quals, &cfg).unwrap();
+        assert_eq!(
+            result[0].base, b'C',
+            "high-quality C (Q=40) should beat low-quality A (Q=3)"
+        );
+    }
+
+    // Depth field tracks total reads, including masked ones.
+    #[test]
+    fn depth_includes_masked_reads() {
+        let cfg = ConsensusConfig {
+            min_base_quality: 30,
+            max_consensus_quality: 60,
+        };
+        let seqs = &[b"A".as_ref(), b"C".as_ref(), b"G".as_ref()];
+        let quals = &[b"?".as_ref(), b"#".as_ref(), b"#".as_ref()]; // Q=30, Q=2, Q=2
+        let result = single_strand_consensus(seqs, quals, &cfg).unwrap();
+        assert_eq!(result[0].depth, 3, "depth should count all reads, including masked");
+        assert_eq!(result[0].base, b'A', "only the A read passes quality threshold");
+    }
+
+    // Phred 0 conversion: probability should be 1.0.
+    #[test]
+    fn phred_zero_gives_prob_one() {
+        let p = phred_to_prob(0);
+        assert!((p - 1.0).abs() < 1e-6, "Q=0 should give p=1.0, got {p}");
+    }
+
+    // prob_to_phred with prob=0.0: returns max_phred.
+    #[test]
+    fn prob_zero_gives_max_phred() {
+        assert_eq!(prob_to_phred(0.0, 60), 60);
+        assert_eq!(prob_to_phred(0.0, 40), 40);
+    }
+
+    // prob_to_phred with prob=1.0: returns 0.
+    #[test]
+    fn prob_one_gives_phred_zero() {
+        assert_eq!(prob_to_phred(1.0, 60), 0);
+    }
+
+    // Duplex agreement: error probability is product with different values.
+    #[test]
+    fn duplex_agreement_different_error_probs() {
+        let fwd = vec![ConsensusBase {
+            base: b'G',
+            error_prob: 0.01,
+            depth: 5,
+            votes: [0, 0, 5000, 0],
+        }];
+        let rev = vec![ConsensusBase {
+            base: b'G',
+            error_prob: 0.001,
+            depth: 3,
+            votes: [0, 0, 3000, 0],
+        }];
+        let duplex = duplex_consensus(&fwd, &rev, DisagreementStrategy::PickBest).unwrap();
+        let expected = 0.01_f32 * 0.001_f32;
+        assert!(
+            (duplex[0].error_prob - expected).abs() < 1e-10,
+            "expected {expected}, got {}",
+            duplex[0].error_prob
+        );
+        assert!(duplex[0].is_duplex);
+    }
+
+    // Duplex disagreement PickBest: when error_probs are equal, forward strand
+    // is chosen (fwd.error_prob <= rev.error_prob).
+    #[test]
+    fn duplex_disagreement_pick_best_equal_error_picks_fwd() {
+        let fwd = vec![ConsensusBase {
+            base: b'A',
+            error_prob: 0.05,
+            depth: 2,
+            votes: [2000, 0, 0, 0],
+        }];
+        let rev = vec![ConsensusBase {
+            base: b'T',
+            error_prob: 0.05,
+            depth: 2,
+            votes: [0, 0, 0, 2000],
+        }];
+        let duplex = duplex_consensus(&fwd, &rev, DisagreementStrategy::PickBest).unwrap();
+        assert_eq!(
+            duplex[0].base, b'A',
+            "when error_probs are equal, PickBest should choose forward strand"
+        );
+        assert!(!duplex[0].is_duplex);
+    }
+
+    // Consensus with a single read: result is that read's sequence.
+    #[test]
+    fn single_read_consensus_matches_input() {
+        let cfg = ConsensusConfig::default();
+        let seq = b"GATTACA";
+        let qual = b"IIIIIII"; // Q=40
+        let result = single_strand_consensus(&[seq.as_ref()], &[qual.as_ref()], &cfg).unwrap();
+        let consensus_seq: Vec<u8> = result.iter().map(|b| b.base).collect();
+        assert_eq!(consensus_seq, b"GATTACA".to_vec());
+    }
+
+    // Multi-position consensus: each position resolved independently.
+    #[test]
+    fn multi_position_consensus_independent() {
+        let cfg = ConsensusConfig::default();
+        let seqs = &[b"AC".as_ref(), b"AC".as_ref(), b"TG".as_ref()];
+        let quals = &[b"??".as_ref(), b"??".as_ref(), b"??".as_ref()];
+        let result = single_strand_consensus(seqs, quals, &cfg).unwrap();
+        assert_eq!(result[0].base, b'A');
+        assert_eq!(result[1].base, b'C');
+    }
 }

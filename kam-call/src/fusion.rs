@@ -666,4 +666,95 @@ mod tests {
         let targets = parse_fusion_targets(&path).expect("parse");
         assert!(targets.is_empty());
     }
+
+    // ── Additional edge-case tests ───────────────────────────────────────────
+
+    // Test: parse_fusion_header with completely malformed header (no double underscores).
+    // Must return an error, not panic.
+    #[test]
+    fn parse_fusion_header_completely_malformed() {
+        let err = parse_fusion_header("just_a_random_string").expect_err("should fail");
+        assert!(
+            matches!(err, FusionError::InvalidHeader(_)),
+            "expected InvalidHeader, got {err:?}"
+        );
+    }
+
+    // Test: parse_fusion_header with missing end coordinate.
+    // "chr22:23632500-" has a dash but no end value, which should fail to parse.
+    #[test]
+    fn parse_fusion_header_missing_end_coordinate() {
+        let err = parse_fusion_header(
+            "BCR_ABL1__chr22:23632500-__chr9:130854000-130854050__fusion",
+        )
+        .expect_err("should fail");
+        assert!(
+            matches!(err, FusionError::InvalidCoordinate { .. }),
+            "expected InvalidCoordinate, got {err:?}"
+        );
+    }
+
+    // Test: parse_fusion_targets on an empty FASTA file returns an empty vec without error.
+    // An empty file is a valid edge case in production (no targets configured).
+    #[test]
+    fn parse_fusion_targets_empty_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("empty.fa");
+        {
+            let _f = std::fs::File::create(&path).expect("create");
+            // Write nothing; the file is empty.
+        }
+        // needletail on an empty file may return an error or empty; either is acceptable.
+        // The important thing is it does not panic.
+        let result = parse_fusion_targets(&path);
+        if let Ok(targets) = result {
+            assert!(targets.is_empty(), "empty file should produce no targets");
+        }
+        // An IO or parse error on an empty file is also acceptable.
+    }
+
+    // Test: call_fusion with zero partner depth on one side and positive on the other.
+    // The mean partner depth is positive, so a call should still be produced.
+    #[test]
+    fn call_fusion_one_partner_zero_depth() {
+        let ev = make_evidence(5.0, 2);
+        let ctx = FusionContext {
+            partner_a_depth: 0.0,
+            partner_b_depth: 1000.0,
+        };
+        let target = bcr_abl1_target();
+        let config = CallerConfig::default();
+        let call = call_fusion(&ev, &ctx, &target, &config);
+        // partner_depth = (0 + 1000) / 2 = 500, which is > 0, so a call is produced.
+        assert!(
+            call.is_some(),
+            "one zero partner should still allow a call when the other is positive"
+        );
+    }
+
+    // Test: call_fusion confidence interval is ordered (low <= vaf <= high).
+    // This is a basic invariant that must hold for all valid calls.
+    #[test]
+    fn call_fusion_ci_is_ordered() {
+        let ev = make_evidence(8.0, 3);
+        let ctx = FusionContext {
+            partner_a_depth: 800.0,
+            partner_b_depth: 800.0,
+        };
+        let target = bcr_abl1_target();
+        let config = CallerConfig::default();
+        let call = call_fusion(&ev, &ctx, &target, &config).expect("should produce a call");
+        assert!(
+            call.vaf_ci_low <= call.vaf,
+            "CI lower ({}) must be <= VAF ({})",
+            call.vaf_ci_low,
+            call.vaf
+        );
+        assert!(
+            call.vaf <= call.vaf_ci_high,
+            "VAF ({}) must be <= CI upper ({})",
+            call.vaf,
+            call.vaf_ci_high
+        );
+    }
 }

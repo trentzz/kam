@@ -9,13 +9,13 @@
 # No reference genome is bundled or required.
 #
 # Build:
-#   docker build -t kam:0.2.0 .
+#   docker build -t kam:0.3.0 .
 #
 # Run:
 #   docker run --rm \
 #     -v $(pwd)/data:/data \
 #     -v $(pwd)/results:/results \
-#     kam:0.2.0 run \
+#     kam:0.3.0 run \
 #       --r1 /data/R1.fastq.gz \
 #       --r2 /data/R2.fastq.gz \
 #       --targets /data/panel.fa \
@@ -87,7 +87,7 @@ LABEL org.opencontainers.image.title="kam" \
 
 # Install runtime libraries required by the binary and the ONNX Runtime.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libssl3 \
+    libssl3t64 \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 

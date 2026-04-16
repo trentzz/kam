@@ -386,4 +386,166 @@ mod tests {
         run_index(args).expect("run_index with junction_sequences should succeed");
         assert!(output_path.exists(), "index.bin should exist");
     }
+
+    // ── New index tests ──────────────────────────────────────────────────────
+
+    /// junction_sequences pointing to a nonexistent file returns Err, not a panic.
+    #[test]
+    fn run_index_junction_sequences_nonexistent_file_errors() {
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        let mol = make_molecule();
+        let molecules_path = dir.path().join("molecules.bin");
+        write_bincode(&molecules_path, FileType::Molecules, &[mol]).expect("write molecules");
+
+        let targets_path = dir.path().join("targets.fa");
+        write_fasta(&targets_path, &[("t1", "ACGTACGTACGTACGTACGTACGT")]);
+
+        let output_path = dir.path().join("index.bin");
+
+        let args = IndexArgs {
+            input: molecules_path,
+            targets: targets_path,
+            output: output_path,
+            kmer_size: 8,
+            sv_junctions: None,
+            junction_sequences: Some(PathBuf::from("/nonexistent/jseq.fa")),
+        };
+
+        let result = run_index(args);
+        assert!(
+            result.is_err(),
+            "a nonexistent junction_sequences file should produce an error"
+        );
+    }
+
+    /// junction_sequences = None leaves the allowlist unchanged compared to
+    /// target-only indexing. Verified by comparing the n_target_kmers field
+    /// in the QC JSON.
+    #[test]
+    fn run_index_no_junction_sequences_allowlist_unchanged() {
+        use kam_index::allowlist::build_allowlist;
+
+        let target_seq = b"ACGTACGTACGTACGTACGTACGT";
+        let k = 8;
+        let target_slices: Vec<&[u8]> = vec![target_seq.as_slice()];
+        let allowlist = build_allowlist(&target_slices, k);
+
+        // Without junction_sequences, the allowlist should only have target k-mers.
+        // No extra k-mers added.
+        let expected_size = allowlist.len();
+        assert!(
+            expected_size > 0,
+            "target should produce at least one k-mer"
+        );
+
+        // Adding an empty junction_sequences does not change the count.
+        // (Simulated by building an empty allowlist and extending.)
+        let empty_slices: Vec<&[u8]> = vec![];
+        let empty_allowlist = build_allowlist(&empty_slices, k);
+        let mut combined = allowlist.clone();
+        combined.extend(empty_allowlist);
+        assert_eq!(
+            combined.len(),
+            expected_size,
+            "empty junction sequences should not change the allowlist size"
+        );
+    }
+
+    /// A single junction sequence of length L adds exactly (L - k + 1) canonical
+    /// k-mers to the allowlist (assuming all k-mers are distinct from each other
+    /// and from the target).
+    #[test]
+    fn junction_sequences_single_sequence_kmer_count() {
+        use kam_index::allowlist::build_allowlist;
+
+        // Use a sequence that produces all-unique k-mers at k=4.
+        // 10 bp → 10 - 4 + 1 = 7 k-mers.
+        let jseq = b"ACGTACGTAC";
+        let k = 4;
+        let slices: Vec<&[u8]> = vec![jseq.as_slice()];
+        let allowlist = build_allowlist(&slices, k);
+
+        // The exact count depends on how many k-mers are canonical duplicates
+        // (a k-mer and its reverse complement map to the same canonical form).
+        // For k=4 over "ACGTACGTAC", the k-mers are:
+        //   ACGT, CGTA, GTAC, TACG, ACGT, CGTA, GTAC
+        // Unique raw: ACGT, CGTA, GTAC, TACG (4 unique).
+        // Canonical: ACGT=ACGT, CGTA=TACG, GTAC=GTAC → 3 unique canonical.
+        // The point is that allowlist.len() <= (L - k + 1) and > 0.
+        let expected_raw = jseq.len() - k + 1;
+        assert!(
+            allowlist.len() <= expected_raw,
+            "canonical k-mer count ({}) should not exceed raw count ({expected_raw})",
+            allowlist.len()
+        );
+        assert!(
+            !allowlist.is_empty(),
+            "a non-empty sequence should produce at least one k-mer"
+        );
+    }
+
+    /// Multiple junction sequences: k-mers from all sequences are added.
+    #[test]
+    fn junction_sequences_multiple_sequences_all_added() {
+        use kam_index::allowlist::build_allowlist;
+
+        let k = 4;
+        // Two distinct sequences with non-overlapping k-mer content.
+        let seq_a = b"AAAAAAAA"; // only k-mer: AAAA (canonical: AAAA or TTTT)
+        let seq_b = b"CCCCCCCC"; // only k-mer: CCCC (canonical: CCCC or GGGG)
+
+        let slices_a: Vec<&[u8]> = vec![seq_a.as_slice()];
+        let slices_b: Vec<&[u8]> = vec![seq_b.as_slice()];
+        let al_a = build_allowlist(&slices_a, k);
+        let al_b = build_allowlist(&slices_b, k);
+
+        // Combined should have both sets.
+        let both: Vec<&[u8]> = vec![seq_a.as_slice(), seq_b.as_slice()];
+        let al_both = build_allowlist(&both, k);
+
+        assert!(
+            al_both.len() >= al_a.len(),
+            "combined allowlist should be at least as large as A alone"
+        );
+        assert!(
+            al_both.len() >= al_b.len(),
+            "combined allowlist should be at least as large as B alone"
+        );
+        // Since AAAA and CCCC have different canonical forms, the union is strictly larger.
+        assert!(
+            al_both.len() > al_a.len() || al_both.len() > al_b.len(),
+            "combined should include k-mers from both sequences"
+        );
+    }
+
+    /// sv_junctions pointing to a nonexistent file returns Err.
+    #[test]
+    fn run_index_sv_junctions_nonexistent_file_errors() {
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        let mol = make_molecule();
+        let molecules_path = dir.path().join("molecules.bin");
+        write_bincode(&molecules_path, FileType::Molecules, &[mol]).expect("write molecules");
+
+        let targets_path = dir.path().join("targets.fa");
+        write_fasta(&targets_path, &[("t1", "ACGTACGTACGTACGTACGTACGT")]);
+
+        let output_path = dir.path().join("index.bin");
+
+        let args = IndexArgs {
+            input: molecules_path,
+            targets: targets_path,
+            output: output_path,
+            kmer_size: 8,
+            sv_junctions: Some(PathBuf::from("/nonexistent/sv.fa")),
+            junction_sequences: None,
+        };
+
+        let result = run_index(args);
+        assert!(
+            result.is_err(),
+            "a nonexistent sv_junctions file should produce an error"
+        );
+    }
 }

@@ -670,4 +670,161 @@ mod tests {
         assert_eq!(paths[0].kmers, vec![kmer]);
         assert_eq!(paths[0].length, 1);
     }
+
+    // Test 11: Walk on an empty graph returns empty, no panic.
+    #[test]
+    fn walk_on_empty_graph_returns_empty() {
+        let g = DeBruijnGraph::new(3);
+        let (paths, exceeded) = walk_paths(&g, 0, 1, &WalkConfig::default());
+        assert!(paths.is_empty(), "no nodes in the graph, so no paths");
+        assert!(!exceeded);
+    }
+
+    // Test 12: Walk where start is not in the graph returns empty.
+    #[test]
+    fn walk_start_not_in_graph_returns_empty() {
+        let k = 3;
+        let mut g = DeBruijnGraph::new(k);
+        g.add_edge(10, 20);
+        // Start k-mer 99 is not in the graph.
+        let (paths, _) = walk_paths(&g, 99, 20, &WalkConfig::default());
+        assert!(paths.is_empty());
+    }
+
+    // Test 13: Walk where end is not in the graph returns empty.
+    // The DFS can never reach a node that does not exist.
+    #[test]
+    fn walk_end_not_in_graph_returns_empty() {
+        let k = 3;
+        let mut g = DeBruijnGraph::new(k);
+        g.add_edge(10, 20);
+        g.add_edge(20, 30);
+        // End k-mer 99 is not in the graph.
+        let (paths, _) = walk_paths(&g, 10, 99, &WalkConfig::default());
+        assert!(paths.is_empty());
+    }
+
+    // Test 14: walk_paths_biased explores high-evidence successors first.
+    // With two parallel paths of different evidence, the first path returned
+    // should be the one with higher molecule counts.
+    #[test]
+    fn walk_biased_explores_high_evidence_first() {
+        let k = 3;
+        let mut g = DeBruijnGraph::new(k);
+        let start = 0u64;
+        let high = 1u64; // high evidence branch
+        let low = 2u64;  // low evidence branch
+        let end = 3u64;
+
+        g.add_edge(start, high);
+        g.add_edge(start, low);
+        g.add_edge(high, end);
+        g.add_edge(low, end);
+
+        let molecule_count = |km: u64| -> u32 {
+            match km {
+                1 => 100, // high evidence
+                2 => 1,   // low evidence
+                _ => 10,
+            }
+        };
+
+        let cfg = WalkConfig {
+            max_path_length: 50,
+            max_paths: 2,
+            max_expansions: 0,
+        };
+        let (paths, _) = walk_paths_biased(&g, start, end, &cfg, molecule_count);
+        assert_eq!(paths.len(), 2);
+        // The first path should go through the high-evidence node.
+        assert!(
+            paths[0].kmers.contains(&high),
+            "first path should traverse the high-evidence branch"
+        );
+    }
+
+    // Test 15: Walk on a long linear sequence (200 bp). Verifies that the
+    // iterative DFS completes without stack overflow and produces one path.
+    #[test]
+    fn walk_long_linear_sequence_200bp() {
+        let k = 4;
+        // 200 arbitrary node IDs forming a linear chain.
+        let nodes: Vec<u64> = (0u64..200).collect();
+        let mut g = DeBruijnGraph::new(k);
+        for w in nodes.windows(2) {
+            g.add_edge(w[0], w[1]);
+        }
+
+        let cfg = WalkConfig {
+            max_path_length: 250,
+            max_paths: 10,
+            max_expansions: 0,
+        };
+        let (paths, exceeded) = walk_paths(
+            &g,
+            *nodes.first().expect("non-empty"),
+            *nodes.last().expect("non-empty"),
+            &cfg,
+        );
+        assert_eq!(paths.len(), 1, "linear chain should yield exactly one path");
+        assert_eq!(paths[0].kmers.len(), 200);
+        assert!(!exceeded);
+    }
+
+    // Test 16: max_path_length exactly equal to the path length. The path
+    // should be found because the check is current_path.len() >= max_path_length
+    // which prevents extending further, but the end k-mer is checked before
+    // the length check.
+    #[test]
+    fn max_path_length_exactly_equals_path_length() {
+        let k = 3;
+        let mut g = DeBruijnGraph::new(k);
+        // Chain: 0 → 1 → 2 (path length = 3 k-mers)
+        g.add_edge(0, 1);
+        g.add_edge(1, 2);
+
+        let cfg = WalkConfig {
+            max_path_length: 3,
+            max_paths: 10,
+            max_expansions: 0,
+        };
+        let (paths, _) = walk_paths(&g, 0, 2, &cfg);
+        // The end k-mer (2) is checked as a goal before the length limit
+        // kicks in, so the path [0, 1, 2] should be found.
+        assert_eq!(
+            paths.len(),
+            1,
+            "path of exactly max_path_length should be found"
+        );
+        assert_eq!(paths[0].kmers, vec![0, 1, 2]);
+    }
+
+    // Test 17: reconstruct_sequence on an empty k-mer list returns empty.
+    #[test]
+    fn reconstruct_sequence_empty_input() {
+        let result = reconstruct_sequence(&[], 4);
+        assert!(result.is_empty(), "empty k-mer list must yield empty sequence");
+    }
+
+    // Test 18: reconstruct_sequence on a single k-mer returns the full decode.
+    #[test]
+    fn reconstruct_sequence_single_kmer() {
+        let km = encode_kmer(b"GATT").expect("valid k-mer");
+        let result = reconstruct_sequence(&[km], 4);
+        assert_eq!(result, b"GATT");
+    }
+
+    // Test 19: start == end where start is not in the graph. The special case
+    // for start == end checks graph.contains(start_kmer) and returns empty if
+    // the node is absent.
+    #[test]
+    fn start_equals_end_not_in_graph() {
+        let g = DeBruijnGraph::new(3);
+        let (paths, exceeded) = walk_paths(&g, 42, 42, &WalkConfig::default());
+        assert!(
+            paths.is_empty(),
+            "start == end but node absent: should return no paths"
+        );
+        assert!(!exceeded);
+    }
 }
