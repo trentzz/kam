@@ -132,6 +132,51 @@ echo "${RIGHT_END}${LEFT_START}"
 
 ---
 
+## Providing junction sequences from BAM
+
+If you have observed a structural variant in a BAM file (e.g. via IGV) and have the chimeric
+read sequence, you can use `--junction-sequences` instead of constructing a synthetic junction
+from coordinates.
+
+The `--junction-sequences` flag accepts any FASTA file with any header format. Each sequence
+is walked as a standalone target. This approach handles all strand orientations and inserted
+nucleotides automatically, because the observed sequence already encodes them.
+
+Example: you observe a deletion junction in IGV. Copy the chimeric read sequence spanning the
+breakpoint:
+
+```
+>TP53_deletion_from_igv
+CTTGGGCTTGCAGCCCAGGGCAGCTACGGTTTCCGTCTGGGCTTCTTGCATTCTGGGACAGCCAAGTCTGTGACTTGCACGTACTCCCCTGCCCT
+```
+
+Run with `--junction-sequences`:
+
+```bash
+kam run \
+  --r1 sample_R1.fastq.gz \
+  --r2 sample_R2.fastq.gz \
+  --targets panel_targets.fa \
+  --junction-sequences junction_from_bam.fa \
+  --output-dir results/ \
+  --output-format tsv,vcf
+```
+
+When to use `--junction-sequences` vs `--sv-junctions`:
+
+- Use `--junction-sequences` when you have the observed sequence and want to monitor it as a
+  standalone target. Each entry produces its own variant call row.
+- Use `--sv-junctions` when you want to augment the k-mer allowlist for a target in `--targets`.
+  SV junction k-mers extend the allowlist so that inversion and InvDel breakpoint-spanning
+  reads are captured, but the call is associated with the parent target, not the junction entry.
+
+Both flags can be used in the same run.
+
+See `guides/patient-sv-monitoring.md` for a complete walkthrough of the BAM-to-monitoring
+workflow.
+
+---
+
 ## Recommended settings
 
 | Setting | Default | Recommended for SV |

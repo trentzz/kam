@@ -104,7 +104,7 @@ The lower AUPRC compared to `single-strand-v1` reflects the harder setting: dupl
 
 **Training set**: Real confirmed TP/FP calls from the 24-sample Twist cfDNA Pan-Cancer titration dataset (3 input masses, 8 VAF levels). Unlike v1 (trained on varforge simulations), v2 uses real sequencing data where the distinction between true somatic variants and background noise is observable.
 
-**Features** (49 total): the 33 features from v1 plus 16 sequence-context features including substitution type, trinucleotide context, CpG status, GC content, and homopolymer run length.
+**Features** (49 total in v2; 51 total with locus difficulty features): the 33 features from v1 plus 16 sequence-context features including substitution type, trinucleotide context, CpG status, GC content, and homopolymer run length. Two additional locus difficulty features (`dust_score` and `repeat_fraction`) are available for new model training (see below).
 
 **Key improvement over v1**: `twist-duplex-v1` assigned ml_prob >= 0.9 to all PASS calls (both TP and FP) because it was trained on simulated data where all statistical PASS calls are real variants. `twist-duplex-v2` produces discriminating probability distributions that separate true positives from false positives. FP counts drop by 79-93% across negative controls while sensitivity is fully preserved.
 
@@ -158,3 +158,30 @@ includes:
 | `twist-duplex-v2` | 2.3 MB |
 
 Total binary overhead from all bundled models: ~3.6 MB.
+
+---
+
+## Locus difficulty features (features 50–51)
+
+Two features quantify sequence complexity at the variant locus. These are available for new
+model training but are not used by the current bundled models (`single-strand-v1`,
+`twist-duplex-v1`, `twist-duplex-v2`). When a model does not request these features in its
+metadata, they default to 0.0 in the input vector.
+
+| Feature | Name | Description |
+|---|---|---|
+| 50 | `dust_score` | DUST algorithm score over a 64 bp window centred on the variant. Computed from trinucleotide frequencies. Higher values indicate more repetitive sequence. Score < 2 is complex; 2–10 is moderate; > 10 is low-complexity (homopolymers, simple repeats). |
+| 51 | `repeat_fraction` | Fraction of bases in the reference window within a homopolymer run of ≥ 3 bases or a dinucleotide repeat of ≥ 6 bases. Range 0.0–1.0. A poly-A tract gives a high value; complex exonic sequence gives 0.0. |
+
+Both features are computed from `VariantCall.ref_sequence` without external reference data.
+
+**Why these features matter**: low-complexity regions generate excess background errors from
+polymerase slippage and sequencing artefacts. A call at 0.5% VAF in a poly-T tract is far less
+credible than the same call in complex exonic sequence. Without a direct complexity measure, the
+model must infer this indirectly from homopolymer run length and GC content. DUST score and
+repeat fraction capture the global complexity signal that those features miss.
+
+**Backward compatibility**: existing bundled models ignore unknown feature names. The feature
+extractor checks the model's metadata JSON for requested features. If `dust_score` or
+`repeat_fraction` are not listed, they are not computed and default to 0.0. New models trained
+with these features will list them in their `feature_names` array.

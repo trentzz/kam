@@ -73,6 +73,7 @@ kam run --r1 <R1.fastq.gz> --r2 <R2.fastq.gz> --targets <targets.fa> --output-di
 |------|---------|-------------|
 | `--sv-junctions` | (none) | FASTA of SV junction sequences to augment the k-mer allowlist. Required for detecting inversions and InvDel events whose breakpoint k-mers are absent from the panel targets. Not needed for large deletions, tandem duplications, or novel insertions. |
 | `--fusion-targets` | (none) | FASTA of synthetic fusion target sequences. Each entry ID must follow the format `{name}__{chromA}:{startA}-{endA}__{chromB}:{startB}-{endB}__fusion`. K-mers from these sequences are added to the allowlist so fusion-spanning reads are captured. |
+| `--junction-sequences` | (none) | FASTA of raw junction sequences for monitoring fusions or SVs observed in BAM/IGV. Any FASTA header format is accepted. Each sequence is added to the k-mer allowlist and walked as a standalone target with total library depth as the VAF denominator. Use this when you have the observed junction sequence but not exact genomic coordinates. See `guides/patient-sv-monitoring.md`. |
 | `--sv-min-confidence` | 0.95 | Minimum posterior probability for a structural variant PASS call. Applies to LargeDeletion, TandemDuplication, Inversion, InvDel, and NovelInsertion. |
 | `--sv-min-alt-molecules` | 1 | Minimum alt-supporting molecules for a structural variant PASS call. |
 | `--sv-strand-bias-threshold` | 1.0 | Fisher p-value threshold for strand bias on SV-type variants. Default 1.0 disables the filter. Inversion junction reads are structurally strand-biased, so the standard threshold is inappropriate. |
@@ -162,6 +163,7 @@ kam index --input <molecules.bin> --targets <targets.fa> --output <index.bin> [O
 |------|---------|-------------|
 | `-k` / `--kmer-size` | 31 | K-mer length (1–31) |
 | `--sv-junctions` | (none) | FASTA of SV junction sequences to augment the k-mer allowlist. Same as the `kam run` flag. |
+| `--junction-sequences` | (none) | FASTA of raw junction sequences. Same as the `kam run` flag. |
 
 The index stage writes `index_qc.json` to the same directory as `--output`.
 

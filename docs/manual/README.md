@@ -55,6 +55,7 @@ Config files keep all settings in one place and are recommended for reproducible
 
 - [Configuration](configuration.md) — full config.toml reference
 - [CLI reference](06_cli.md) — full CLI reference
+- [Docker usage](docker.md) — running kam in Docker
 
 ### Pipeline Modules
 
@@ -70,6 +71,13 @@ Each stage of the pipeline is described in detail:
 ### ML Scoring
 
 - [ML Models](07_ml_models.md) — built-in models, features, performance metrics, custom models
+
+### Guides
+
+- [SNV and indel detection](guides/snv-indel.md) — detecting point mutations and short indels
+- [Structural variant detection](guides/structural-variants.md) — detecting large deletions, inversions, duplications
+- [Fusion detection](guides/fusions.md) — detecting gene fusions and translocations
+- [Patient SV monitoring](guides/patient-sv-monitoring.md) — monitoring a fusion or SV from BAM observation in serial cfDNA
 
 ### Reference
 

@@ -42,6 +42,7 @@ Input file paths.
 | `sv_junctions` | path | No | SV junction sequences FASTA. Required for Inversion and InvDel detection. Not needed for LargeDeletion, TandemDuplication, or NovelInsertion. |
 | `target_variants` | path | No | VCF of expected somatic variants for tumour-informed monitoring mode. When set, only calls matching this truth set are marked PASS. |
 | `fusion_targets` | path | No | Synthetic fusion target sequences FASTA. Required for Fusion (translocation/gene fusion) detection. Each entry ID must follow the format `{name}__{chromA}:{startA}-{endA}__{chromB}:{startB}-{endB}__fusion`. |
+| `junction_sequences` | path | No | Raw junction sequences FASTA for monitoring fusions or SVs observed in BAM/IGV. Any header format is accepted. Each sequence is added to the k-mer allowlist and walked as a standalone target with total library depth as the VAF denominator. See `guides/patient-sv-monitoring.md`. |
 
 Example:
 
@@ -53,6 +54,7 @@ targets = "panel.fa"
 sv_junctions = "sv_junctions.fa"
 target_variants = "tumour_truth.vcf"
 fusion_targets = "fusions.fa"
+junction_sequences = "junction_from_bam.fa"
 ```
 
 ---
@@ -220,6 +222,7 @@ All config file fields can be overridden via CLI flags. CLI flags always win.
 | `--sv-junctions` | `[input] sv_junctions` |
 | `--target-variants` | `[input] target_variants` |
 | `--fusion-targets` | `[input] fusion_targets` |
+| `--junction-sequences` | `[input] junction_sequences` |
 | `--output-dir` | `[output] output_dir` |
 | `--output-format` | `[output] output_format` |
 | `--chemistry` | `[chemistry] preset` |

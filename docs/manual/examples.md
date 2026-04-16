@@ -137,6 +137,49 @@ kam run --config examples/no-umi.toml
 
 ---
 
+## Junction monitoring
+
+### Monitoring a fusion from BAM observation
+
+When you observe a fusion or structural variant in IGV, copy the chimeric read
+sequence and create a simple FASTA file. No coordinates or special header format
+needed.
+
+Create `junction_from_bam.fa`:
+
+```
+>BCR_ABL1_from_igv
+CAGAGGAAGAGCTGCAGACCATGCGTCTGTGGCCGCTGATCCTGTCGGAGCCATAATTAGCAGACCGGTACCTGAGGACTG
+>EML4_ALK_from_igv
+TGGAGCCTTGAGATCTTCAACTGCTGAAGACTTCTAGTCCTACAGATCAACAATTTACCCAG
+```
+
+Run the pipeline with `--junction-sequences`:
+
+```bash
+kam run \
+  --r1 plasma_R1.fastq.gz \
+  --r2 plasma_R2.fastq.gz \
+  --targets panel_targets.fa \
+  --junction-sequences junction_from_bam.fa \
+  --output-dir results/ \
+  --max-vaf 0.35 \
+  --output-format tsv,vcf
+```
+
+Each junction entry is walked as a standalone target. Check
+`results/variants.tsv` for rows where `target_id` matches your FASTA headers.
+The `vaf` and `n_molecules_alt` columns show whether the junction is detected
+and at what frequency.
+
+For serial monitoring across time points, use the same junction FASTA for every
+sample and compare the `vaf` values over time.
+
+See `guides/patient-sv-monitoring.md` for a complete walkthrough with tumour-
+informed filtering and troubleshooting.
+
+---
+
 ## SV detection
 
 ### sv-detection.toml
