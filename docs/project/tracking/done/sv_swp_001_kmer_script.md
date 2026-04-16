@@ -3,7 +3,7 @@
 **Epic**: SV-SWEEP
 **Priority**: medium
 **Depends on**: SV-BASE-007
-**Status**: todo
+**Status**: done
 
 ## Goal
 
@@ -12,8 +12,8 @@ types x 2 replicates (216 combinations, 432 total with discovery + TI modes).
 
 ## Success Criteria
 
-- [ ] Executable script at `docs/benchmarking/sv_new/scripts/run_kmer_sweep.sh`.
-- [ ] Script accepts a base results directory and k-mer list as arguments.
+- [x] Executable script at `scripts/benchmarking/sv_kmer_sweep.sh`.
+- [x] Script accepts `--data-dir`, `--output-dir`, `--reference` arguments.
 - [ ] `/update` has been run after changes.
 
 ## Steps
