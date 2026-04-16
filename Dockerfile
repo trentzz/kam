@@ -87,7 +87,7 @@ LABEL org.opencontainers.image.title="kam" \
 
 # Install runtime libraries required by the binary and the ONNX Runtime.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libssl3 \
+    libssl3t64 \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
