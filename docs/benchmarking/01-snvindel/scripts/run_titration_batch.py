@@ -22,10 +22,10 @@ import psutil
 from pathlib import Path
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
-REPO = Path(__file__).resolve().parents[2]
+REPO = Path(__file__).resolve().parents[4]
 _DEFAULT_KAM     = REPO / "target/release/kam"
-_DEFAULT_TARGETS = REPO / "benchmarking/scripts/targets_100bp.fa"
-_DEFAULT_TRUTH   = REPO / "benchmarking/scripts/truth_variants.vcf"
+_DEFAULT_TARGETS = REPO / "docs/benchmarking/01-snvindel/scripts/targets_100bp.fa"
+_DEFAULT_TRUTH   = REPO / "docs/benchmarking/01-snvindel/scripts/truth_variants.vcf"
 _DEFAULT_FASTQ   = Path(os.environ.get("KAM_FASTQ_DIR", "/data/titration-nondedup/fastqs"))
 _DEFAULT_RESULTS = REPO / "benchmarking/results/tables"
 
@@ -47,8 +47,17 @@ KAM_MIN_ALT_MOLECULES: int | None = None
 KAM_MIN_CONFIDENCE: float | None = None
 KAM_MIN_FAMILY_SIZE: int | None = None
 KAM_TARGET_VARIANTS: Path | None = None
+KAM_SV_JUNCTIONS: Path | None = None
+KAM_ALT_AS_REF: Path | None = None
 KAM_KMER_SIZE: int | None = None
 KAM_MIN_ALT_DUPLEX: int | None = None
+KAM_GRAPH_MIN_MOLECULES: int | None = None
+KAM_TI_RESCUE: bool = False
+SCORE_COUNT_RESCUED: bool = False
+
+# When set, save per-sample TSVs to this directory.
+# Each sample produces: <name>.tsv
+TSV_SAVE_DIR: Path | None = None
 
 # When set, save per-sample VCFs to this directory.
 # Each sample produces:
@@ -90,21 +99,25 @@ def load_truth_set(vcf_path):
     return truth_all, truth_snv, truth_indel
 
 
-def extract_called_variants(tsv_path):
+_PASS_FILTERS = {"PASS", "RESCUED", "SUBTHRESHOLD"}
+
+def extract_called_variants(tsv_path, count_rescued=False):
     """Parse kam TSV output; derive (chrom, pos, ref, alt) from target_id and sequences.
 
     target_id is 'chrN:start-end' (0-based start, end exclusive, matching BED).
     ref_seq and alt_seq are the full 100bp sequences; the variant is where they
     first differ (for SNVs) or where a gap/insertion is introduced (for indels).
-    We return only PASS variants.
+    By default returns only PASS variants. When count_rescued=True, also counts
+    RESCUED and SUBTHRESHOLD variants (for TI rescue sensitivity analysis).
     """
+    accepted = _PASS_FILTERS if count_rescued else {"PASS"}
     called = set()
     if not tsv_path.exists():
         return called
     with open(tsv_path) as f:
         reader = csv.DictReader(f, delimiter="\t")
         for row in reader:
-            if row.get("filter") != "PASS":
+            if row.get("filter") not in accepted:
                 continue
             tid = row["target_id"]
             # Parse target_id: chrom:start-end (start is 0-based)
@@ -282,7 +295,7 @@ def _confusion(called, truth_subset, panel_size):
     }
 
 
-def score_tsv(called_tsv, truth_all, truth_snv, truth_indel):
+def score_tsv(called_tsv, truth_all, truth_snv, truth_indel, count_rescued=False):
     """Score called variants; return full confusion-matrix metrics overall and by type.
 
     For a targeted panel with TRUTH_PANEL_SIZE known variant sites:
@@ -290,8 +303,11 @@ def score_tsv(called_tsv, truth_all, truth_snv, truth_indel):
       FP  = called AND NOT in truth
       FN  = NOT called AND in truth
       TN  = panel sites with no FP call and no missed truth call
+
+    When count_rescued=True, RESCUED and SUBTHRESHOLD filter variants are also
+    counted (for TI rescue sensitivity analysis — not for production benchmarking).
     """
-    called = extract_called_variants(called_tsv)
+    called = extract_called_variants(called_tsv, count_rescued=count_rescued)
     overall = _confusion(called, truth_all, TRUTH_PANEL_SIZE)
     snv     = _confusion(called, truth_snv, len(truth_snv))
     indel   = _confusion(called, truth_indel, len(truth_indel))
@@ -336,10 +352,18 @@ def run_sample(sample, truth_set, tmp_dir):
         cmd += ["--min-family-size", str(KAM_MIN_FAMILY_SIZE)]
     if KAM_TARGET_VARIANTS is not None:
         cmd += ["--target-variants", str(KAM_TARGET_VARIANTS)]
+    if KAM_SV_JUNCTIONS is not None:
+        cmd += ["--sv-junctions", str(KAM_SV_JUNCTIONS)]
+    if KAM_ALT_AS_REF is not None:
+        cmd += ["--alt-as-ref", str(KAM_ALT_AS_REF)]
     if KAM_KMER_SIZE is not None:
         cmd += ["-k", str(KAM_KMER_SIZE)]
     if KAM_MIN_ALT_DUPLEX is not None:
         cmd += ["--min-alt-duplex", str(KAM_MIN_ALT_DUPLEX)]
+    if KAM_GRAPH_MIN_MOLECULES is not None:
+        cmd += ["--graph-min-molecules", str(KAM_GRAPH_MIN_MOLECULES)]
+    if KAM_TI_RESCUE:
+        cmd += ["--ti-rescue"]
 
     print(f"  [{name}] running kam...", flush=True)
     t0 = time.time()
@@ -462,7 +486,7 @@ def run_sample(sample, truth_set, tmp_dir):
                 stage_ms["output"] = int(m.group(1))
 
     called_tsv = out_dir / "variants.tsv"
-    scores = score_tsv(called_tsv, *truth_set)
+    scores = score_tsv(called_tsv, *truth_set, count_rescued=SCORE_COUNT_RESCUED)
     ov = scores["overall"]
     sv = scores["snv"]
     ind = scores["indel"]
@@ -513,6 +537,13 @@ def run_sample(sample, truth_set, tmp_dir):
         "exit_code": proc.returncode,
     }
 
+    # ── Save per-sample TSVs if requested ────────────────────────────────────
+    if TSV_SAVE_DIR is not None and proc.returncode == 0:
+        TSV_SAVE_DIR.mkdir(parents=True, exist_ok=True)
+        src_tsv = out_dir / "variants.tsv"
+        if src_tsv.exists():
+            shutil.copy(src_tsv, TSV_SAVE_DIR / f"{name}.tsv")
+
     # ── Save per-sample VCFs if requested ─────────────────────────────────────
     if VCF_SAVE_DIR is not None and proc.returncode == 0:
         VCF_SAVE_DIR.mkdir(parents=True, exist_ok=True)
@@ -544,6 +575,8 @@ def run_sample(sample, truth_set, tmp_dir):
                     disc_cmd += ["-k", str(KAM_KMER_SIZE)]
                 if KAM_MIN_ALT_DUPLEX is not None:
                     disc_cmd += ["--min-alt-duplex", str(KAM_MIN_ALT_DUPLEX)]
+                if KAM_GRAPH_MIN_MOLECULES is not None:
+                    disc_cmd += ["--graph-min-molecules", str(KAM_GRAPH_MIN_MOLECULES)]
                 # Deliberately omit --target-variants for discovery mode.
                 disc_proc = subprocess.run(disc_cmd, capture_output=True)
                 disc_vcf = disc_out / "variants.vcf"
@@ -571,7 +604,8 @@ def main():
     global KAM, TARGETS, TRUTH_VCF, FASTQ_DIR, RESULTS_DIR, RESULTS_FILE
     global READS_PER_SAMPLE, PEAK_RSS_LIMIT_MB
     global KAM_MAX_VAF, KAM_MIN_ALT_MOLECULES, KAM_MIN_CONFIDENCE, KAM_MIN_FAMILY_SIZE
-    global KAM_TARGET_VARIANTS, KAM_KMER_SIZE, KAM_MIN_ALT_DUPLEX, VCF_SAVE_DIR
+    global KAM_TARGET_VARIANTS, KAM_SV_JUNCTIONS, KAM_ALT_AS_REF, KAM_KMER_SIZE, KAM_MIN_ALT_DUPLEX
+    global KAM_GRAPH_MIN_MOLECULES, KAM_TI_RESCUE, SCORE_COUNT_RESCUED, VCF_SAVE_DIR, TSV_SAVE_DIR
 
     parser = argparse.ArgumentParser(
         description="Run kam on all titration samples and score against truth variants."
@@ -608,10 +642,31 @@ def main():
                         help="VCF of expected somatic variants for tumour-informed monitoring "
                              "mode. Only calls matching (CHROM, POS, REF, ALT) in this VCF "
                              "are marked PASS. Suppresses background biological FPs.")
+    parser.add_argument("--sv-junctions", type=Path, default=None,
+                        help="FASTA of SV junction sequences to augment the k-mer allowlist.")
+    parser.add_argument("--alt-as-ref", type=Path, default=None,
+                        help="FASTA of alt-allele sequences (generated by multiseqex --alt-seq "
+                             "--flank N) to augment the k-mer allowlist via --alt-as-ref.")
     parser.add_argument("--min-alt-duplex", type=int, default=None,
                         help="Minimum variant-specific duplex molecules for a PASS call "
                              "(default: 0, disabled). Set to 1 to require duplex confirmation "
                              "on every call. Calls below threshold are labelled LowDuplex.")
+    parser.add_argument("--graph-min-molecules", type=int, default=None,
+                        help="Minimum canonical-evidence molecule count for a k-mer to survive "
+                             "into the de Bruijn graph (default: 2). Setting to 1 allows "
+                             "singleton k-mers to survive, which can rescue indels at low VAF "
+                             "where Poisson noise would otherwise break the alt path chain.")
+    parser.add_argument("--ti-rescue", action="store_true", default=False,
+                        help="Enable TI rescue probing for undetected target variants. "
+                             "Queries the k-mer index directly, bypassing the graph walk. "
+                             "Requires --target-variants.")
+    parser.add_argument("--count-rescued", action="store_true", default=False,
+                        help="Also count RESCUED and SUBTHRESHOLD filter variants as detected "
+                             "when scoring. Use with --ti-rescue to measure the true sensitivity "
+                             "ceiling of rescue probing.")
+    parser.add_argument("--save-tsvs", type=Path, default=None,
+                        help="Directory to save per-sample variants.tsv outputs. "
+                             "Each sample produces <name>.tsv with all called variants.")
     parser.add_argument("--save-vcfs", type=Path, default=None,
                         help="Directory to save per-sample VCF outputs. When set, each sample "
                              "produces <name>.monitoring.vcf (tumour-informed calls) and "
@@ -635,7 +690,13 @@ def main():
     KAM_MIN_CONFIDENCE    = args.min_confidence
     KAM_MIN_FAMILY_SIZE   = args.min_family_size
     KAM_TARGET_VARIANTS   = args.target_variants
+    KAM_SV_JUNCTIONS      = args.sv_junctions
+    KAM_ALT_AS_REF        = args.alt_as_ref
     KAM_MIN_ALT_DUPLEX    = args.min_alt_duplex
+    KAM_TI_RESCUE         = args.ti_rescue
+    SCORE_COUNT_RESCUED   = args.count_rescued
+    KAM_GRAPH_MIN_MOLECULES = args.graph_min_molecules
+    TSV_SAVE_DIR          = args.save_tsvs
     KAM_KMER_SIZE         = args.kmer_size
     VCF_SAVE_DIR          = args.save_vcfs
 

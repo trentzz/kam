@@ -1,8 +1,8 @@
 # varforge config: SNV_VAF0350_A — VAF 3.500%
-reference: docs/benchmarking/snvindel/data/ref.fa
+reference: docs/benchmarking/01-snvindel/data/ref.fa
 
 output:
-  directory: docs/benchmarking/snvindel/results/sim_snv_vaf0350_a
+  directory: docs/benchmarking/01-snvindel/results/sim_snv_vaf0350_a
   fastq: true
   bam: false
   truth_vcf: true
@@ -28,7 +28,7 @@ tumour:
   ploidy: 2
 
 mutations:
-  vcf: docs/benchmarking/snvindel/data/truth_snvs_vaf0350_a.vcf
+  vcf: docs/benchmarking/01-snvindel/data/truth_snvs_vaf0350_a.vcf
 
 umi:
   length: 5

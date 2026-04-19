@@ -1,8 +1,8 @@
 # varforge config: INDEL_VAF0200_B — VAF 2.000%
-reference: docs/benchmarking/snvindel/data/ref.fa
+reference: docs/benchmarking/01-snvindel/data/ref.fa
 
 output:
-  directory: docs/benchmarking/snvindel/results/sim_indel_vaf0200_b
+  directory: docs/benchmarking/01-snvindel/results/sim_indel_vaf0200_b
   fastq: true
   bam: false
   truth_vcf: true
@@ -28,7 +28,7 @@ tumour:
   ploidy: 2
 
 mutations:
-  vcf: docs/benchmarking/snvindel/data/truth_indels_vaf0200_b.vcf
+  vcf: docs/benchmarking/01-snvindel/data/truth_indels_vaf0200_b.vcf
 
 umi:
   length: 5

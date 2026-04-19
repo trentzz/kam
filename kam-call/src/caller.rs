@@ -954,7 +954,12 @@ pub fn assign_filter(
         config.strand_bias_threshold
     };
     // A threshold of 1.0 disables the strand-bias filter (all p-values are < 1.0).
-    if eff_strand_bias_threshold < 1.0 && strand_bias_p < eff_strand_bias_threshold {
+    // Duplex molecules are sequenced on both strands by definition, so a call
+    // supported by ≥2 duplex alt molecules cannot have genuine strand bias.
+    // Skip the filter in that case to avoid penalising real variants whose
+    // apparent bias is driven by reference-strand asymmetry rather than artefact.
+    let duplex_bypass = n_duplex_alt >= 2;
+    if !duplex_bypass && eff_strand_bias_threshold < 1.0 && strand_bias_p < eff_strand_bias_threshold {
         return VariantFilter::StrandBias;
     }
     if confidence < eff_min_confidence {
@@ -1058,6 +1063,9 @@ mod tests {
     }
 
     // Test 9: call_variant with strand bias → StrandBias filter.
+    //
+    // No duplex alt molecules (min_variant_specific_duplex = 0), so the duplex
+    // bypass does not engage and the biased call must be filtered.
     #[test]
     fn call_variant_strand_bias_flagged() {
         // Alt reads are all on the forward strand.
@@ -1065,9 +1073,9 @@ mod tests {
         let alt_ev = PathEvidence {
             min_molecules: 10,
             mean_molecules: 10.0,
-            min_duplex: 5,
-            mean_duplex: 5.0,
-            min_variant_specific_duplex: 5,
+            min_duplex: 0,
+            mean_duplex: 0.0,
+            min_variant_specific_duplex: 0, // no duplex → bypass does not apply
             mean_variant_specific_molecules: 10.0,
             min_simplex_fwd: 10, // all forward
             min_simplex_rev: 0,
@@ -1375,12 +1383,14 @@ mod tests {
             .collect();
 
         let ref_ev = make_path_evidence(990, 0, 495, 495);
+        // min_variant_specific_duplex = 0 so the duplex bypass does not engage;
+        // the sv_strand_bias_threshold filter can still fire.
         let alt_ev = PathEvidence {
             min_molecules: 20,
             mean_molecules: 20.0,
-            min_duplex: 5,
-            mean_duplex: 5.0,
-            min_variant_specific_duplex: 5,
+            min_duplex: 0,
+            mean_duplex: 0.0,
+            min_variant_specific_duplex: 0,
             mean_variant_specific_molecules: 20.0,
             min_simplex_fwd: 20,
             min_simplex_rev: 0,
@@ -1401,19 +1411,21 @@ mod tests {
         );
     }
 
-    // Test 28: SNV with biased strands is still StrandBias-filtered.
+    // Test 28: SNV with biased strands is still StrandBias-filtered when no duplex support.
     //
-    // sv_strand_bias_threshold applies only to SV types. An SNV with all
-    // alt reads on the forward strand must still be caught by strand_bias_threshold.
+    // sv_strand_bias_threshold applies only to SV types. An SNV with all alt
+    // reads on the forward strand must still be caught by strand_bias_threshold
+    // when there are no duplex alt molecules to trigger the bypass.
     #[test]
     fn snv_strand_biased_still_filtered() {
         let ref_ev = make_path_evidence(990, 0, 495, 495);
+        // min_variant_specific_duplex = 0 so the duplex bypass does not engage.
         let alt_ev = PathEvidence {
             min_molecules: 20,
             mean_molecules: 20.0,
-            min_duplex: 5,
-            mean_duplex: 5.0,
-            min_variant_specific_duplex: 5,
+            min_duplex: 0,
+            mean_duplex: 0.0,
+            min_variant_specific_duplex: 0,
             mean_variant_specific_molecules: 20.0,
             min_simplex_fwd: 20,
             min_simplex_rev: 0,
@@ -2213,5 +2225,47 @@ mod tests {
         alt.extend_from_slice(&ref_seq[50..]);
         let vt = classify_variant(&ref_seq, &alt);
         assert_eq!(vt, VariantType::NovelInsertion);
+    }
+
+    // Test 59: strand-biased deletion passes when n_duplex_alt >= 2 (duplex bypass).
+    //
+    // Duplex molecules are sequenced on both strands, so a call confirmed by
+    // two or more duplex alt molecules cannot have genuine strand bias.
+    // The strand_bias_p here (0.005) is below the default threshold (0.01),
+    // which would normally trigger StrandBias, but the bypass must prevent it.
+    #[test]
+    fn strand_bias_bypassed_when_duplex_alt_sufficient() {
+        let cfg = CallerConfig {
+            min_confidence: 0.80,
+            ..CallerConfig::default()
+        };
+        // strand_bias_p = 0.005, below default threshold of 0.01 → normally StrandBias.
+        // n_duplex_alt = 2 → bypass must engage and return Pass.
+        let filter = assign_filter(0.95, 0.005, 12, 2, 0.03, VariantType::Deletion, &cfg);
+        assert_eq!(
+            filter,
+            VariantFilter::Pass,
+            "duplex-confirmed call must not be filtered for strand bias"
+        );
+    }
+
+    // Test 60: strand-biased deletion is still filtered when n_duplex_alt < 2.
+    //
+    // The bypass only applies when at least 2 duplex alt molecules are present.
+    // With n_duplex_alt = 1, the normal strand-bias filter must still fire.
+    #[test]
+    fn strand_bias_still_filtered_when_duplex_alt_insufficient() {
+        let cfg = CallerConfig {
+            min_confidence: 0.80,
+            ..CallerConfig::default()
+        };
+        // strand_bias_p = 0.005, below default threshold of 0.01 → StrandBias.
+        // n_duplex_alt = 1 → bypass does not engage.
+        let filter = assign_filter(0.95, 0.005, 12, 1, 0.03, VariantType::Deletion, &cfg);
+        assert_eq!(
+            filter,
+            VariantFilter::StrandBias,
+            "call with only 1 duplex alt must still be filtered for strand bias"
+        );
     }
 }
