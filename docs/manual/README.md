@@ -75,6 +75,7 @@ Each stage of the pipeline is described in detail:
 ### Guides
 
 - [SNV and indel detection](guides/snv-indel.md) — detecting point mutations and short indels
+- [Alt-as-ref mode](guides/alt-as-ref.md) — boosting sensitivity for known SNVs and indels using alt-allele k-mers
 - [Structural variant detection](guides/structural-variants.md) — detecting large deletions, inversions, duplications
 - [Fusion detection](guides/fusions.md) — detecting gene fusions and translocations
 - [Patient SV monitoring](guides/patient-sv-monitoring.md) — monitoring a fusion or SV from BAM observation in serial cfDNA

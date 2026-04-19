@@ -62,6 +62,44 @@ ATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGC
 
 Required for detecting inversions and InvDel events whose breakpoint k-mers are absent from the panel targets. Not needed for large deletions, tandem duplications, or novel insertions (their k-mers come from the reference targets). Generate this file using varforge or a BED of known breakpoints.
 
+### Alt-allele sequences FASTA (`--alt-as-ref`)
+
+A standard FASTA file where each entry is a sequence containing the ALT allele. **Any header format is accepted** — headers are used only for logging and are not parsed for coordinates. Only the sequences matter.
+
+The one requirement is that each sequence is at least `k` bp long (default k=31) so that it produces k-mers. For short alt alleles (SNVs, short indels), include flanking reference context on each side.
+
+**Option 1 — generate from a VCF using multiseqex (recommended):**
+
+```bash
+multiseqex hg38.fa \
+  --vcf tumour_biopsy_mutations.vcf \
+  --alt-seq --flank 100 \
+  -o alt_seqs.fa
+```
+
+This produces one entry per variant with 100 bp of reference context on each side:
+
+```
+>chr17:7674170-7674320
+ACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGT
+TGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCA
+```
+
+**Option 2 — provide raw sequences directly (no VCF needed):**
+
+Any sequence can be passed with any header. This is useful when you have an observed sequence from BAM inspection, IGV, or a km/kmtools output and do not have precise genomic coordinates:
+
+```
+>my_variant
+GCAATGCCCTCAGAATCTGTTCAGTTTGTACTTCTGATGACAGAAAGAGCCTCAGAACATCCCCAAACT
+>observed_in_igv_patient_042
+TAGCTGGATTGTCAGTGCGCTTTTCCCAACACCACTTGCTCCAACCACCACCAGTTTGTACTCAGTCATTT
+```
+
+The sequence must be long enough to span the variant junction with at least k bases of context on each side. For a 70 bp sequence with the alt allele near the centre, this is already satisfied at k=31.
+
+These sequences are distinct from `--sv-junctions`, which encodes SV breakpoint junctions. Use `--alt-as-ref` for SNVs and indels; use `--sv-junctions` for inversions and InvDel events.
+
 ### Fusion targets FASTA (`--fusion-targets`)
 
 Each entry is a synthetic sequence spanning a gene fusion breakpoint. The header **must** follow this exact format:
@@ -476,6 +514,40 @@ kam run --r1 plasma_R1.fq.gz --r2 plasma_R2.fq.gz \
 
 ---
 
+#### `--alt-as-ref`
+
+FASTA of alt-allele sequences to add alt k-mers to the allowlist. Boosts sensitivity for known SNVs and indels by ensuring their ALT k-mers are indexed even at low VAF. See [Alt-allele sequences FASTA](#alt-allele-sequences-fasta---alt-as-ref) above for how to generate this file, and the [Alt-as-ref guide](guides/alt-as-ref.md) for a full workflow.
+
+Use alongside `--target-variants` to combine the k-mer boost with tumour-informed filtering.
+
+**Generate alt sequences and run with alt-as-ref boost:**
+```bash
+# Step 1: generate alt-allele sequences with flanking context
+multiseqex hg38.fa \
+  --vcf tumour_biopsy_mutations.vcf \
+  --alt-seq --flank 100 \
+  -o alt_seqs.fa
+
+# Step 2: run kam with alt-as-ref boost
+kam run --r1 plasma_R1.fq.gz --r2 plasma_R2.fq.gz \
+  --targets panel.fa --output-dir results/ \
+  --alt-as-ref alt_seqs.fa \
+  --target-variants tumour_biopsy_mutations.vcf
+```
+
+**Alt-as-ref with TI rescue for maximum sensitivity at low VAF:**
+```bash
+kam run --r1 plasma_R1.fq.gz --r2 plasma_R2.fq.gz \
+  --targets panel.fa --output-dir results/ \
+  --alt-as-ref alt_seqs.fa \
+  --target-variants patient_mutations.vcf \
+  --ti-rescue \
+  --min-alt-molecules 1 \
+  --output-format-override tsv,vcf
+```
+
+---
+
 ### SV and fusion options
 
 #### `--sv-junctions`
@@ -793,6 +865,19 @@ kam assemble --r1 sample_R1.fq.gz --r2 sample_R2.fq.gz \
 
 ---
 
+#### `--dump-molecules`
+
+Write a TSV of all assembled molecules to the given path. Useful for comparing kam molecule counts with HUMID or other assembly tools.
+
+Columns: `molecule_id`, `umi_fwd`, `umi_rev`, `has_duplex`, `fwd_n_reads`, `rev_n_reads`, `duplex_n_reads`, `fwd_seq`, `rev_seq`, `duplex_seq`, `fwd_mean_error`, `rev_mean_error`, `duplex_mean_error`. Fields with no data (e.g. `duplex_seq` for a simplex molecule) appear as `.`.
+
+```bash
+kam assemble --r1 sample_R1.fq.gz --r2 sample_R2.fq.gz \
+  --output molecules.bin --dump-molecules molecules_dump.tsv
+```
+
+---
+
 ## kam index
 
 Build a k-mer index from assembled molecules against target sequences. Writes `index_qc.json` to the same directory as `--output`.
@@ -834,6 +919,17 @@ kam index --input molecules.bin --targets panel.fa \
 
 ---
 
+#### `--alt-as-ref`
+
+FASTA of alt-allele sequences to add alt k-mers to the allowlist. Same purpose as the `kam run` flag. See [Alt-allele sequences FASTA](#alt-allele-sequences-fasta---alt-as-ref) for how to generate this file.
+
+```bash
+kam index --input molecules.bin --targets panel.fa \
+  --output index.bin --alt-as-ref alt_seqs.fa
+```
+
+---
+
 #### `--sv-junctions`
 
 FASTA of SV junction sequences to augment the k-mer allowlist. Same purpose as the `kam run` flag. See [SV junctions FASTA](#sv-junctions-fasta---sv-junctions) for the format.
@@ -852,6 +948,19 @@ FASTA of raw junction sequences for augmenting the allowlist. Any header format 
 ```bash
 kam index --input molecules.bin --targets panel.fa \
   --output index.bin --junction-sequences patient_042_junctions.fa
+```
+
+---
+
+#### `--dump-kmer-index`
+
+Write a TSV of all k-mers in the filtered index to the given path. Useful for comparing kam k-mer counts with Jellyfish or other counting tools.
+
+Columns: `kmer_seq`, `kmer_u64`, `n_molecules`, `n_duplex`, `n_simplex_fwd`, `n_simplex_rev`, `min_base_error_prob`, `mean_base_error_prob`. Rows are sorted by `kmer_u64` for deterministic output.
+
+```bash
+kam index --input molecules.bin --targets panel.fa \
+  --output index.bin --dump-kmer-index kmer_dump.tsv
 ```
 
 ---

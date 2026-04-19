@@ -122,9 +122,11 @@ pub fn probe_ti_target(
 /// ```
 /// use kam::rescue::build_alt_seq;
 /// let ref_seq = b"ACGTACGT";
-/// // SNV at window offset 2 (0-based), target_start=100, vcf_pos=103 (1-based).
-/// let alt = build_alt_seq(ref_seq, 100, 103, b"G", b"T");
-/// assert_eq!(alt, Some(b"ACTTACGT".to_vec()));
+/// // SNV at window offset 3 (0-based), target_start=100, vcf_pos=103 (1-based).
+/// // multiseqex labels target_start as VCF_POS - flank (effectively 1-based), so
+/// // offset = vcf_pos_1based - target_start_0based = 103 - 100 = 3.
+/// let alt = build_alt_seq(ref_seq, 100, 103, b"T", b"G");
+/// assert_eq!(alt, Some(b"ACGGACGT".to_vec()));
 /// ```
 pub fn build_alt_seq(
     ref_seq: &[u8],
@@ -133,7 +135,7 @@ pub fn build_alt_seq(
     vcf_ref: &[u8],
     vcf_alt: &[u8],
 ) -> Option<Vec<u8>> {
-    let offset = vcf_pos_1based - target_start_0based - 1;
+    let offset = vcf_pos_1based - target_start_0based;
     if offset < 0 {
         return None;
     }
@@ -197,9 +199,10 @@ mod tests {
     #[test]
     fn build_alt_seq_snv() {
         let ref_seq = b"ACGTACGT";
-        // target_start=100 (0-based), vcf_pos=103 (1-based) → offset = 103-100-1 = 2
-        let alt = build_alt_seq(ref_seq, 100, 103, b"G", b"T");
-        assert_eq!(alt, Some(b"ACTTACGT".to_vec()));
+        // target_start=100 (0-based), vcf_pos=103 (1-based) → offset = 103-100 = 3
+        // ref_seq[3] = 'T'; substitute with 'G'.
+        let alt = build_alt_seq(ref_seq, 100, 103, b"T", b"G");
+        assert_eq!(alt, Some(b"ACGGACGT".to_vec()));
     }
 
     #[test]
