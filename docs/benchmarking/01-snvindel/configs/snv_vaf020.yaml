@@ -5,11 +5,11 @@
 # and the truth VCF are committed.
 #
 # Run:
-#   varforge simulate --config docs/benchmarking/snvindel/configs/snv_vaf020.yaml
-reference: docs/benchmarking/snvindel/data/ref.fa
+#   varforge simulate --config docs/benchmarking/01-snvindel/configs/snv_vaf020.yaml
+reference: docs/benchmarking/01-snvindel/data/ref.fa
 
 output:
-  directory: docs/benchmarking/snvindel/results/sim_snv_vaf020
+  directory: docs/benchmarking/01-snvindel/results/sim_snv_vaf020
   fastq: true
   bam: false
   truth_vcf: true
@@ -35,7 +35,7 @@ tumour:
   ploidy: 2
 
 mutations:
-  vcf: docs/benchmarking/snvindel/data/truth_snvs_vaf020.vcf
+  vcf: docs/benchmarking/01-snvindel/data/truth_snvs_vaf020.vcf
 
 umi:
   length: 5

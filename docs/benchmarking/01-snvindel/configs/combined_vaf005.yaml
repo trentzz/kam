@@ -6,11 +6,11 @@
 # this config and the truth VCF are committed.
 #
 # Run:
-#   varforge simulate --config docs/benchmarking/snvindel/configs/combined_vaf005.yaml
-reference: docs/benchmarking/snvindel/data/ref.fa
+#   varforge simulate --config docs/benchmarking/01-snvindel/configs/combined_vaf005.yaml
+reference: docs/benchmarking/01-snvindel/data/ref.fa
 
 output:
-  directory: docs/benchmarking/snvindel/results/sim_combined_vaf005
+  directory: docs/benchmarking/01-snvindel/results/sim_combined_vaf005
   fastq: true
   bam: false
   truth_vcf: true
@@ -36,7 +36,7 @@ tumour:
   ploidy: 2
 
 mutations:
-  vcf: docs/benchmarking/snvindel/data/truth_combined_vaf005.vcf
+  vcf: docs/benchmarking/01-snvindel/data/truth_combined_vaf005.vcf
 
 umi:
   length: 5
