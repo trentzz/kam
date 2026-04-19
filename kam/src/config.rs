@@ -189,6 +189,9 @@ pub struct CallingConfig {
     /// Enable k-mer rescue probe for undetected TI targets.
     #[serde(default)]
     pub ti_rescue: bool,
+    /// Enable alt-walk rescue using pre-built FASTA alt sequences.
+    #[serde(default)]
+    pub alt_walk: bool,
 }
 
 /// Logging settings.
@@ -335,6 +338,7 @@ impl KamConfig {
         cfg.calling.sv_strand_bias_threshold = args.sv_strand_bias_threshold_override;
         cfg.calling.ti_position_tolerance = args.ti_position_tolerance_override;
         cfg.calling.ti_rescue = args.ti_rescue;
+        cfg.calling.alt_walk = args.alt_walk;
 
         cfg.logging.log_dir = args.log_dir.clone();
         cfg.logging.log = if args.log.is_empty() {
@@ -457,6 +461,9 @@ impl KamConfig {
         }
         if args.ti_rescue {
             self.calling.ti_rescue = true;
+        }
+        if args.alt_walk {
+            self.calling.alt_walk = true;
         }
 
         // Logging fields.
@@ -823,6 +830,7 @@ min_family_size = 3
             target_variants: None,
             ti_position_tolerance_override: None,
             ti_rescue: false,
+            alt_walk: false,
             output_format_override: None,
             qc_output: None,
             log_dir: None,

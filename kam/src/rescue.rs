@@ -106,6 +106,82 @@ pub fn probe_ti_target(
     })
 }
 
+/// An alt-sequence entry parsed from the `--alt-as-ref` FASTA.
+#[derive(Debug, Clone)]
+pub struct AltWalkEntry {
+    /// Target window identifier (e.g. `"chr1:1000-1100"`).
+    pub target_id: String,
+    /// REF allele from the FASTA header `REF=` field.
+    pub ref_allele: String,
+    /// ALT allele from the FASTA header `ALT=` field.
+    pub alt_allele: String,
+    /// Pre-built alt-allele window sequence.
+    pub alt_seq: Vec<u8>,
+}
+
+/// Parse an alt-walk FASTA file into a list of [`AltWalkEntry`] values.
+///
+/// Expects headers of the form `chrN:start-end REF=xxx ALT=yyy` (the format
+/// produced by `generate_alt_seqs_from_norm.py`). Entries whose headers do
+/// not contain both `REF=` and `ALT=` tokens are skipped with a warning.
+///
+/// # Example
+///
+/// ```
+/// use std::io::Write;
+/// use kam::rescue::load_alt_walk_entries;
+/// let fasta = b">chr1:100-200 REF=G ALT=T\nACGT\n";
+/// let tmp = tempfile::NamedTempFile::new().unwrap();
+/// tmp.as_file().write_all(fasta).unwrap();
+/// let entries = load_alt_walk_entries(tmp.path()).unwrap();
+/// assert_eq!(entries.len(), 1);
+/// assert_eq!(entries[0].target_id, "chr1:100-200");
+/// assert_eq!(entries[0].ref_allele, "G");
+/// assert_eq!(entries[0].alt_allele, "T");
+/// ```
+pub fn load_alt_walk_entries(
+    path: &std::path::Path,
+) -> Result<Vec<AltWalkEntry>, Box<dyn std::error::Error>> {
+    use needletail::parse_fastx_file;
+    let mut entries = Vec::new();
+    let mut reader = parse_fastx_file(path)?;
+    while let Some(result) = reader.next() {
+        let rec = result?;
+        let header = String::from_utf8_lossy(rec.id());
+        // target_id is the part before the first space.
+        let mut parts = header.splitn(2, ' ');
+        let target_id = parts.next().unwrap_or("").to_string();
+        let rest = parts.next().unwrap_or("");
+        // Parse REF= and ALT= tokens.
+        let ref_allele = rest
+            .split_whitespace()
+            .find_map(|t| t.strip_prefix("REF="))
+            .map(str::to_string);
+        let alt_allele = rest
+            .split_whitespace()
+            .find_map(|t| t.strip_prefix("ALT="))
+            .map(str::to_string);
+        let (ref_allele, alt_allele) = match (ref_allele, alt_allele) {
+            (Some(r), Some(a)) => (r, a),
+            _ => {
+                eprintln!(
+                    "[rescue/alt-walk] skipping entry with unparseable header: {}",
+                    header
+                );
+                continue;
+            }
+        };
+        let alt_seq: Vec<u8> = rec.seq().iter().map(|&b| b.to_ascii_uppercase()).collect();
+        entries.push(AltWalkEntry {
+            target_id,
+            ref_allele,
+            alt_allele,
+            alt_seq,
+        });
+    }
+    Ok(entries)
+}
+
 /// Construct an alt target-window sequence from a ref sequence and a VCF variant.
 ///
 /// - `ref_seq`: full target window reference bytes
@@ -219,5 +295,21 @@ mod tests {
         // ref allele does not match window at that position.
         let alt = build_alt_seq(ref_seq, 100, 101, b"T", b"G");
         assert!(alt.is_none());
+    }
+
+    #[test]
+    fn load_alt_walk_entries_basic() {
+        use std::io::Write;
+        let mut tmp = tempfile::NamedTempFile::new().unwrap();
+        writeln!(tmp, ">chr1:100-200 REF=G ALT=T").unwrap();
+        writeln!(tmp, "ACGT").unwrap();
+        writeln!(tmp, ">chr2:500-600 REF=ACGT ALT=A").unwrap();
+        writeln!(tmp, "TTTTACGT").unwrap();
+        let entries = load_alt_walk_entries(tmp.path()).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].target_id, "chr1:100-200");
+        assert_eq!(entries[0].ref_allele, "G");
+        assert_eq!(entries[0].alt_allele, "T");
+        assert_eq!(entries[1].ref_allele, "ACGT");
     }
 }

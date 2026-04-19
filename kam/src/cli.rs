@@ -477,6 +477,19 @@ pub struct RunArgs {
     #[arg(long, default_value_t = false)]
     pub ti_rescue: bool,
 
+    /// Enable alt-walk rescue probing using pre-built sequences from `--alt-as-ref`.
+    ///
+    /// Requires `--alt-as-ref` and `--target-variants`. For each TI target variant
+    /// that produces no PASS or sub-threshold call, this probes the k-mer index
+    /// using the pre-built alt sequence from the FASTA rather than computing one
+    /// from the VCF. Rescued calls appear with `call_source=RESCUED`.
+    ///
+    /// Use when the `--alt-as-ref` FASTA was built with wider flanks than the
+    /// target sequences, or when you want to use externally verified alt sequences
+    /// as the probe source.
+    #[arg(long, default_value_t = false)]
+    pub alt_walk: bool,
+
     /// Optional FASTA of SV junction sequences to augment the k-mer allowlist.
     ///
     /// When provided, k-mers from these junction sequences are added to the

@@ -514,6 +514,24 @@ kam run --r1 plasma_R1.fq.gz --r2 plasma_R2.fq.gz \
 
 ---
 
+#### `--alt-walk`
+
+Enable rescue probing using pre-built alt sequences from `--alt-as-ref`. Requires both `--alt-as-ref` and `--target-variants`. For each TI target that produces no PASS or sub-threshold call, the k-mer index is probed using the alt sequence from the FASTA rather than computing one from the VCF. Results appear with `call_source=RESCUED` or `call_source=NO_EVIDENCE`.
+
+Use `--alt-walk` when the `--alt-as-ref` FASTA was built with wider flanks than the target sequences, or when you want to use externally verified alt sequences as the probe source. For most workflows, `--ti-rescue` and `--alt-walk` give equivalent results — use `--alt-walk` when you have pre-built FASTA alt sequences and want them to be the source of truth.
+
+```bash
+kam run --r1 plasma_R1.fq.gz --r2 plasma_R2.fq.gz \
+  --targets panel.fa --output-dir results/ \
+  --alt-as-ref alt_seqs.fa \
+  --target-variants patient_mutations.vcf \
+  --alt-walk \
+  --min-alt-molecules 1 \
+  --output-format-override tsv,vcf
+```
+
+---
+
 #### `--alt-as-ref`
 
 FASTA of alt-allele sequences to add alt k-mers to the allowlist. Boosts sensitivity for known SNVs and indels by ensuring their ALT k-mers are indexed even at low VAF. See [Alt-allele sequences FASTA](#alt-allele-sequences-fasta---alt-as-ref) above for how to generate this file, and the [Alt-as-ref guide](guides/alt-as-ref.md) for a full workflow.

@@ -1204,6 +1204,176 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // Alt-walk rescue: probe TI targets using pre-built alt sequences from
+    // --alt-as-ref FASTA. Complements --ti-rescue when the FASTA uses wider
+    // flanks or when build_alt_seq fails near window boundaries.
+    if cfg.calling.alt_walk {
+        if let (Some(ref vcf_path), Some(ref alt_path)) =
+            (&cfg.input.target_variants, &cfg.input.alt_as_ref)
+        {
+            use crate::rescue::{load_alt_walk_entries, parse_target_id, probe_ti_target};
+            use kam_call::caller::{CallSource, VariantType};
+
+            let target_set = load_target_variants(vcf_path)?;
+
+            // Mark sub-threshold calls that match TI targets (idempotent — safe to
+            // re-run even if ti_rescue already did this).
+            for call in &mut all_calls {
+                if call.filter != VariantFilter::Pass {
+                    if let Some(key) = kam_call::targeting::extract_variant_key(
+                        &call.target_id,
+                        &call.ref_sequence,
+                        &call.alt_sequence,
+                    ) {
+                        if target_set.contains(&key) {
+                            call.call_source = CallSource::SubThreshold;
+                        }
+                    }
+                }
+            }
+
+            // Determine which TI targets already have a PASS or SubThreshold call.
+            let mut matched: std::collections::HashSet<(String, i64, String, String)> =
+                std::collections::HashSet::new();
+            for call in &all_calls {
+                if call.filter == VariantFilter::Pass
+                    || call.call_source == CallSource::SubThreshold
+                {
+                    if let Some(key) = kam_call::targeting::extract_variant_key(
+                        &call.target_id,
+                        &call.ref_sequence,
+                        &call.alt_sequence,
+                    ) {
+                        matched.insert(key);
+                    }
+                }
+            }
+
+            let alt_entries = load_alt_walk_entries(alt_path).map_err(|e| {
+                std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
+            })?;
+
+            let mut rescue_calls: Vec<kam_call::caller::VariantCall> = Vec::new();
+
+            for (chrom, vcf_pos, vcf_ref, vcf_alt) in &target_set {
+                let key = (chrom.clone(), *vcf_pos, vcf_ref.clone(), vcf_alt.clone());
+                if matched.contains(&key) {
+                    continue;
+                }
+
+                // Find the target window covering this position.
+                let found = target_map.iter().find(|(tid, _)| {
+                    if let Some((tc, ts, te)) = parse_target_id(tid) {
+                        tc == chrom.as_str() && ts < *vcf_pos && *vcf_pos <= te
+                    } else {
+                        false
+                    }
+                });
+                let (target_id, ref_seq) = match found {
+                    Some((tid, seq)) => (*tid, *seq),
+                    None => continue,
+                };
+
+                // Find the matching FASTA entry for this variant.
+                let fasta_alt_seq = alt_entries
+                    .iter()
+                    .find(|e| {
+                        e.target_id == target_id
+                            && e.ref_allele.eq_ignore_ascii_case(vcf_ref.as_str())
+                            && e.alt_allele.eq_ignore_ascii_case(vcf_alt.as_str())
+                    })
+                    .map(|e| e.alt_seq.clone());
+
+                let alt_seq = match fasta_alt_seq {
+                    Some(s) => s,
+                    None => continue,
+                };
+
+                let evidence = probe_ti_target(&index, ref_seq, &alt_seq, k);
+
+                let (src, min_alt, alt_dup, approx_vaf, kf, kt) = match evidence {
+                    Some(ref ev) => (
+                        if ev.min_alt_molecules > 0 {
+                            CallSource::Rescued
+                        } else {
+                            CallSource::NoEvidence
+                        },
+                        Some(ev.min_alt_molecules),
+                        Some(ev.alt_duplex),
+                        Some(ev.approx_vaf),
+                        Some(ev.n_alt_kmers_found),
+                        Some(ev.n_alt_kmers_total),
+                    ),
+                    None => (
+                        CallSource::NoEvidence,
+                        Some(0),
+                        Some(0),
+                        Some(0.0),
+                        Some(0),
+                        Some(0),
+                    ),
+                };
+
+                let variant_type = {
+                    let r = vcf_ref.as_bytes();
+                    let a = vcf_alt.as_bytes();
+                    if r.len() == 1 && a.len() == 1 {
+                        VariantType::Snv
+                    } else if r.len() < a.len() {
+                        VariantType::Insertion
+                    } else if r.len() > a.len() {
+                        VariantType::Deletion
+                    } else {
+                        VariantType::Mnv
+                    }
+                };
+
+                let mean_ref = evidence.as_ref().map(|e| e.mean_ref_molecules).unwrap_or(0.0);
+
+                rescue_calls.push(kam_call::caller::VariantCall {
+                    target_id: target_id.to_string(),
+                    variant_type,
+                    ref_sequence: vcf_ref.as_bytes().to_vec(),
+                    alt_sequence: vcf_alt.as_bytes().to_vec(),
+                    vaf: approx_vaf.unwrap_or(0.0) as f64,
+                    vaf_ci_low: 0.0,
+                    vaf_ci_high: 0.0,
+                    n_molecules_ref: mean_ref.round() as u32,
+                    n_molecules_alt: min_alt.unwrap_or(0),
+                    n_duplex_alt: alt_dup.unwrap_or(0),
+                    n_simplex_alt: min_alt.unwrap_or(0).saturating_sub(alt_dup.unwrap_or(0)),
+                    n_simplex_fwd_alt: 0,
+                    n_simplex_rev_alt: 0,
+                    n_duplex_ref: 0,
+                    n_simplex_ref: 0,
+                    mean_alt_error_prob: 0.0,
+                    min_variant_specific_duplex: alt_dup.unwrap_or(0),
+                    mean_variant_specific_molecules: min_alt.unwrap_or(0) as f32,
+                    confidence: 0.0,
+                    strand_bias_p: 1.0,
+                    filter: VariantFilter::LowConfidence,
+                    ml_prob: None,
+                    call_source: src,
+                    rescue_min_alt_molecules: min_alt,
+                    rescue_alt_duplex: alt_dup,
+                    rescue_approx_vaf: approx_vaf,
+                    rescue_kmers_found: kf,
+                    rescue_kmers_total: kt,
+                });
+            }
+
+            if !rescue_calls.is_empty() {
+                eprintln!(
+                    "[run/alt-walk] {} alt-walk rescue records added ({} with evidence, {} with no evidence)",
+                    rescue_calls.len(),
+                    rescue_calls.iter().filter(|c| c.call_source == CallSource::Rescued).count(),
+                    rescue_calls.iter().filter(|c| c.call_source == CallSource::NoEvidence).count(),
+                );
+            }
+            all_calls.extend(rescue_calls);
+        }
+    }
+
     // Optional ML scoring.
     let scorer_result: Option<Result<kam_call::ml::MlScorer, _>> =
         if let Some(ref name) = args.ml_model {
@@ -1687,6 +1857,7 @@ mod tests {
             target_variants: None,
             ti_position_tolerance_override: None,
             ti_rescue: false,
+            alt_walk: false,
             output_format_override: None,
             qc_output: None,
             log_dir: None,
@@ -1915,6 +2086,7 @@ min_umi_quality = 0
             target_variants: None,
             ti_position_tolerance_override: None,
             ti_rescue: false,
+            alt_walk: false,
             output_format_override: None,
             qc_output: None,
             log_dir: None,
@@ -2010,6 +2182,7 @@ min_umi_quality = 0
             target_variants: None,
             ti_position_tolerance_override: None,
             ti_rescue: false,
+            alt_walk: false,
             output_format_override: Some("tsv".to_string()),
             qc_output: None,
             log_dir: None,
@@ -2365,6 +2538,7 @@ min_umi_quality = 0
             target_variants: None,
             ti_position_tolerance_override: None,
             ti_rescue: false,
+            alt_walk: false,
             output_format_override: None,
             qc_output: None,
             log_dir: None,
