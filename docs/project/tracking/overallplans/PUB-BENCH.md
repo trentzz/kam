@@ -1,8 +1,10 @@
 # PUB-BENCH: Public Dataset Benchmarks
 
-**Status**: done
+**Status**: in_progress
 **Priority**: high
 **Branch**: epic/PUB-BENCH
+
+**Note (2026-04-20):** Parser blocker resolved by DISC-002 (variable `skip_length` support). UMI-benchmark experiment (SRR6794144, simplex 12 bp UMI) is now unblocked. Scoped to UMI-benchmark only for the paper submission; SEQC2 and COLO829 are deferred to the journal version.
 
 ## Goal
 

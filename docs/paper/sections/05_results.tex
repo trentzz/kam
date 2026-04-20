@@ -176,15 +176,27 @@ Discovery mode produces 2--7 false positives per VAF level, all low-molecule SNV
 \subsection{Comparison to alignment-based pipeline}
 \label{sec:results-comparison}
 
-Alignment-based results from the same titration dataset are included in
-\texttt{docs/benchmarking/04-comparison/} for independent analysis, but a
-head-to-head comparison is reserved for future work.
+Alignment-based results for the same titration dataset are available from the
+thesis RaSCALL pipeline~\cite{thesis} and are recorded in
+\texttt{docs/benchmarking/04-comparison/alignment\_baseline.csv}.
+A per-variant concordance analysis comparing kam tumour-informed mode against
+those numbers is included as a companion analysis.
+For each of the 375 variants across all 24 titration samples we record whether
+each method produces a PASS call, allowing direct comparison of sensitivity,
+per-variant miss rates, and the degree to which misses are shared (low-VAF
+stochastic dropout) versus method-specific.
 
 % ── Cross-chemistry generalisation ────────────────────────────────────────────
 \subsection{Cross-chemistry generalisation}
 \label{sec:results-crosschem}
 
-Generalisation to other UMI chemistries is reserved for future work.
+A cross-chemistry evaluation using the UMI Clustering Benchmark dataset
+(SRR6794144, simplex 12\,bp UMI)~\cite{umi_benchmark} is in preparation.
+The parser now accepts arbitrary UMI length via the \texttt{skip\_length}
+configuration parameter, removing the previous blocker for non-Twist chemistries.
+This experiment will characterise how well kam's molecule assembly and
+variant-calling pipeline transfers to a simplex UMI protocol and a different
+sequencing depth regime.
 
 % ── Runtime and memory ────────────────────────────────────────────────────────
 \subsection{Runtime and memory}
@@ -213,7 +225,7 @@ Total wall-clock time ranged from 41\,s to 55\,s per sample on
 a single core. Peak RSS ranged from 1.8\,GB to 2.0\,GB, with all samples
 well within a 4\,GB budget.
 
-Runtime comparison against the alignment-based pipeline is deferred to future work alongside the head-to-head sensitivity analysis.
+Runtime comparison against the alignment-based pipeline is included in the companion concordance analysis alongside the per-variant sensitivity comparison.
 
 % ── ML-boosted calling ────────────────────────────────────────────────────────
 \subsection{ML-boosted calling}
