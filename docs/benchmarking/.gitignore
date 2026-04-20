@@ -1,1 +1,4 @@
 __pycache__/
+
+# Per-sample run outputs from run_titration_batch.py (--save-tsv-dir / --save-vcf-dir)
+01-snvindel/samples_*/
