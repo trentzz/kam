@@ -1,6 +1,6 @@
 # CHEM-CONFIG: Generalise Chemistry to Arbitrary UMI Lengths
 
-**Status**: todo
+**Status**: done
 **Priority**: critical
 **Branch**: epic/CHEM-CONFIG
 
@@ -63,11 +63,11 @@ Review for any hardcoded UMI length. Update if present.
 
 | ID | File | Status |
 |----|------|--------|
-| CHEM-001 | todo/chem_001_generalise_umi.md | todo |
-| CHEM-002 | todo/chem_002_generalise_parser.md | todo |
-| CHEM-003 | todo/chem_003_generalise_clustering.md | todo |
-| CHEM-004 | todo/chem_004_read_structure_presets.md | todo |
-| CHEM-005 | todo/chem_005_non_twist_integration.md | todo |
+| CHEM-001 | done/chem_001_generalise_umi.md | done |
+| CHEM-002 | done/chem_002_generalise_parser.md | done |
+| CHEM-003 | done/chem_003_generalise_clustering.md | done |
+| CHEM-004 | done/chem_004_read_structure_presets.md | done |
+| CHEM-005 | done/chem_005_non_twist_integration.md | done |
 
 ## Scope
 

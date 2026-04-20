@@ -1,6 +1,6 @@
 # ALIGN-COMPARE: Comparison Against Thesis Alignment-Based Results
 
-**Status**: todo
+**Status**: done
 **Priority**: high
 **Branch**: epic/ALIGN-COMPARE
 
@@ -60,11 +60,11 @@ For each discordant case, categorise the root cause:
 
 | ID | File | Status |
 |----|------|--------|
-| ALIGN-001 | todo/align_001_parse_thesis.md | todo |
-| ALIGN-002 | todo/align_002_run_titration.md | todo |
-| ALIGN-003 | todo/align_003_concordance.md | todo |
-| ALIGN-004 | todo/align_004_discordance.md | todo |
-| ALIGN-005 | todo/align_005_comparison_figures.md | todo |
+| ALIGN-001 | done/align_001_parse_thesis.md | done |
+| ALIGN-002 | done/align_002_run_titration.md | done |
+| ALIGN-003 | done/align_003_concordance.md | done |
+| ALIGN-004 | done/align_004_discordance.md | done |
+| ALIGN-005 | done/align_005_comparison_figures.md | done |
 
 ## Dependencies
 

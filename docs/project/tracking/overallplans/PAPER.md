@@ -1,6 +1,6 @@
 # PAPER: Proof-of-Concept Methods Paper
 
-**Status**: todo
+**Status**: done
 **Priority**: high
 **Branch**: epic/PAPER
 
@@ -51,14 +51,14 @@ Target journal: Bioinformatics applications note. Max 3000 words main text,
 
 | ID | File | Status |
 |----|------|--------|
-| PAPER-001 | todo/paper_001_methods_tool.md | todo |
-| PAPER-002 | todo/paper_002_methods_bench.md | todo |
-| PAPER-003 | todo/paper_003_results_ti.md | todo |
-| PAPER-004 | todo/paper_004_results_sv.md | todo |
-| PAPER-005 | todo/paper_005_results_chemistry.md | todo |
-| PAPER-006 | todo/paper_006_results_runtime.md | todo |
-| PAPER-007 | todo/paper_007_discussion_figures.md | todo |
-| PAPER-008 | todo/paper_008_supplementary.md | todo |
+| PAPER-001 | done/paper_001_methods_tool.md | done |
+| PAPER-002 | done/paper_002_methods_bench.md | done |
+| PAPER-003 | done/paper_003_results_ti.md | done |
+| PAPER-004 | done/paper_004_results_sv.md | done |
+| PAPER-005 | done/paper_005_results_chemistry.md | done |
+| PAPER-006 | done/paper_006_results_runtime.md | done |
+| PAPER-007 | done/paper_007_discussion_figures.md | done |
+| PAPER-008 | done/paper_008_supplementary.md | done |
 
 ## Dependencies
 

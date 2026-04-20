@@ -1,6 +1,6 @@
 # RUNTIME: Speed Comparison vs Alignment-Based Pipeline
 
-**Status**: todo
+**Status**: done
 **Priority**: medium
 **Branch**: epic/RUNTIME
 
@@ -52,9 +52,9 @@ are measured.
 
 | ID | File | Status |
 |----|------|--------|
-| RUNTIME-001 | todo/runtime_001_kam_timing.md | todo |
-| RUNTIME-002 | todo/runtime_002_alignment_timing.md | todo |
-| RUNTIME-003 | todo/runtime_003_runtime_figure.md | todo |
+| RUNTIME-001 | done/runtime_001_kam_timing.md | done |
+| RUNTIME-002 | done/runtime_002_alignment_timing.md | done |
+| RUNTIME-003 | done/runtime_003_runtime_figure.md | done |
 
 ## Dependencies
 
