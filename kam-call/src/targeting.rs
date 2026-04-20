@@ -460,9 +460,6 @@ pub fn apply_target_filter_with_seq_fallback(
                     continue; // PASS via position proximity
                 }
             }
-        } else if key.is_none() {
-            // Cannot extract a VCF key (e.g. identical sequences). Fall through
-            // to sequence comparison; if that also fails, mark NotTargeted.
         }
 
         // 3. Sequence-level fallback: compare the call's alt path sequence against
