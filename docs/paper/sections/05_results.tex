@@ -35,7 +35,7 @@ titration series for each input concentration, with tumour-informed filtering ap
 At the lowest VAF levels (0.001\% and 0.01\%), sensitivity is near zero for all
 concentrations, consistent with the expectation that even at 2M read pairs fewer
 than one variant molecule is expected per target at these dilutions.
-Sensitivity rises from 0.1\% VAF and reaches 54\%--63\% at 2\% VAF.
+Sensitivity rises from 0.1\% VAF and reaches 52\%--61\% at 2\% VAF.
 
 \begin{figure}[t]
   \centering
@@ -84,8 +84,8 @@ biological cfDNA variants are not reported in monitoring mode.
 \subsection{SNV and indel sensitivity}
 
 Figure~\ref{fig:sensitivity_by_type} shows sensitivity broken down by variant
-type at 2M read pairs. At 2\% VAF, SNV sensitivity ranges from 72\% to 82\%
-across the three concentrations. Indel sensitivity is lower, ranging from 32\%
+type at 2M read pairs. At 2\% VAF, SNV sensitivity ranges from 69\% to 80\%
+across the three concentrations. Indel sensitivity is lower, ranging from 31\%
 to 39\%. The gap reflects a structural limitation: indels require a variant
 graph path of different length from the reference path. Anchor k-mers at the
 start and end of the target window must both be present in the graph for a walk
@@ -177,23 +177,24 @@ Discovery mode produces 2--7 false positives per VAF level, all low-molecule SNV
 \label{sec:results-comparison}
 
 Alignment-based results for the same titration dataset are available from the
-thesis RaSCALL pipeline~\cite{thesis} and are recorded in
+thesis RaSCALL pipeline~\autocite{ZengThesis} and are recorded in
 \texttt{docs/benchmarking/04-comparison/alignment\_baseline.csv}.
 A per-variant concordance analysis comparing kam tumour-informed mode against
-those numbers is included as a companion analysis.
-For each of the 375 variants across all 24 titration samples we record whether
-each method produces a PASS call, allowing direct comparison of sensitivity,
-per-variant miss rates, and the degree to which misses are shared (low-VAF
-stochastic dropout) versus method-specific.
+those numbers is planned for the next paper revision.
+For each of the 375 variants across all 24 titration samples we will record
+whether each method produces a PASS call, allowing direct comparison of
+sensitivity, per-variant miss rates, and the degree to which misses are shared
+(low-VAF stochastic dropout) versus method-specific.
 
 % ── Cross-chemistry generalisation ────────────────────────────────────────────
 \subsection{Cross-chemistry generalisation}
 \label{sec:results-crosschem}
 
 A cross-chemistry evaluation using the UMI Clustering Benchmark dataset
-(SRR6794144, simplex 12\,bp UMI)~\cite{umi_benchmark} is in preparation.
-The parser now accepts arbitrary UMI length via the \texttt{skip\_length}
-configuration parameter, removing the previous blocker for non-Twist chemistries.
+(SRR6794144, simplex 12\,bp UMI)~\autocite{Calib25umi} is in preparation.
+The parser accepts arbitrary UMI and skip-base lengths via the
+\texttt{[chemistry]} configuration section, and a \texttt{simplex\_12bp}
+preset (12\,bp UMI, 0\,bp skip) covers this dataset without code change.
 This experiment will characterise how well kam's molecule assembly and
 variant-calling pipeline transfers to a simplex UMI protocol and a different
 sequencing depth regime.

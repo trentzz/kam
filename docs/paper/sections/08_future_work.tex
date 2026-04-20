@@ -20,10 +20,16 @@ walk failures at low VAF.
 The DFS walk requires an exact k-mer match at the reference end anchor. For an
 indel of length $\ell$, the variant path is $\ell$ k-mers shorter or longer than
 the reference path, and reads must span from the variant junction to the shifted
-anchor position. An investigation of missed variants confirms that end-anchor
-coverage is the primary cause of the 61--68\% indel false-negative rate.
-Relaxing the end-anchor requirement to allow termination within a $\pm \ell$-kmer
-window would recover the majority of missed indels without affecting SNV calls.
+anchor position. The \texttt{--alt-walk} flag (Section~\ref{sec:method:ti-rescue-alt-walk})
+partially addresses this by walking paths from wider alt-as-ref anchors, which
+recovers 1--3 additional indels per sample at 2\% VAF. A full fix requires
+relaxing the end-anchor requirement to allow termination within a
+$\pm \ell$-kmer window, which would recover more missed indels without
+requiring a pre-built alt-as-ref FASTA. An investigation of missed variants at
+the 15\,ng 2\% VAF sample confirms that approximately 96 of the 99 missing
+indels have zero alt-specific k-mer signal in the input reads at any tested
+depth (1M, 5M, full 64M), so the remaining gap is data-limited rather than
+algorithm-limited.
 
 \paragraph{Adaptive walk budget and reference-first path prioritisation.}
 For target windows longer than 100\,bp, the DFS walk fills its path budget
@@ -70,4 +76,7 @@ size, and a morning report summarising QC metrics across a run.
 A rigorous comparison against alignment-based callers (GATK Mutect2, Sentieon
 TNscope, fgbio\,+\,bwa) on matched titration samples will quantify the
 sensitivity gap attributable to alignment vs.\ the gap attributable to depth.
-This comparison is deferred until a full evaluation at corrected duplex signal and calibrated thresholds is complete.
+The thesis RaSCALL pipeline results are already parsed into
+\texttt{docs/benchmarking/04-comparison/alignment\_baseline.csv}; a per-variant
+concordance analysis against those numbers is planned for the next paper
+revision.

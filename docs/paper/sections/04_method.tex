@@ -477,6 +477,17 @@ This two-step approach (call everywhere, then filter to expected variants) means
 
 The practical effect is near-zero false positives. A background sequencing artefact that coincidentally passes all statistical filters is almost certainly not one of the pre-specified somatic variants, and is removed at the monitoring filter step. In our benchmarks, this mode achieves precision 1.0 on all titration samples.
 
+\subsubsection{Tumour-informed rescue and alt-walk}
+\label{sec:method:ti-rescue-alt-walk}
+
+Two additional mechanisms rescue variants that the default DFS walk fails to reconstruct from the graph. These address the structural limitation that an indel's end anchor is shifted by the indel length, so reads must span the shifted anchor position for the walk to complete.
+
+The \texttt{--ti-rescue} flag augments every target in the panel with an alt-specific probe derived from the tumour-informed VCF. For each expected variant, the exact junction k-mers of the alt allele are queried directly against the molecule-level k-mer index. A variant with alt k-mer evidence below the walk threshold but above a configurable rescue threshold (\texttt{--graph-min-molecules}, default 1 in rescue mode) is emitted as a RESCUED call with its evidence record intact. Rescue does not bypass strand-bias or confidence filters.
+
+The \texttt{--alt-walk} flag (introduced in v0.3.1) extends the rescue mechanism to arbitrary user-provided alt sequences supplied via \texttt{--alt-as-ref}. Each entry in the alt-as-ref FASTA is treated as an additional short reference whose k-mers are added to the panel allowlist. The pathfinder then walks paths from the alt sequence's start anchor to its end anchor exactly as it does for the panel targets. This is the mechanism that recovers indel calls whose end anchor falls outside the 100\,bp panel window: the wider alt sequence (for example 150\,bp) provides the missing anchor coverage without changing the panel design.
+
+A sequence-level matching fallback then compares each PASS call's full alt sequence against the alt-as-ref entries. Variants whose normalised VCF tuple fails to match a target entry but whose reconstructed alt sequence matches a known alt entry are still labelled PASS. This matches the behaviour of read-based k-mer callers that avoid the window-boundary normalisation problem for homopolymer indels.
+
 \subsection{Benchmarking Methodology}
 \label{sec:method:benchmarking}
 
@@ -560,4 +571,4 @@ All pipeline parameters are controlled via a TOML configuration file (\texttt{co
 
 The configuration is divided into sections: \texttt{[input]} (file paths including R1, R2, targets, SV junctions, fusion targets, and a monitoring VCF), \texttt{[output]} (output directory and format), \texttt{[chemistry]} (UMI length, skip length, duplex flag, and quality thresholds), \texttt{[assembly]} (minimum family size), \texttt{[indexing]} (k-mer size, default $k = 31$), \texttt{[calling]} (confidence thresholds, strand bias threshold, molecule count requirements, SV-specific thresholds, and monitoring position tolerance), \texttt{[logging]}, and \texttt{[runtime]} (thread count).
 
-Chemistry presets cover Twist duplex (default), and the \texttt{[chemistry]} section accepts arbitrary UMI and skip lengths for other chemistries. The pipeline is not hard-coded to any specific adapter design.
+Chemistry presets cover Twist duplex (\texttt{twist\_duplex}, default: 5\,bp UMI, 2\,bp skip) and simplex short-UMI designs (\texttt{simplex\_12bp}: 12\,bp UMI, 0\,bp skip). The \texttt{[chemistry]} section accepts arbitrary UMI and skip lengths for other chemistries. The pipeline is not hard-coded to any specific adapter design.
