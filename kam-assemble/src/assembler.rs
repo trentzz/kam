@@ -129,9 +129,7 @@ pub struct AssemblyStats {
 /// let r1_qual = b"IIIIIIIIIIIIIIIII";
 /// let r2_seq  = b"TGCATAGNNNNNNNNNN";
 /// let r2_qual = b"IIIIIIIIIIIIIIIII";
-/// let pair = match parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &config_parser)
-///     .expect("parse error")
-/// {
+/// let pair = match parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &config_parser) {
 ///     ParseResult::Ok(p) => *p,
 ///     ParseResult::Dropped { .. } => panic!("unexpected drop"),
 /// };
@@ -585,9 +583,7 @@ mod tests {
         let r2_qual = vec![b'I'; r2_seq.len()];
 
         let config = ParserConfig::default();
-        match parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &config)
-            .expect("make_pair: parse error")
-        {
+        match parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &config) {
             ParseResult::Ok(p) => *p,
             ParseResult::Dropped { reason, detail } => {
                 panic!("make_pair produced Dropped({reason:?}): {detail}");
@@ -781,8 +777,8 @@ mod tests {
         let fwd_pair = crate::parser::ParsedReadPair {
             umi_r1: b"ACGTA".to_vec(),
             umi_r2: b"TGCAT".to_vec(),
-            skip_r1: *b"TG",
-            skip_r2: *b"TG",
+            skip_r1: b"TG".to_vec(),
+            skip_r2: b"TG".to_vec(),
             template_r1: t.clone(),
             template_r2: rc_t.clone(),
             qual_r1: qual.clone(),
@@ -796,8 +792,8 @@ mod tests {
         let rev_pair = crate::parser::ParsedReadPair {
             umi_r1: b"TGCAT".to_vec(),
             umi_r2: b"ACGTA".to_vec(),
-            skip_r1: *b"TG",
-            skip_r2: *b"TG",
+            skip_r1: b"TG".to_vec(),
+            skip_r2: b"TG".to_vec(),
             template_r1: rc_t.clone(),
             template_r2: t.clone(),
             qual_r1: qual.clone(),
@@ -856,8 +852,8 @@ mod tests {
         let fwd_pair = crate::parser::ParsedReadPair {
             umi_r1: b"ACGTA".to_vec(),
             umi_r2: b"TGCAT".to_vec(),
-            skip_r1: *b"TG",
-            skip_r2: *b"TG",
+            skip_r1: b"TG".to_vec(),
+            skip_r2: b"TG".to_vec(),
             template_r1: fwd_template.clone(),
             template_r2: rev_template.clone(),
             qual_r1: qual.clone(),
@@ -874,8 +870,8 @@ mod tests {
         let rev_pair = crate::parser::ParsedReadPair {
             umi_r1: b"TGCAT".to_vec(),
             umi_r2: b"ACGTA".to_vec(),
-            skip_r1: *b"TG",
-            skip_r2: *b"TG",
+            skip_r1: b"TG".to_vec(),
+            skip_r2: b"TG".to_vec(),
             template_r1: rev_template.clone(),
             template_r2: fwd_template.clone(),
             qual_r1: qual.clone(),
@@ -949,9 +945,7 @@ mod tests {
         r2_fwd.extend_from_slice(template);
         let q2_fwd = vec![b'I'; r2_fwd.len()];
 
-        let fwd_pair = match parse_read_pair(&r1_fwd, &q_fwd, &r2_fwd, &q2_fwd, &config_parser)
-            .expect("parse error")
-        {
+        let fwd_pair = match parse_read_pair(&r1_fwd, &q_fwd, &r2_fwd, &q2_fwd, &config_parser) {
             ParseResult::Ok(p) => *p,
             ParseResult::Dropped { reason, detail } => {
                 panic!("Dropped({reason:?}): {detail}");
@@ -968,9 +962,7 @@ mod tests {
         r2_rev.extend_from_slice(template);
         let q2_rev = vec![b'I'; r2_rev.len()];
 
-        let rev_pair = match parse_read_pair(&r1_rev, &q_rev, &r2_rev, &q2_rev, &config_parser)
-            .expect("parse error")
-        {
+        let rev_pair = match parse_read_pair(&r1_rev, &q_rev, &r2_rev, &q2_rev, &config_parser) {
             ParseResult::Ok(p) => *p,
             ParseResult::Dropped { reason, detail } => {
                 panic!("Dropped({reason:?}): {detail}");
