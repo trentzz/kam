@@ -447,7 +447,12 @@ pub fn apply_target_filter_with_seq_fallback(
         // 1. Exact VCF tuple match.
         let key = extract_variant_key(&call.target_id, &call.ref_sequence, &call.alt_sequence);
         if let Some((ref call_chrom, call_pos, ref ref_allele, ref alt_allele)) = key {
-            if targets.contains(&(call_chrom.clone(), call_pos, ref_allele.clone(), alt_allele.clone())) {
+            if targets.contains(&(
+                call_chrom.clone(),
+                call_pos,
+                ref_allele.clone(),
+                alt_allele.clone(),
+            )) {
                 continue; // PASS via exact match
             }
 
@@ -464,11 +469,18 @@ pub fn apply_target_filter_with_seq_fallback(
 
         // 3. Sequence-level fallback: compare the call's alt path sequence against
         //    known alt sequences for this target window.
-        let call_alt_upper: Vec<u8> = call.alt_sequence.iter().map(|b| b.to_ascii_uppercase()).collect();
+        let call_alt_upper: Vec<u8> = call
+            .alt_sequence
+            .iter()
+            .map(|b| b.to_ascii_uppercase())
+            .collect();
         if let Some(known_seqs) = alt_seqs.get(&call.target_id) {
-            let seq_match = known_seqs
-                .iter()
-                .any(|s| s.iter().map(|b| b.to_ascii_uppercase()).collect::<Vec<u8>>() == call_alt_upper);
+            let seq_match = known_seqs.iter().any(|s| {
+                s.iter()
+                    .map(|b| b.to_ascii_uppercase())
+                    .collect::<Vec<u8>>()
+                    == call_alt_upper
+            });
             if seq_match {
                 continue; // PASS via sequence match
             }

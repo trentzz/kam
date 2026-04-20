@@ -959,7 +959,10 @@ pub fn assign_filter(
     // Skip the filter in that case to avoid penalising real variants whose
     // apparent bias is driven by reference-strand asymmetry rather than artefact.
     let duplex_bypass = n_duplex_alt >= 2;
-    if !duplex_bypass && eff_strand_bias_threshold < 1.0 && strand_bias_p < eff_strand_bias_threshold {
+    if !duplex_bypass
+        && eff_strand_bias_threshold < 1.0
+        && strand_bias_p < eff_strand_bias_threshold
+    {
         return VariantFilter::StrandBias;
     }
     if confidence < eff_min_confidence {
@@ -2133,14 +2136,8 @@ mod tests {
                 lo < hi,
                 "k={k}, m={m}: CI lower ({lo}) must be < CI upper ({hi})"
             );
-            assert!(
-                lo >= 0.0,
-                "k={k}, m={m}: CI lower ({lo}) must be >= 0"
-            );
-            assert!(
-                hi <= 1.0,
-                "k={k}, m={m}: CI upper ({hi}) must be <= 1.0"
-            );
+            assert!(lo >= 0.0, "k={k}, m={m}: CI lower ({lo}) must be >= 0");
+            assert!(hi <= 1.0, "k={k}, m={m}: CI upper ({hi}) must be <= 1.0");
         }
     }
 

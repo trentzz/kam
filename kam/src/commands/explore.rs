@@ -407,14 +407,8 @@ fn show_molecule(mol: &Molecule, idx: usize) {
 
     println!("── Molecule #{idx} ──");
     println!("  id:           {}", mol.id);
-    println!(
-        "  umi_fwd:      {}",
-        String::from_utf8_lossy(&mol.umi_fwd)
-    );
-    println!(
-        "  umi_rev:      {}",
-        String::from_utf8_lossy(&mol.umi_rev)
-    );
+    println!("  umi_fwd:      {}", String::from_utf8_lossy(&mol.umi_fwd));
+    println!("  umi_rev:      {}", String::from_utf8_lossy(&mol.umi_rev));
     println!("  family_type:  {ft:?}");
     println!("  n_reads_fwd:  {fwd_reads}");
     println!("  n_reads_rev:  {rev_reads}");
@@ -696,9 +690,7 @@ fn print_help() {
 ///
 /// Returns an error if the file cannot be opened or deserialised.
 pub fn run_explore(args: ExploreArgs) -> Result<(), Box<dyn std::error::Error>> {
-    let file_size = fs::metadata(&args.file)
-        .map(|m| m.len())
-        .unwrap_or(0);
+    let file_size = fs::metadata(&args.file).map(|m| m.len()).unwrap_or(0);
 
     let data = load_file(&args.file)?;
     print_summary(&data, file_size);

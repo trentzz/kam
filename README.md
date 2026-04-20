@@ -1,5 +1,7 @@
 # kam
 
+[![CI](https://github.com/trentzz/kam/actions/workflows/ci.yml/badge.svg)](https://github.com/trentzz/kam/actions/workflows/ci.yml)
+
 Alignment-free variant detection for Twist duplex UMI sequencing.
 
 kam replaces the four-tool chain HUMID + Jellyfish + km + kmtools with a single

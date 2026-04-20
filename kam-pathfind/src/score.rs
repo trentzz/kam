@@ -701,7 +701,8 @@ mod tests {
         // Both have min_molecules=5. Path B has mean=7.5 > path A mean=5.0.
         // Path B should be ranked first.
         assert!(
-            ranked[0].aggregate_evidence.mean_molecules > ranked[1].aggregate_evidence.mean_molecules,
+            ranked[0].aggregate_evidence.mean_molecules
+                > ranked[1].aggregate_evidence.mean_molecules,
             "tie on min_molecules should break by mean_molecules descending"
         );
     }
@@ -755,9 +756,15 @@ mod tests {
 
         // Exactly one path should be marked as reference (the strongest).
         let ref_count = ranked.iter().filter(|p| p.is_reference).count();
-        assert_eq!(ref_count, 1, "exactly one path should be marked as reference");
+        assert_eq!(
+            ref_count, 1,
+            "exactly one path should be marked as reference"
+        );
 
-        let ref_path = ranked.iter().find(|p| p.is_reference).expect("reference present");
+        let ref_path = ranked
+            .iter()
+            .find(|p| p.is_reference)
+            .expect("reference present");
         assert_eq!(
             ref_path.aggregate_evidence.min_molecules, 50,
             "the strongest path should be the fallback reference"

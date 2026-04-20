@@ -474,14 +474,8 @@ mod tests {
         let r1_path = dir.join("R1.fastq");
         let r2_path = dir.join("R2.fastq");
 
-        write_fastq(
-            &r1_path,
-            &[("r1", "ACGT", "IIII"), ("r2", "TGCA", "IIII")],
-        );
-        write_fastq(
-            &r2_path,
-            &[("r1", "ACGT", "IIII"), ("r2", "TGCA", "IIII")],
-        );
+        write_fastq(&r1_path, &[("r1", "ACGT", "IIII"), ("r2", "TGCA", "IIII")]);
+        write_fastq(&r2_path, &[("r1", "ACGT", "IIII"), ("r2", "TGCA", "IIII")]);
 
         let config = ParserConfig::default();
         let (pairs, stats) = read_fastq_pairs(&r1_path, &r2_path, &config).unwrap();

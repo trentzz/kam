@@ -713,7 +713,7 @@ mod tests {
         let mut g = DeBruijnGraph::new(k);
         let start = 0u64;
         let high = 1u64; // high evidence branch
-        let low = 2u64;  // low evidence branch
+        let low = 2u64; // low evidence branch
         let end = 3u64;
 
         g.add_edge(start, high);
@@ -803,7 +803,10 @@ mod tests {
     #[test]
     fn reconstruct_sequence_empty_input() {
         let result = reconstruct_sequence(&[], 4);
-        assert!(result.is_empty(), "empty k-mer list must yield empty sequence");
+        assert!(
+            result.is_empty(),
+            "empty k-mer list must yield empty sequence"
+        );
     }
 
     // Test 18: reconstruct_sequence on a single k-mer returns the full decode.

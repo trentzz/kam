@@ -1003,7 +1003,11 @@ mod tests {
         let p1 = make_pair(b"GGGGA", b"TTTTT", template);
         let p2 = make_pair(b"GGGGA", b"TTTTT", template);
         let (molecules, stats) = assemble_molecules(vec![p1, p2], &AssemblerConfig::default());
-        assert_eq!(molecules.len(), 1, "same UMI + same fingerprint = one molecule");
+        assert_eq!(
+            molecules.len(),
+            1,
+            "same UMI + same fingerprint = one molecule"
+        );
         assert_eq!(stats.n_umi_collisions_detected, 0);
     }
 
@@ -1016,7 +1020,11 @@ mod tests {
             ..AssemblerConfig::default()
         };
         let (molecules, stats) = assemble_molecules(vec![pair], &config);
-        assert_eq!(molecules.len(), 1, "singleton should be kept with min_family_size=1");
+        assert_eq!(
+            molecules.len(),
+            1,
+            "singleton should be kept with min_family_size=1"
+        );
         assert_eq!(stats.n_families_below_min_size, 0);
     }
 
@@ -1033,7 +1041,10 @@ mod tests {
         };
         let (molecules, stats) = assemble_molecules(vec![p1, p2, single], &config);
         assert_eq!(molecules.len(), 1, "only the family of 2 should survive");
-        assert_eq!(stats.n_families_below_min_size, 1, "singleton should be filtered");
+        assert_eq!(
+            stats.n_families_below_min_size, 1,
+            "singleton should be filtered"
+        );
     }
 
     // Hamming distance = 2 at threshold 1: UMIs are NOT merged.
