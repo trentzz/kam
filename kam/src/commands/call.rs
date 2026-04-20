@@ -10,7 +10,8 @@ use std::io::BufWriter;
 use kam_call::caller::{call_variant, VariantFilter};
 use kam_call::output::write_variants;
 use kam_call::targeting::{
-    apply_target_filter, apply_target_filter_with_tolerance, load_target_variants,
+    apply_target_filter, apply_target_filter_with_seq_fallback, apply_target_filter_with_tolerance,
+    load_target_variants, AltSeqMap,
 };
 use kam_core::qc::{write_qc, CallQc};
 use kam_core::serialize::read_bincode;
@@ -119,16 +120,32 @@ pub fn run_call(args: CallArgs) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(ref vcf_path) = args.target_variants {
         let targets = load_target_variants(vcf_path)?;
         let tol = args.ti_position_tolerance as i64;
-        if tol > 0 {
+
+        if let Some(ref alt_path) = args.alt_as_ref {
+            // Sequence-level fallback: load alt sequences and use the extended filter.
+            let alt_seqs = load_alt_seq_map(alt_path)?;
+            apply_target_filter_with_seq_fallback(&mut all_calls, &targets, tol, &alt_seqs);
+            eprintln!(
+                "[call] tumour-informed filter applied: {} target variants loaded, {} target windows with alt sequences (position tolerance: {}bp, sequence fallback: enabled)",
+                targets.len(),
+                alt_seqs.len(),
+                tol,
+            );
+        } else if tol > 0 {
             apply_target_filter_with_tolerance(&mut all_calls, &targets, tol);
+            eprintln!(
+                "[call] tumour-informed filter applied: {} target variants loaded (position tolerance: {}bp)",
+                targets.len(),
+                tol,
+            );
         } else {
             apply_target_filter(&mut all_calls, &targets);
+            eprintln!(
+                "[call] tumour-informed filter applied: {} target variants loaded (position tolerance: {}bp)",
+                targets.len(),
+                tol,
+            );
         }
-        eprintln!(
-            "[call] tumour-informed filter applied: {} target variants loaded (position tolerance: {}bp)",
-            targets.len(),
-            tol,
-        );
     }
 
     for call in &all_calls {
@@ -184,6 +201,34 @@ pub fn run_call(args: CallArgs) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/// Load alt-allele sequences from a FASTA file into an [`AltSeqMap`].
+///
+/// The FASTA header format is `chrN:start-end REF=vcf_ref ALT=vcf_alt`.
+/// The target_id is the part before the first space (`chrN:start-end`).
+/// Sequences are stored as uppercase bytes.  Multiple sequences with the same
+/// target_id are accumulated into a list.
+///
+/// Uses `needletail` for streaming FASTA parsing.
+pub fn load_alt_seq_map(path: &std::path::Path) -> Result<AltSeqMap, Box<dyn std::error::Error>> {
+    let mut map: AltSeqMap = AltSeqMap::new();
+    let mut reader = needletail::parse_fastx_file(path)?;
+    while let Some(result) = reader.next() {
+        let rec = result?;
+        // Header part before the first space is the target_id.
+        let target_id = String::from_utf8_lossy(rec.id())
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .to_string();
+        if target_id.is_empty() {
+            continue;
+        }
+        let seq: Vec<u8> = rec.seq().iter().map(|&b| b.to_ascii_uppercase()).collect();
+        map.entry(target_id).or_default().push(seq);
+    }
+    Ok(map)
+}
 
 /// Convert a [`ScoredPathRecord`] to a `PathEvidence` for the caller.
 fn record_to_path_evidence(rec: &ScoredPathRecord) -> kam_pathfind::score::PathEvidence {
@@ -248,6 +293,7 @@ mod tests {
             target_variants: None,
             ti_position_tolerance: 0,
             sv_strand_bias_threshold: 1.0,
+            alt_as_ref: None,
             ml_model: None,
             custom_ml_model: None,
         }

@@ -3,6 +3,8 @@
 //! Reads paired FASTQ files, parses UMI/template structure, assembles
 //! molecules, writes output in bincode format, and emits a QC JSON.
 
+use std::io::{BufWriter, Write as IoWrite};
+
 use kam_assemble::assembler::{assemble_molecules, AssemblerConfig};
 use kam_assemble::consensus::ConsensusConfig;
 use kam_assemble::io::read_fastq_pairs;
@@ -45,6 +47,11 @@ pub fn run_assemble(args: AssembleArgs) -> Result<(), Box<dyn std::error::Error>
 
     // ── 5. Write molecules bincode ────────────────────────────────────────────
     write_bincode(&args.output, FileType::Molecules, &molecules)?;
+
+    // ── 5b. Optionally dump molecules as TSV ─────────────────────────────────
+    if let Some(ref dump_path) = args.dump_molecules {
+        dump_molecules_tsv(&molecules, dump_path)?;
+    }
 
     // ── 6. Build and write QC JSON ────────────────────────────────────────────
     let n_molecules = assembly_stats.n_molecules;
@@ -89,6 +96,117 @@ pub fn run_assemble(args: AssembleArgs) -> Result<(), Box<dyn std::error::Error>
         "[assemble] input_pairs={} molecules={} duplex={} dropped={}",
         n_input, n_molecules, assembly_stats.n_duplex, n_dropped,
     );
+
+    Ok(())
+}
+
+// ── Dump helpers ──────────────────────────────────────────────────────────────
+
+/// Write a TSV of assembled molecules for comparison with external tools (e.g. HUMID).
+///
+/// Columns: molecule_id, umi_fwd, umi_rev, has_duplex, fwd_n_reads, rev_n_reads,
+/// duplex_n_reads, fwd_seq, rev_seq, duplex_seq, fwd_mean_error, rev_mean_error,
+/// duplex_mean_error.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be created or written.
+fn dump_molecules_tsv(
+    molecules: &[kam_core::molecule::Molecule],
+    path: &std::path::Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let file = std::fs::File::create(path)?;
+    let mut w = BufWriter::new(file);
+
+    writeln!(
+        w,
+        "molecule_id\tumi_fwd\tumi_rev\thas_duplex\tfwd_n_reads\trev_n_reads\tduplex_n_reads\t\
+         fwd_seq\trev_seq\tduplex_seq\tfwd_mean_error\trev_mean_error\tduplex_mean_error"
+    )?;
+
+    for mol in molecules {
+        let umi_fwd = String::from_utf8_lossy(&mol.umi_fwd);
+        let umi_rev = String::from_utf8_lossy(&mol.umi_rev);
+        let has_duplex = mol.duplex_consensus.is_some();
+
+        let (fwd_n_reads, fwd_seq, fwd_mean_error) = match &mol.consensus_fwd {
+            Some(cr) => {
+                let seq = String::from_utf8_lossy(&cr.sequence).into_owned();
+                let mean_err = if cr.per_base_error_prob.is_empty() {
+                    0.0_f64
+                } else {
+                    cr.per_base_error_prob
+                        .iter()
+                        .map(|&p| p as f64)
+                        .sum::<f64>()
+                        / cr.per_base_error_prob.len() as f64
+                };
+                (
+                    cr.family_size.0 as u32 + cr.family_size.1 as u32,
+                    seq,
+                    format!("{mean_err:.6}"),
+                )
+            }
+            None => (0, ".".to_string(), ".".to_string()),
+        };
+
+        let (rev_n_reads, rev_seq, rev_mean_error) = match &mol.consensus_rev {
+            Some(cr) => {
+                let seq = String::from_utf8_lossy(&cr.sequence).into_owned();
+                let mean_err = if cr.per_base_error_prob.is_empty() {
+                    0.0_f64
+                } else {
+                    cr.per_base_error_prob
+                        .iter()
+                        .map(|&p| p as f64)
+                        .sum::<f64>()
+                        / cr.per_base_error_prob.len() as f64
+                };
+                (
+                    cr.family_size.0 as u32 + cr.family_size.1 as u32,
+                    seq,
+                    format!("{mean_err:.6}"),
+                )
+            }
+            None => (0, ".".to_string(), ".".to_string()),
+        };
+
+        let (duplex_n_reads, duplex_seq, duplex_mean_error) = match &mol.duplex_consensus {
+            Some(cr) => {
+                let seq = String::from_utf8_lossy(&cr.sequence).into_owned();
+                let mean_err = if cr.per_base_error_prob.is_empty() {
+                    0.0_f64
+                } else {
+                    cr.per_base_error_prob
+                        .iter()
+                        .map(|&p| p as f64)
+                        .sum::<f64>()
+                        / cr.per_base_error_prob.len() as f64
+                };
+                let n = cr.family_size.0 as u32 + cr.family_size.1 as u32;
+                (n, seq, format!("{mean_err:.6}"))
+            }
+            None => (0, ".".to_string(), ".".to_string()),
+        };
+
+        writeln!(
+            w,
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            mol.id,
+            umi_fwd,
+            umi_rev,
+            has_duplex,
+            fwd_n_reads,
+            rev_n_reads,
+            duplex_n_reads,
+            fwd_seq,
+            rev_seq,
+            duplex_seq,
+            fwd_mean_error,
+            rev_mean_error,
+            duplex_mean_error,
+        )?;
+    }
 
     Ok(())
 }
@@ -140,6 +258,7 @@ mod tests {
             log_dir: None,
             log: vec![],
             threads: None,
+            dump_molecules: None,
         };
 
         run_assemble(args).expect("run_assemble should succeed");
@@ -176,6 +295,7 @@ mod tests {
             log_dir: None,
             log: vec![],
             threads: None,
+            dump_molecules: None,
         };
 
         run_assemble(args).expect("run_assemble with empty input should succeed");

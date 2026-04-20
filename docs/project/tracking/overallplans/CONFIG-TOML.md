@@ -1,6 +1,6 @@
 # CONFIG-TOML: TOML Configuration File Support
 
-**Status**: todo
+**Status**: done
 **Priority**: critical
 **Branch**: epic/CONFIG-TOML
 
@@ -82,11 +82,11 @@ from it.
 
 | ID | File | Status |
 |----|------|--------|
-| CONFIG-001 | todo/config_001_toml_schema.md | todo |
-| CONFIG-002 | todo/config_002_loader_merge.md | todo |
-| CONFIG-003 | todo/config_003_wire_pipeline.md | todo |
-| CONFIG-004 | todo/config_004_example_configs.md | todo |
-| CONFIG-005 | todo/config_005_tests_docs.md | todo |
+| CONFIG-001 | done/config_001_toml_schema.md | done |
+| CONFIG-002 | done/config_002_loader_merge.md | done |
+| CONFIG-003 | done/config_003_wire_pipeline.md | done |
+| CONFIG-004 | done/config_004_example_configs.md | done |
+| CONFIG-005 | done/config_005_tests_docs.md | done |
 
 ## Scope
 

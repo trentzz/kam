@@ -340,9 +340,7 @@ mod tests {
         let qual = vec![b'I'; r1_seq.len()];
 
         let config = ParserConfig::default();
-        let pair = match parse_read_pair(&r1_seq, &qual, &r2_seq, &qual, &config)
-            .expect("parse error in test")
-        {
+        let pair = match parse_read_pair(&r1_seq, &qual, &r2_seq, &qual, &config) {
             ParseResult::Ok(p) => *p,
             ParseResult::Dropped { reason, .. } => panic!("drop: {reason:?}"),
         };
@@ -361,7 +359,9 @@ mod tests {
             output: index_path.clone(),
             kmer_size: k,
             sv_junctions: None,
+            alt_as_ref: None,
             junction_sequences: None,
+            dump_kmer_index: None,
         };
         run_index(idx_args).expect("run_index should succeed");
 

@@ -42,6 +42,8 @@ pub struct InputConfig {
     pub targets: Option<PathBuf>,
     /// Optional SV junction sequences FASTA.
     pub sv_junctions: Option<PathBuf>,
+    /// FASTA of alt-allele sequences for SNV/indel sensitivity boost (alt-as-ref mode).
+    pub alt_as_ref: Option<PathBuf>,
     /// VCF of expected somatic variants for tumour-informed monitoring mode.
     pub target_variants: Option<PathBuf>,
     /// FASTA of synthetic fusion target sequences.
@@ -148,12 +150,16 @@ impl Default for AssemblyConfig {
 pub struct IndexingConfig {
     /// K-mer size.
     pub kmer_size: Option<u32>,
+    /// Minimum canonical-evidence molecule count for a k-mer to survive into
+    /// the de Bruijn graph used for pathfinding. Default: 2.
+    pub graph_min_molecules: Option<u32>,
 }
 
 impl Default for IndexingConfig {
     fn default() -> Self {
         Self {
             kmer_size: Some(31),
+            graph_min_molecules: Some(2),
         }
     }
 }
@@ -183,6 +189,9 @@ pub struct CallingConfig {
     /// Enable k-mer rescue probe for undetected TI targets.
     #[serde(default)]
     pub ti_rescue: bool,
+    /// Enable alt-walk rescue using pre-built FASTA alt sequences.
+    #[serde(default)]
+    pub alt_walk: bool,
 }
 
 /// Logging settings.
@@ -301,6 +310,7 @@ impl KamConfig {
         cfg.input.r2 = args.r2.clone();
         cfg.input.targets = args.targets.clone();
         cfg.input.sv_junctions = args.sv_junctions.clone();
+        cfg.input.alt_as_ref = args.alt_as_ref.clone();
         cfg.input.target_variants = args.target_variants.clone();
         cfg.input.fusion_targets = args.fusion_targets.clone();
         cfg.input.junction_sequences = args.junction_sequences.clone();
@@ -316,6 +326,7 @@ impl KamConfig {
         cfg.assembly.min_family_size = args.min_family_size_override;
 
         cfg.indexing.kmer_size = args.kmer_size_override;
+        cfg.indexing.graph_min_molecules = args.graph_min_molecules;
 
         cfg.calling.min_confidence = args.min_confidence;
         cfg.calling.strand_bias_threshold = args.strand_bias_threshold;
@@ -327,6 +338,7 @@ impl KamConfig {
         cfg.calling.sv_strand_bias_threshold = args.sv_strand_bias_threshold_override;
         cfg.calling.ti_position_tolerance = args.ti_position_tolerance_override;
         cfg.calling.ti_rescue = args.ti_rescue;
+        cfg.calling.alt_walk = args.alt_walk;
 
         cfg.logging.log_dir = args.log_dir.clone();
         cfg.logging.log = if args.log.is_empty() {
@@ -415,6 +427,9 @@ impl KamConfig {
         if let Some(v) = args.kmer_size_override {
             self.indexing.kmer_size = Some(v);
         }
+        if let Some(v) = args.graph_min_molecules {
+            self.indexing.graph_min_molecules = Some(v);
+        }
 
         // Calling fields.
         if let Some(v) = args.min_confidence {
@@ -446,6 +461,9 @@ impl KamConfig {
         }
         if args.ti_rescue {
             self.calling.ti_rescue = true;
+        }
+        if args.alt_walk {
+            self.calling.alt_walk = true;
         }
 
         // Logging fields.
@@ -796,6 +814,7 @@ min_family_size = 3
             min_family_size_override: None,
             min_template_length: None,
             kmer_size_override: None,
+            graph_min_molecules: None,
             min_confidence: None,
             strand_bias_threshold: None,
             min_alt_molecules: None,
@@ -805,11 +824,13 @@ min_family_size = 3
             sv_strand_bias_threshold_override: None,
             max_vaf: None,
             sv_junctions: None,
+            alt_as_ref: None,
             fusion_targets: None,
             junction_sequences: None,
             target_variants: None,
             ti_position_tolerance_override: None,
             ti_rescue: false,
+            alt_walk: false,
             output_format_override: None,
             qc_output: None,
             log_dir: None,

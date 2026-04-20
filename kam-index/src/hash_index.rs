@@ -399,10 +399,7 @@ mod tests {
         index.entry(99).n_molecules += 7;
         index.entry(99).n_duplex += 2;
         assert_eq!(index.molecule_count(99), 10);
-        assert_eq!(
-            index.get(99).expect("present").n_duplex,
-            2
-        );
+        assert_eq!(index.get(99).expect("present").n_duplex, 2);
         assert_eq!(index.len(), 1, "only one k-mer entry exists");
     }
 

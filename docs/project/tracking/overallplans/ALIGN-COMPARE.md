@@ -1,8 +1,10 @@
 # ALIGN-COMPARE: Comparison Against Thesis Alignment-Based Results
 
-**Status**: todo
+**Status**: in_progress
 **Priority**: high
 **Branch**: epic/ALIGN-COMPARE
+
+**Note (2026-04-20):** Concordance approach confirmed. Parse thesis RaSCALL per-variant numbers from `docs/benchmarking/04-comparison/alignment_baseline.csv` into a concordance table. No rerun of the alignment pipeline required. Python-only work. Output: side-by-side sensitivity table and per-variant detection heatmap for the paper.
 
 ## Goal
 
@@ -60,11 +62,11 @@ For each discordant case, categorise the root cause:
 
 | ID | File | Status |
 |----|------|--------|
-| ALIGN-001 | todo/align_001_parse_thesis.md | todo |
-| ALIGN-002 | todo/align_002_run_titration.md | todo |
-| ALIGN-003 | todo/align_003_concordance.md | todo |
-| ALIGN-004 | todo/align_004_discordance.md | todo |
-| ALIGN-005 | todo/align_005_comparison_figures.md | todo |
+| ALIGN-001 | done/align_001_parse_thesis.md | done |
+| ALIGN-002 | done/align_002_run_titration.md | done |
+| ALIGN-003 | done/align_003_concordance.md | done |
+| ALIGN-004 | done/align_004_discordance.md | done |
+| ALIGN-005 | done/align_005_comparison_figures.md | done |
 
 ## Dependencies
 

@@ -570,7 +570,10 @@ mod tests {
         assert!(reach.contains(&4));
         assert!(reach.contains(&3));
         assert!(reach.contains(&2));
-        assert!(!reach.contains(&1), "node 1 is 3 hops upstream, beyond limit");
+        assert!(
+            !reach.contains(&1),
+            "node 1 is 3 hops upstream, beyond limit"
+        );
         assert!(!reach.contains(&0));
     }
 
@@ -616,12 +619,7 @@ mod tests {
             let succs = graph.successors(src);
             assert_eq!(succs.len(), 4, "every node should connect to all 4 nodes");
             for &dst in &all {
-                assert!(
-                    succs.contains(&dst),
-                    "edge {} -> {} should exist",
-                    src,
-                    dst
-                );
+                assert!(succs.contains(&dst), "edge {} -> {} should exist", src, dst);
             }
         }
     }

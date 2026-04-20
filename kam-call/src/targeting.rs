@@ -9,7 +9,7 @@
 //! personalised ctDNA monitoring pipelines and reduces false positives to near
 //! zero by ignoring background biological cfDNA variants.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -30,6 +30,13 @@ pub type TargetVariantSet = HashSet<(String, i64, String, String)>;
 /// is non-zero.  A call passes if its (chrom, pos) is within the tolerance of any
 /// entry in this set, regardless of REF/ALT.
 pub type TargetPositionSet = HashSet<(String, i64)>;
+
+/// Maps target_id (e.g. `"chr11:1000-1100"`) to a list of known alt sequences for that window.
+///
+/// Built from the `--alt-as-ref` FASTA file.  The FASTA header format is
+/// `chrN:start-end REF=vcf_ref ALT=vcf_alt`; the target_id is the part before
+/// the first space.  Sequences are stored as uppercase bytes.
+pub type AltSeqMap = HashMap<String, Vec<Vec<u8>>>;
 
 /// Return true if any target entry is a BND record (ALT contains `]` or `[`).
 fn targets_has_bnd(targets: &TargetVariantSet) -> bool {
@@ -326,12 +333,12 @@ pub fn apply_target_filter_with_tolerance(
             continue;
         }
 
-        let key = extract_variant_key(&call.target_id, &call.ref_sequence, &call.alt_sequence);
-        if key.is_none() {
+        let Some((call_chrom, call_pos, ref_allele, alt_allele)) =
+            extract_variant_key(&call.target_id, &call.ref_sequence, &call.alt_sequence)
+        else {
             call.filter = VariantFilter::NotTargeted;
             continue;
-        }
-        let (call_chrom, call_pos, ref_allele, alt_allele) = key.unwrap();
+        };
 
         // 1. Exact match.
         if targets.contains(&(call_chrom.clone(), call_pos, ref_allele, alt_allele)) {
@@ -345,6 +352,137 @@ pub fn apply_target_filter_with_tolerance(
             });
             if near_target {
                 continue; // PASS via position proximity
+            }
+        }
+
+        call.filter = VariantFilter::NotTargeted;
+    }
+}
+
+/// Apply tumour-informed filter with optional position-based and sequence-level fallbacks.
+///
+/// This extends [`apply_target_filter_with_tolerance`] with a third matching
+/// stage: if neither exact VCF tuple matching nor position proximity succeeds,
+/// the call's full alt-path sequence is compared against the known alt sequences
+/// stored in `alt_seqs` for the same target window.
+///
+/// The sequence fallback recovers indels that bcftools left-normalises further
+/// than the window-bounded algorithm used in [`extract_variant_key`].  kmtools
+/// achieves higher indel sensitivity by the same mechanism: comparing full path
+/// sequences rather than normalised VCF tuples.
+///
+/// # Arguments
+///
+/// * `calls` — variant calls to filter (mutated in place).
+/// * `targets` — expected (CHROM, POS, REF, ALT) tuples from the truth VCF.
+/// * `tolerance` — position proximity threshold in bp; 0 disables proximity matching.
+/// * `alt_seqs` — map from target_id to known alt sequences (from `--alt-as-ref` FASTA).
+///
+/// # Example
+///
+/// ```
+/// use std::collections::HashSet;
+/// use kam_call::caller::{VariantCall, VariantFilter, VariantType};
+/// use kam_call::targeting::{apply_target_filter_with_seq_fallback, AltSeqMap};
+///
+/// let mut call = VariantCall {
+///     target_id: "chr1:100-200".to_string(),
+///     variant_type: VariantType::Snv,
+///     ref_sequence: b"ACGTACGT".to_vec(),
+///     alt_sequence: b"ACTTACGT".to_vec(),
+///     vaf: 0.01,
+///     vaf_ci_low: 0.005,
+///     vaf_ci_high: 0.02,
+///     n_molecules_ref: 99,
+///     n_molecules_alt: 1,
+///     n_duplex_alt: 0,
+///     n_simplex_alt: 1,
+///     n_simplex_fwd_alt: 1,
+///     n_simplex_rev_alt: 0,
+///     n_duplex_ref: 0,
+///     n_simplex_ref: 99,
+///     mean_alt_error_prob: 0.001,
+///     min_variant_specific_duplex: 0,
+///     mean_variant_specific_molecules: 1.0,
+///     confidence: 0.99,
+///     strand_bias_p: 0.5,
+///     filter: VariantFilter::Pass,
+///     ml_prob: None,
+///     call_source: kam_call::caller::CallSource::Called,
+///     rescue_min_alt_molecules: None,
+///     rescue_alt_duplex: None,
+///     rescue_approx_vaf: None,
+///     rescue_kmers_found: None,
+///     rescue_kmers_total: None,
+/// };
+///
+/// // The VCF tuple does not match, but the alt sequence does.
+/// let mut alt_seqs = AltSeqMap::new();
+/// alt_seqs.insert("chr1:100-200".to_string(), vec![b"ACTTACGT".to_vec()]);
+/// let targets = HashSet::new();
+/// apply_target_filter_with_seq_fallback(&mut [call], &targets, 0, &alt_seqs);
+/// ```
+pub fn apply_target_filter_with_seq_fallback(
+    calls: &mut [VariantCall],
+    targets: &TargetVariantSet,
+    tolerance: i64,
+    alt_seqs: &AltSeqMap,
+) {
+    let has_bnd_targets = targets_has_bnd(targets);
+    // Build a (chrom, pos) position set for fast proximity checks.
+    let positions: TargetPositionSet = targets
+        .iter()
+        .map(|(chrom, pos, _, _)| (chrom.clone(), *pos))
+        .collect();
+
+    for call in calls.iter_mut() {
+        if call.filter != VariantFilter::Pass {
+            continue;
+        }
+        // Fusion calls: pass through when BND targets exist.
+        if call.variant_type == VariantType::Fusion && has_bnd_targets {
+            continue;
+        }
+
+        // 1. Exact VCF tuple match.
+        let key = extract_variant_key(&call.target_id, &call.ref_sequence, &call.alt_sequence);
+        if let Some((ref call_chrom, call_pos, ref ref_allele, ref alt_allele)) = key {
+            if targets.contains(&(
+                call_chrom.clone(),
+                call_pos,
+                ref_allele.clone(),
+                alt_allele.clone(),
+            )) {
+                continue; // PASS via exact match
+            }
+
+            // 2. Position-based fallback (only when tolerance > 0).
+            if tolerance > 0 {
+                let near_target = positions.iter().any(|(t_chrom, t_pos)| {
+                    t_chrom == call_chrom && (call_pos - t_pos).abs() <= tolerance
+                });
+                if near_target {
+                    continue; // PASS via position proximity
+                }
+            }
+        }
+
+        // 3. Sequence-level fallback: compare the call's alt path sequence against
+        //    known alt sequences for this target window.
+        let call_alt_upper: Vec<u8> = call
+            .alt_sequence
+            .iter()
+            .map(|b| b.to_ascii_uppercase())
+            .collect();
+        if let Some(known_seqs) = alt_seqs.get(&call.target_id) {
+            let seq_match = known_seqs.iter().any(|s| {
+                s.iter()
+                    .map(|b| b.to_ascii_uppercase())
+                    .collect::<Vec<u8>>()
+                    == call_alt_upper
+            });
+            if seq_match {
+                continue; // PASS via sequence match
             }
         }
 

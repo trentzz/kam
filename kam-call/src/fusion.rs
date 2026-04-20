@@ -253,7 +253,8 @@ pub fn is_fusion_target(target_id: &str) -> bool {
         return true;
     }
     // Check for __fusion__XX orientation suffix.
-    if let Some(prefix) = target_id.strip_suffix("__FF")
+    if let Some(prefix) = target_id
+        .strip_suffix("__FF")
         .or_else(|| target_id.strip_suffix("__FR"))
         .or_else(|| target_id.strip_suffix("__RF"))
         .or_else(|| target_id.strip_suffix("__RR"))
@@ -478,7 +479,9 @@ fn strip_fusion_suffix(header: &str) -> Option<(&str, BndOrientation)> {
     for code in &["FF", "FR", "RF", "RR"] {
         let suffix = format!("__fusion__{code}");
         if let Some(body) = header.strip_suffix(suffix.as_str()) {
-            // from_code is infallible here since we control the codes.
+            // SAFETY: `code` is drawn from the literal slice ["FF", "FR", "RF", "RR"],
+            // which exactly matches the arms of `BndOrientation::from_code`. The
+            // `.unwrap()` is infallible.
             return Some((body, BndOrientation::from_code(code).unwrap()));
         }
     }
@@ -804,10 +807,9 @@ mod tests {
     // "chr22:23632500-" has a dash but no end value, which should fail to parse.
     #[test]
     fn parse_fusion_header_missing_end_coordinate() {
-        let err = parse_fusion_header(
-            "BCR_ABL1__chr22:23632500-__chr9:130854000-130854050__fusion",
-        )
-        .expect_err("should fail");
+        let err =
+            parse_fusion_header("BCR_ABL1__chr22:23632500-__chr9:130854000-130854050__fusion")
+                .expect_err("should fail");
         assert!(
             matches!(err, FusionError::InvalidCoordinate { .. }),
             "expected InvalidCoordinate, got {err:?}"
@@ -924,7 +926,10 @@ mod tests {
         );
         // The string does not end with __fusion or __fusion__<valid>, so it is
         // rejected. This is acceptable; invalid codes should not silently default.
-        assert!(result.is_err(), "invalid orientation code should be rejected");
+        assert!(
+            result.is_err(),
+            "invalid orientation code should be rejected"
+        );
     }
 
     /// is_fusion_target recognises headers with an orientation suffix.

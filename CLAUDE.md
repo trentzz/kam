@@ -46,6 +46,19 @@ See `docs/project/devmanual/rust_workspace_architecture.md` for full architectur
 - Every module has an integration test using synthetic data
 - Deterministic output for given inputs (no HashMap iteration order in output)
 
+## CLI Documentation Rule
+
+**Every CLI flag addition or change requires a docs update and a verified example.**
+
+When adding or modifying a flag in `kam/src/cli.rs`:
+
+1. Update `docs/manual/06_cli.md` — add or update the flag's entry in both the input file formats section (if it takes a file) and the relevant subcommand section (`kam run`, `kam index`, etc.).
+2. Write at least one concrete `bash` example showing real flag usage.
+3. **Test the example** — run the exact command (or a minimal equivalent using real test data) and confirm it exits 0 and produces expected output. Do not write an example you have not verified.
+4. If the flag takes a file input, document the file format with a small inline example in the input file formats section.
+
+A flag is not considered done until `docs/manual/06_cli.md` is updated and the example has been tested.
+
 ## Key Dependencies
 
 - `needletail` — streaming FASTQ parsing
@@ -124,4 +137,4 @@ Read the relevant guide before starting work in that area.
 4. If unsure about scope, err on the side of smaller
 
 ### Current Sprint Goal
-Post v0.2.0: TI rescue probe feature (`--ti-rescue`), public dataset benchmarking (05-public), and paper writing.
+Post v0.3.0: Public dataset benchmarking (05-public), paper cross-chemistry and alignment results (see needs-review/001), and paper finalisation.

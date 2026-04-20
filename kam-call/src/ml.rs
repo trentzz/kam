@@ -266,7 +266,10 @@ impl MlScorer {
             ("gc_content_ref", gc_content_ref),
             ("homopolymer_run", homopolymer_run),
             ("dust_score", compute_dust_score(&call.ref_sequence, 64)),
-            ("repeat_fraction", compute_repeat_fraction(&call.ref_sequence)),
+            (
+                "repeat_fraction",
+                compute_repeat_fraction(&call.ref_sequence),
+            ),
         ]
         .into_iter()
         .collect();
