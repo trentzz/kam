@@ -137,4 +137,4 @@ Read the relevant guide before starting work in that area.
 4. If unsure about scope, err on the side of smaller
 
 ### Current Sprint Goal
-Post v0.2.0: TI rescue probe feature (`--ti-rescue`), public dataset benchmarking (05-public), and paper writing.
+Post v0.3.0: Public dataset benchmarking (05-public), paper cross-chemistry and alignment results (see needs-review/001), and paper finalisation.
