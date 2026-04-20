@@ -629,7 +629,10 @@ mod tests {
         let seqs = &[b"A".as_ref(), b"A".as_ref(), b"A".as_ref(), b"C".as_ref()];
         let quals = &[b"?".as_ref(), b"?".as_ref(), b"?".as_ref(), b"?".as_ref()]; // all Q=30
         let result = single_strand_consensus(seqs, quals, &cfg).unwrap();
-        assert_eq!(result[0].base, b'A', "majority of 3 A vs 1 C should yield A");
+        assert_eq!(
+            result[0].base, b'A',
+            "majority of 3 A vs 1 C should yield A"
+        );
         assert!(
             result[0].error_prob < 0.3,
             "error prob should be < 0.3 with 3:1 majority, got {}",
@@ -646,11 +649,7 @@ mod tests {
         let quals = &[b"?".as_ref(), b"?".as_ref(), b"?".as_ref(), b"?".as_ref()];
 
         let results: Vec<u8> = (0..10)
-            .map(|_| {
-                single_strand_consensus(seqs, quals, &cfg)
-                    .unwrap()[0]
-                    .base
-            })
+            .map(|_| single_strand_consensus(seqs, quals, &cfg).unwrap()[0].base)
             .collect();
 
         assert!(
@@ -668,7 +667,10 @@ mod tests {
         let quals = &[b"I".as_ref(), b"I".as_ref(), b"I".as_ref()]; // Q=40
         let result = single_strand_consensus(seqs, quals, &cfg).unwrap();
         assert_eq!(result[0].base, b'N');
-        assert_eq!(result[0].error_prob, 1.0, "all N bases should give error_prob = 1.0");
+        assert_eq!(
+            result[0].error_prob, 1.0,
+            "all N bases should give error_prob = 1.0"
+        );
     }
 
     // Quality-weighted: a high-quality C beats a low-quality A.
@@ -699,8 +701,14 @@ mod tests {
         let seqs = &[b"A".as_ref(), b"C".as_ref(), b"G".as_ref()];
         let quals = &[b"?".as_ref(), b"#".as_ref(), b"#".as_ref()]; // Q=30, Q=2, Q=2
         let result = single_strand_consensus(seqs, quals, &cfg).unwrap();
-        assert_eq!(result[0].depth, 3, "depth should count all reads, including masked");
-        assert_eq!(result[0].base, b'A', "only the A read passes quality threshold");
+        assert_eq!(
+            result[0].depth, 3,
+            "depth should count all reads, including masked"
+        );
+        assert_eq!(
+            result[0].base, b'A',
+            "only the A read passes quality threshold"
+        );
     }
 
     // Phred 0 conversion: probability should be 1.0.

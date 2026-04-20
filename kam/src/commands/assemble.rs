@@ -135,10 +135,17 @@ fn dump_molecules_tsv(
                 let mean_err = if cr.per_base_error_prob.is_empty() {
                     0.0_f64
                 } else {
-                    cr.per_base_error_prob.iter().map(|&p| p as f64).sum::<f64>()
+                    cr.per_base_error_prob
+                        .iter()
+                        .map(|&p| p as f64)
+                        .sum::<f64>()
                         / cr.per_base_error_prob.len() as f64
                 };
-                (cr.family_size.0 as u32 + cr.family_size.1 as u32, seq, format!("{mean_err:.6}"))
+                (
+                    cr.family_size.0 as u32 + cr.family_size.1 as u32,
+                    seq,
+                    format!("{mean_err:.6}"),
+                )
             }
             None => (0, ".".to_string(), ".".to_string()),
         };
@@ -149,10 +156,17 @@ fn dump_molecules_tsv(
                 let mean_err = if cr.per_base_error_prob.is_empty() {
                     0.0_f64
                 } else {
-                    cr.per_base_error_prob.iter().map(|&p| p as f64).sum::<f64>()
+                    cr.per_base_error_prob
+                        .iter()
+                        .map(|&p| p as f64)
+                        .sum::<f64>()
                         / cr.per_base_error_prob.len() as f64
                 };
-                (cr.family_size.0 as u32 + cr.family_size.1 as u32, seq, format!("{mean_err:.6}"))
+                (
+                    cr.family_size.0 as u32 + cr.family_size.1 as u32,
+                    seq,
+                    format!("{mean_err:.6}"),
+                )
             }
             None => (0, ".".to_string(), ".".to_string()),
         };
@@ -163,7 +177,10 @@ fn dump_molecules_tsv(
                 let mean_err = if cr.per_base_error_prob.is_empty() {
                     0.0_f64
                 } else {
-                    cr.per_base_error_prob.iter().map(|&p| p as f64).sum::<f64>()
+                    cr.per_base_error_prob
+                        .iter()
+                        .map(|&p| p as f64)
+                        .sum::<f64>()
                         / cr.per_base_error_prob.len() as f64
                 };
                 let n = cr.family_size.0 as u32 + cr.family_size.1 as u32;

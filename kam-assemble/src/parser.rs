@@ -987,13 +987,11 @@ mod tests {
     fn canonical_umi_pair_is_symmetric() {
         let (r1_a, q1_a) = make_read(b"ACGTA", b"TG", b"NNNNNNNNNN");
         let (r2_a, q2_a) = make_read(b"TGCAT", b"AC", b"NNNNNNNNNN");
-        let result_a =
-            parse_read_pair(&r1_a, &q1_a, &r2_a, &q2_a, &default_config()).unwrap();
+        let result_a = parse_read_pair(&r1_a, &q1_a, &r2_a, &q2_a, &default_config()).unwrap();
 
         let (r1_b, q1_b) = make_read(b"TGCAT", b"AC", b"NNNNNNNNNN");
         let (r2_b, q2_b) = make_read(b"ACGTA", b"TG", b"NNNNNNNNNN");
-        let result_b =
-            parse_read_pair(&r1_b, &q1_b, &r2_b, &q2_b, &default_config()).unwrap();
+        let result_b = parse_read_pair(&r1_b, &q1_b, &r2_b, &q2_b, &default_config()).unwrap();
 
         let canon_a = match result_a {
             ParseResult::Ok(p) => p.canonical_umi.clone(),
@@ -1048,8 +1046,7 @@ mod tests {
         let r1_qual = b"IIIIII";
         let r2_seq = b"TGCATAGNNNNNNNNNN";
         let r2_qual = b"IIIIIIIIIIIIIIIII";
-        let result =
-            parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &default_config()).unwrap();
+        let result = parse_read_pair(r1_seq, r1_qual, r2_seq, r2_qual, &default_config()).unwrap();
         assert!(
             matches!(
                 result,
@@ -1134,9 +1131,14 @@ mod tests {
     // Empty read (0 bytes) is dropped as ReadTooShort, not a panic.
     #[test]
     fn empty_read_dropped_not_panic() {
-        let result =
-            parse_read_pair(b"", b"", b"TGCATAGNNNNNNNNNN", b"IIIIIIIIIIIIIIIII", &default_config())
-                .unwrap();
+        let result = parse_read_pair(
+            b"",
+            b"",
+            b"TGCATAGNNNNNNNNNN",
+            b"IIIIIIIIIIIIIIIII",
+            &default_config(),
+        )
+        .unwrap();
         assert!(
             matches!(
                 result,

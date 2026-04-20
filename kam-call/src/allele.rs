@@ -432,8 +432,8 @@ mod tests {
         let r = b"TAAAAAG".to_vec();
         let mut a = r[..4].to_vec(); // T A A A
         a.extend_from_slice(&r[5..]); // G
-        // After left-normalisation: anchor is at index 0 (T), del_seq = A.
-        // REF = "TA", ALT = "T".
+                                      // After left-normalisation: anchor is at index 0 (T), del_seq = A.
+                                      // REF = "TA", ALT = "T".
         check("chr2:200-206", &r, &a, 200, "TA", "T");
     }
 

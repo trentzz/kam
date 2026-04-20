@@ -1131,22 +1131,12 @@ mod tests {
         let mut tsv_buf = Vec::new();
         write_tsv(&calls, &mut tsv_buf).expect("tsv");
         let tsv_text = String::from_utf8(tsv_buf).expect("UTF-8");
-        let tsv_cols = tsv_text
-            .lines()
-            .next()
-            .expect("header")
-            .split('\t')
-            .count();
+        let tsv_cols = tsv_text.lines().next().expect("header").split('\t').count();
 
         let mut csv_buf = Vec::new();
         write_csv(&calls, &mut csv_buf).expect("csv");
         let csv_text = String::from_utf8(csv_buf).expect("UTF-8");
-        let csv_cols = csv_text
-            .lines()
-            .next()
-            .expect("header")
-            .split(',')
-            .count();
+        let csv_cols = csv_text.lines().next().expect("header").split(',').count();
 
         assert_eq!(
             tsv_cols, csv_cols,
