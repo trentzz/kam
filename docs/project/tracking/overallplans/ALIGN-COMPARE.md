@@ -1,8 +1,10 @@
 # ALIGN-COMPARE: Comparison Against Thesis Alignment-Based Results
 
-**Status**: done
+**Status**: in_progress
 **Priority**: high
 **Branch**: epic/ALIGN-COMPARE
+
+**Note (2026-04-20):** Concordance approach confirmed. Parse thesis RaSCALL per-variant numbers from `docs/benchmarking/04-comparison/alignment_baseline.csv` into a concordance table. No rerun of the alignment pipeline required. Python-only work. Output: side-by-side sensitivity table and per-variant detection heatmap for the paper.
 
 ## Goal
 

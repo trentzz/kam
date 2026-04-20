@@ -3,7 +3,7 @@
 **Epic**: DISC-2026-04-20
 **Priority**: high
 **Depends on**: user input (see needs-review/001)
-**Status**: todo
+**Status**: done
 
 ## Goal
 
@@ -11,9 +11,9 @@ Resolve the gap between `docs/paper/sections/05_results.tex` (which defers cross
 
 ## Success Criteria
 
-- [ ] A dated decision entry exists in `docs/project/vision/decisions/log.md`.
-- [ ] Paper sections 5.5 and 5.6 are either expanded with real results, reframed, or removed.
-- [ ] Corresponding epics (PUB-BENCH, ALIGN-COMPARE) have updated priorities matching the decision.
+- [x] A dated decision entry exists in `docs/project/vision/decisions/log.md`.
+- [x] Paper sections 5.5 and 5.6 are either expanded with real results, reframed, or removed.
+- [x] Corresponding epics (PUB-BENCH, ALIGN-COMPARE) have updated priorities matching the decision.
 - [ ] `/update` has been run after changes.
 
 ## Steps
