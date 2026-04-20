@@ -479,7 +479,9 @@ fn strip_fusion_suffix(header: &str) -> Option<(&str, BndOrientation)> {
     for code in &["FF", "FR", "RF", "RR"] {
         let suffix = format!("__fusion__{code}");
         if let Some(body) = header.strip_suffix(suffix.as_str()) {
-            // from_code is infallible here since we control the codes.
+            // SAFETY: `code` is drawn from the literal slice ["FF", "FR", "RF", "RR"],
+            // which exactly matches the arms of `BndOrientation::from_code`. The
+            // `.unwrap()` is infallible.
             return Some((body, BndOrientation::from_code(code).unwrap()));
         }
     }

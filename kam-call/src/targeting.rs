@@ -333,12 +333,12 @@ pub fn apply_target_filter_with_tolerance(
             continue;
         }
 
-        let key = extract_variant_key(&call.target_id, &call.ref_sequence, &call.alt_sequence);
-        if key.is_none() {
+        let Some((call_chrom, call_pos, ref_allele, alt_allele)) =
+            extract_variant_key(&call.target_id, &call.ref_sequence, &call.alt_sequence)
+        else {
             call.filter = VariantFilter::NotTargeted;
             continue;
-        }
-        let (call_chrom, call_pos, ref_allele, alt_allele) = key.unwrap();
+        };
 
         // 1. Exact match.
         if targets.contains(&(call_chrom.clone(), call_pos, ref_allele, alt_allele)) {
