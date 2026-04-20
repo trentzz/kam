@@ -309,9 +309,7 @@ mod tests {
         let r2_seq = b"TGCATAGACGTACGTACGTACGTACGTACGT";
         let qual = vec![b'I'; r1_seq.len()];
         let config = ParserConfig::default();
-        let pair = match parse_read_pair(r1_seq, &qual, r2_seq, &qual, &config)
-            .expect("parse error in test")
-        {
+        let pair = match parse_read_pair(r1_seq, &qual, r2_seq, &qual, &config) {
             ParseResult::Ok(p) => *p,
             ParseResult::Dropped { reason, detail } => {
                 panic!("unexpected drop: {reason:?}: {detail}");

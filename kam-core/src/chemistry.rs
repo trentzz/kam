@@ -50,6 +50,25 @@ impl ReadStructure {
         }
     }
 
+    /// Return the [`ReadStructure`] preset for simplex 12 bp UMI chemistry:
+    /// 12 bp UMI with no skip region (`12M+T`).
+    ///
+    /// # Example
+    /// ```
+    /// use kam_core::chemistry::ReadStructure;
+    ///
+    /// let rs = ReadStructure::simplex_12bp();
+    /// assert_eq!(rs.umi_length, 12);
+    /// assert_eq!(rs.skip_length, 0);
+    /// assert_eq!(rs.template_start(), 12);
+    /// ```
+    pub fn simplex_12bp() -> Self {
+        Self {
+            umi_length: 12,
+            skip_length: 0,
+        }
+    }
+
     /// Return the byte offset at which the template sequence begins within a
     /// raw read.
     ///
@@ -92,5 +111,20 @@ mod tests {
             skip_length: 3,
         };
         assert_eq!(rs.template_start(), 11);
+    }
+
+    #[test]
+    fn simplex_12bp_umi_length() {
+        assert_eq!(ReadStructure::simplex_12bp().umi_length, 12);
+    }
+
+    #[test]
+    fn simplex_12bp_skip_length() {
+        assert_eq!(ReadStructure::simplex_12bp().skip_length, 0);
+    }
+
+    #[test]
+    fn simplex_12bp_template_start_is_12() {
+        assert_eq!(ReadStructure::simplex_12bp().template_start(), 12);
     }
 }

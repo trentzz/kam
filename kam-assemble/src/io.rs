@@ -118,7 +118,7 @@ pub fn read_fastq_pairs(
 
                 stats.n_processed += 1;
 
-                match parse_read_pair(&r1_seq, r1_qual, &r2_seq, r2_qual, config)? {
+                match parse_read_pair(&r1_seq, r1_qual, &r2_seq, r2_qual, config) {
                     ParseResult::Ok(parsed) => {
                         stats.n_passed += 1;
                         pairs.push(*parsed);
@@ -194,8 +194,8 @@ mod tests {
         let p = &pairs[0];
         assert_eq!(p.umi_r1, *b"ACGTA");
         assert_eq!(p.umi_r2, *b"TGCAT");
-        assert_eq!(p.skip_r1, *b"TG");
-        assert_eq!(p.skip_r2, *b"AC");
+        assert_eq!(p.skip_r1.as_slice(), b"TG");
+        assert_eq!(p.skip_r2.as_slice(), b"AC");
         assert_eq!(p.template_r1.len(), 20);
         assert_eq!(p.template_r2.len(), 20);
     }
@@ -391,8 +391,8 @@ mod tests {
         let p = &pairs[0];
         assert_eq!(p.umi_r1, *b"ACGTA");
         assert_eq!(p.umi_r2, *b"TGCAT");
-        assert_eq!(p.skip_r1, *b"TG");
-        assert_eq!(p.skip_r2, *b"AC");
+        assert_eq!(p.skip_r1.as_slice(), b"TG");
+        assert_eq!(p.skip_r2.as_slice(), b"AC");
         assert_eq!(p.template_r1.len(), 20);
         assert_eq!(p.template_r2.len(), 20);
     }
