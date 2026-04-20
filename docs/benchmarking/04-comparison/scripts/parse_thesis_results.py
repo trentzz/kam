@@ -6,7 +6,8 @@ format for comparison with kam output.
 
 Data provenance
 ---------------
-Source: /mnt/tzeng-local/tzeng-thesis/
+Source: local thesis data directory (set `KAM_THESIS_ROOT` to override the
+default placeholder, e.g. `export KAM_THESIS_ROOT=/path/to/thesis`).
 
 Key inputs:
   - benchmark-dataframes/dedup-v2-generate-v3/   (SNV per-sample TSV files)
@@ -58,7 +59,7 @@ from pathlib import Path
 # Constants
 # ---------------------------------------------------------------------------
 
-THESIS_ROOT = Path("/mnt/tzeng-local/tzeng-thesis")
+THESIS_ROOT = Path(os.environ.get("KAM_THESIS_ROOT", "/path/to/thesis"))
 
 SNV_DIR = THESIS_ROOT / "benchmark-dataframes" / "dedup-v2-generate-v3"
 INDEL_DIR = THESIS_ROOT / "benchmark-dataframes-indel" / "dedup-v2"

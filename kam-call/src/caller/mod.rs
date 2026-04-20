@@ -19,9 +19,7 @@ mod types;
 pub use classify::classify_variant;
 pub use filter::{assign_filter, CallerConfig};
 pub use stats::{compute_confidence, estimate_vaf, strand_bias_test};
-pub use types::{
-    CallSource, SV_LENGTH_THRESHOLD, VariantCall, VariantFilter, VariantType,
-};
+pub use types::{CallSource, VariantCall, VariantFilter, VariantType, SV_LENGTH_THRESHOLD};
 
 use kam_pathfind::score::PathEvidence;
 
@@ -399,7 +397,11 @@ mod tests {
         let cfg = CallerConfig::default();
         let call = call_variant("BRCA2", &ref_ev, &alt_ev, &ref_seq, &alt_seq, &cfg);
 
-        assert_eq!(call.variant_type, VariantType::InvDel, "type must be InvDel");
+        assert_eq!(
+            call.variant_type,
+            VariantType::InvDel,
+            "type must be InvDel"
+        );
         assert_eq!(call.filter, VariantFilter::Pass, "InvDel must pass filters");
         // n_molecules_alt for SV types uses mean_variant_specific_molecules.
         assert_eq!(
@@ -417,7 +419,7 @@ mod tests {
     #[test]
     fn integration_novel_insertion_full_pipeline() {
         let ref_seq: Vec<u8> = b"ACGT".repeat(25).to_vec(); // 100 bp
-        // Insert 60 bp of all-C at position 50 — not present in ACGT repeats.
+                                                            // Insert 60 bp of all-C at position 50 — not present in ACGT repeats.
         let novel_insert: Vec<u8> = vec![b'C'; 60];
         let alt_seq: Vec<u8> = ref_seq[..50]
             .iter()

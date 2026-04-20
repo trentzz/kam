@@ -13,7 +13,7 @@ alignment-based variant detection results, used to compare against kam output.
 
 ## Data Provenance
 
-**Source:** `/mnt/tzeng-local/tzeng-thesis/` (local thesis data, not in repo)
+**Source:** local thesis data directory (not in repo; set `KAM_THESIS_ROOT` when running `parse_thesis_results.py`).
 
 **Truth set:** `titration.probes.QC.pass.tsv`
 375 variants from the TWIST Standard v2 panel: 205 SNVs and 170 indels.

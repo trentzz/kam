@@ -8,7 +8,7 @@ Symptom: At 15ng 2% VAF, kam detects 63/170 indels (37%) vs 162/205 SNVs (79%). 
 
 ## Background
 
-The titration benchmark evaluates kam on 375 validated somatic variants (205 SNVs, 170 indels) across 24 real FASTQ samples: 3 input masses (5ng, 15ng, 30ng) × 8 VAF levels (0–2%). The FASTQs are at `/mnt/tzeng-local/tzeng-thesis/titration-nondedup/fastqs`.
+The titration benchmark evaluates kam on 375 validated somatic variants (205 SNVs, 170 indels) across 24 real FASTQ samples: 3 input masses (5ng, 15ng, 30ng) × 8 VAF levels (0–2%). The FASTQs are in the local thesis data directory (`/path/to/titration-nondedup/fastqs`).
 
 A comparison tool was reported to improve from 68 → ~100 indel TPs at 15ng 2% VAF when using alt-as-ref mode. This prompted an investigation into whether kam's `--alt-as-ref` flag could produce a similar improvement.
 

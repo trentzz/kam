@@ -318,8 +318,7 @@ mod tests {
     fn valid_read_pair_long_template() {
         let (r1_seq, r1_qual) = make_read(b"ACGTA", b"TG", b"NNNNNNNNNNNNNNNNNNNN");
         let (r2_seq, r2_qual) = make_read(b"TGCAT", b"AC", b"NNNNNNNNNNNNNNNNNNNN");
-        let result =
-            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
+        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
         match result {
             ParseResult::Ok(p) => {
                 assert_eq!(p.umi_r1, b"ACGTA");
@@ -343,8 +342,7 @@ mod tests {
     fn zero_length_template_no_min_length() {
         let (r1_seq, r1_qual) = make_read(b"ACGTA", b"TG", b"");
         let (r2_seq, r2_qual) = make_read(b"TGCAT", b"AC", b"");
-        let result =
-            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
+        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
         match result {
             ParseResult::Ok(p) => {
                 assert_eq!(p.template_r1.len(), 0);
@@ -406,8 +404,7 @@ mod tests {
     fn template_10bp_ok_when_no_min_length() {
         let (r1_seq, r1_qual) = make_read(b"ACGTA", b"TG", b"NNNNNNNNNN");
         let (r2_seq, r2_qual) = make_read(b"TGCAT", b"AC", b"NNNNNNNNNN");
-        let result =
-            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
+        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
         assert!(matches!(result, ParseResult::Ok(_)), "Expected Ok")
     }
 
@@ -418,8 +415,7 @@ mod tests {
         let (r1_seq, r1_qual) = make_read(b"AAAAA", b"CC", tmpl);
         let (r2_seq, r2_qual) = make_read(b"TTTTT", b"GG", tmpl);
         assert_eq!(r1_seq.len(), r2_seq.len());
-        let result =
-            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
+        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
         match result {
             ParseResult::Ok(p) => {
                 assert_eq!(p.template_r1.len(), 12);
@@ -436,8 +432,7 @@ mod tests {
     fn umi_extracted_from_positions_0_to_5() {
         let (r1_seq, r1_qual) = make_read(b"GGGGG", b"CC", b"AAAAAAAAAA");
         let (r2_seq, r2_qual) = make_read(b"CCCCC", b"TT", b"TTTTTTTTTT");
-        let result =
-            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
+        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
         match result {
             ParseResult::Ok(p) => {
                 assert_eq!(p.umi_r1, b"GGGGG");
@@ -454,8 +449,7 @@ mod tests {
     fn skip_extracted_from_positions_5_to_7() {
         let (r1_seq, r1_qual) = make_read(b"AAAAA", b"XY", b"NNNNNNNNNN");
         let (r2_seq, r2_qual) = make_read(b"TTTTT", b"ZW", b"NNNNNNNNNN");
-        let result =
-            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
+        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
         match result {
             ParseResult::Ok(p) => {
                 assert_eq!(&p.skip_r1, b"XY");
@@ -494,8 +488,7 @@ mod tests {
         let tmpl = b"ACGTACGTACGT"; // 12 bp template
         let (r1_seq, r1_qual) = make_read(b"AAAAA", b"CC", tmpl);
         let (r2_seq, r2_qual) = make_read(b"TTTTT", b"GG", tmpl);
-        let result =
-            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
+        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
         match result {
             ParseResult::Ok(p) => {
                 assert_eq!(p.qual_r1.len(), p.template_r1.len());
@@ -516,8 +509,7 @@ mod tests {
         // Forward strand.
         let (r1_seq, r1_qual) = make_read(b"ACGTA", b"TG", b"NNNNNNNNNN");
         let (r2_seq, r2_qual) = make_read(b"TGCAT", b"AC", b"NNNNNNNNNN");
-        let result =
-            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
+        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
         match result {
             ParseResult::Ok(p) => {
                 assert_eq!(p.canonical_umi.umi_a, b"ACGTA");
@@ -537,8 +529,7 @@ mod tests {
         // Reverse strand.
         let (r1_seq, r1_qual) = make_read(b"TGCAT", b"AC", b"NNNNNNNNNN");
         let (r2_seq, r2_qual) = make_read(b"ACGTA", b"TG", b"NNNNNNNNNN");
-        let result =
-            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
+        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
         match result {
             ParseResult::Ok(p) => {
                 assert_eq!(p.canonical_umi.umi_a, b"ACGTA");
@@ -1007,8 +998,7 @@ mod tests {
     fn umi_with_n_bases_parses_when_no_quality_threshold() {
         let (r1_seq, r1_qual) = make_read(b"NNNNN", b"TG", b"NNNNNNNNNN");
         let (r2_seq, r2_qual) = make_read(b"NNNNN", b"AC", b"NNNNNNNNNN");
-        let result =
-            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
+        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
         assert!(
             matches!(result, ParseResult::Ok(_)),
             "N bases in UMI should parse successfully without quality filter"
@@ -1020,8 +1010,7 @@ mod tests {
     fn all_n_template_parses_successfully() {
         let (r1_seq, r1_qual) = make_read(b"ACGTA", b"TG", b"NNNNNNNNNN");
         let (r2_seq, r2_qual) = make_read(b"TGCAT", b"AC", b"NNNNNNNNNN");
-        let result =
-            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
+        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
         match result {
             ParseResult::Ok(p) => {
                 assert!(
@@ -1058,8 +1047,7 @@ mod tests {
     fn r1_r2_different_template_lengths_both_parse() {
         let (r1_seq, r1_qual) = make_read(b"ACGTA", b"TG", b"NNNNNNNNNN"); // 10 bp template
         let (r2_seq, r2_qual) = make_read(b"TGCAT", b"AC", b"NNNNNNNNNNNNNNN"); // 15 bp template
-        let result =
-            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
+        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
         match result {
             ParseResult::Ok(p) => {
                 assert_eq!(p.template_r1.len(), 10, "R1 template should be 10 bp");
@@ -1231,8 +1219,7 @@ mod tests {
         r1_qual[3] = b'5'; // Q=20
         r1_qual[4] = b'?'; // Q=30
         let (r2_seq, r2_qual) = make_read(b"TGCAT", b"AC", b"NNNNNNNNNN");
-        let result =
-            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
+        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
         match result {
             ParseResult::Ok(p) => {
                 assert_eq!(p.umi_qual_r1.len(), 5, "UMI quality should be 5 bytes");
@@ -1252,8 +1239,7 @@ mod tests {
     fn identical_umi_r1_r2_canonical_pair() {
         let (r1_seq, r1_qual) = make_read(b"AAAAA", b"TG", b"NNNNNNNNNN");
         let (r2_seq, r2_qual) = make_read(b"AAAAA", b"AC", b"NNNNNNNNNN");
-        let result =
-            parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
+        let result = parse_read_pair(&r1_seq, &r1_qual, &r2_seq, &r2_qual, &default_config());
         match result {
             ParseResult::Ok(p) => {
                 assert_eq!(p.canonical_umi.umi_a, b"AAAAA");

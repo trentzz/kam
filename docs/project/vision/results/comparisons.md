@@ -5,7 +5,7 @@
 **Thesis alignment-based pipeline** (RaSCALL with HUMID/Redux deduplication).
 
 - Same samples as the kam titration experiments.
-- Results are in `/mnt/tzeng-local/tzeng-thesis/`:
+- Results are in the local thesis data directory:
   - `titration.ref.v2.redux.detection.xlsx` — per-variant detection table.
   - `benchmark-dataframes/` — structured benchmark data.
 - This is the comparison that matters most. All sensitivity and precision claims are against this baseline.

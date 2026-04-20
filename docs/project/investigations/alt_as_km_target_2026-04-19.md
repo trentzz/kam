@@ -27,9 +27,9 @@ For each of 170 truth indels from `indel-only-reference.tsv` (matching `truth_va
 
 Window coordinate: `win_start (1-based) = POS - 70`, `offset = POS - win_start = 70`.
 
-Script: `/home/tzeng/tmp/indel_alt_as_target/generate_alt_targets.py`
+Script: `~/tmp/indel_alt_as_target/generate_alt_targets.py`
 
-All 170 variants generated without error. ALT files are in `/home/tzeng/tmp/indel_alt_as_target/per_variant_fasta/`.
+All 170 variants generated without error. ALT files are in `~/tmp/indel_alt_as_target/per_variant_fasta/`.
 
 ### km runs
 
@@ -39,14 +39,14 @@ km find_mutation --count 1 --ratio 0.0001 <ALT_TARGET.fa> <JELLYFISH_DB>
 
 Run in parallel (4 threads via xargs) for all 170 targets. Two DBs tested:
 
-- **Full FASTQ DB**: `/home/tzeng/tmp/kmtools_15ng_full/kmers_full.jf` (k=31, built from complete 15ng 2% FASTQ)
-- **1M reads DB**: `/home/tzeng/tmp/kmtools_15ng_2pc/kmers.jf` (k=31, 1M reads subset)
+- **Full FASTQ DB**: `~/tmp/kmtools_15ng_full/kmers_full.jf` (k=31, built from complete 15ng 2% FASTQ)
+- **1M reads DB**: `~/tmp/kmtools_15ng_2pc/kmers.jf` (k=31, 1M reads subset)
 
-Output in `/home/tzeng/tmp/indel_alt_as_target/km_out_full/` and `km_out_1M/`.
+Output in `~/tmp/indel_alt_as_target/km_out_full/` and `km_out_1M/`.
 
 ### Filtering
 
-Standard `kmtools filter --use-alt` does not work here because it matches the km "Sequence" column against TYPE-annotated ALT sequences, but the ALT allele reads appear as km **"Reference"** type (not "Deletion" or "Insertion"). A custom filter was written (`/home/tzeng/tmp/indel_alt_as_target/generate_alt_targets.py` contains the logic; filtering is in a standalone Python block).
+Standard `kmtools filter --use-alt` does not work here because it matches the km "Sequence" column against TYPE-annotated ALT sequences, but the ALT allele reads appear as km **"Reference"** type (not "Deletion" or "Insertion"). A custom filter was written (`~/tmp/indel_alt_as_target/generate_alt_targets.py` contains the logic; filtering is in a standalone Python block).
 
 Custom filter: for each variant, find the "Reference" km row at `Info == "vs_ref"`, verify the `Sequence` matches the expected ALT target sequence exactly, and require `Min_coverage >= 1`.
 
@@ -125,10 +125,10 @@ No configuration tested here achieves 100/170 on this sample. The data ceiling a
 
 | File | Description |
 |---|---|
-| `/home/tzeng/tmp/indel_alt_as_target/generate_alt_targets.py` | Script to generate ALT target FASTA files |
-| `/home/tzeng/tmp/indel_alt_as_target/per_variant_fasta/` | 170 ALT target FASTA files (141bp windows) |
-| `/home/tzeng/tmp/indel_alt_as_target/km_out_full/` | km output for each ALT target, full FASTQ DB |
-| `/home/tzeng/tmp/indel_alt_as_target/km_out_1M/` | km output for each ALT target, 1M reads DB |
-| `/home/tzeng/tmp/indel_alt_as_target/custom_filtered_full.tsv` | Custom-filtered results, full DB |
-| `/home/tzeng/tmp/indel_alt_as_target/custom_filtered_1M.tsv` | Custom-filtered results, 1M reads DB |
-| `/home/tzeng/tmp/indel_alt_as_target/alt_reference_indels.tsv` | ALT sequences for --use-alt mode (141bp) |
+| `~/tmp/indel_alt_as_target/generate_alt_targets.py` | Script to generate ALT target FASTA files |
+| `~/tmp/indel_alt_as_target/per_variant_fasta/` | 170 ALT target FASTA files (141bp windows) |
+| `~/tmp/indel_alt_as_target/km_out_full/` | km output for each ALT target, full FASTQ DB |
+| `~/tmp/indel_alt_as_target/km_out_1M/` | km output for each ALT target, 1M reads DB |
+| `~/tmp/indel_alt_as_target/custom_filtered_full.tsv` | Custom-filtered results, full DB |
+| `~/tmp/indel_alt_as_target/custom_filtered_1M.tsv` | Custom-filtered results, 1M reads DB |
+| `~/tmp/indel_alt_as_target/alt_reference_indels.tsv` | ALT sequences for --use-alt mode (141bp) |

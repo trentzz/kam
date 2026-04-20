@@ -22,7 +22,7 @@ The same 24-sample titration dataset used in benchmark 07 was re-run with `--tar
 
 ```
 python3 docs/benchmarking/07-snvindel-ml-boost-v1/scripts/run_titration_batch.py \
-  --fastq-dir /mnt/tzeng-local/tzeng-thesis/titration-nondedup/fastqs \
+  --fastq-dir /path/to/titration-nondedup/fastqs \
   --reads 2000000 \
   --target-variants docs/benchmarking/01-snvindel/scripts/truth_variants.vcf \
   --min-alt-duplex 1 \

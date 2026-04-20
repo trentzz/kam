@@ -2,7 +2,7 @@
 # Run kam on all 24 titration samples in tumour-informed (monitoring) mode.
 #
 # Expects the titration FASTQ files in:
-#   /mnt/tzeng-local/tzeng-thesis/titration-nondedup/fastqs/
+#   /path/to/titration-nondedup/fastqs/
 #
 # Outputs per-sample results to:
 #   docs/benchmarking/04-comparison/kam_results/{sample_id}/
@@ -20,7 +20,7 @@
 #   --dry-run   Print commands without executing them.
 #
 # Environment overrides:
-#   KAM_FASTQ_DIR   Path to FASTQ files (default: /mnt/tzeng-local/tzeng-thesis/titration-nondedup/fastqs)
+#   KAM_FASTQ_DIR   Path to FASTQ files (default: /path/to/titration-nondedup/fastqs)
 #   KAM_BINARY      Path to kam binary (default: <repo>/target/release/kam)
 
 set -euo pipefail
@@ -43,7 +43,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
 
 KAM="${KAM_BINARY:-${REPO}/target/release/kam}"
-FASTQ_DIR="${KAM_FASTQ_DIR:-/mnt/tzeng-local/tzeng-thesis/titration-nondedup/fastqs}"
+FASTQ_DIR="${KAM_FASTQ_DIR:-/path/to/titration-nondedup/fastqs}"
 TARGETS="${SCRIPT_DIR}/../../../benchmarking/snvindel/scripts/targets_100bp.fa"
 TRUTH_VCF="${SCRIPT_DIR}/../../../benchmarking/snvindel/scripts/truth_variants.vcf"
 KAM_RESULTS_DIR="${SCRIPT_DIR}/../kam_results"
