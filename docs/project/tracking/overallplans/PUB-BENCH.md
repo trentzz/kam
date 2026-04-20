@@ -1,6 +1,6 @@
 # PUB-BENCH: Public Dataset Benchmarks
 
-**Status**: todo
+**Status**: done
 **Priority**: high
 **Branch**: epic/PUB-BENCH
 
@@ -56,11 +56,11 @@ Columns: sensitivity, precision (where truth is available), N variants evaluated
 
 | ID | File | Status |
 |----|------|--------|
-| PUB-001 | todo/pub_001_dataset_download.md | todo |
-| PUB-002 | todo/pub_002_umi_clustering.md | todo |
-| PUB-003 | todo/pub_003_seqc2.md | todo |
-| PUB-004 | todo/pub_004_colo829.md | todo |
-| PUB-005 | todo/pub_005_cross_dataset_table.md | todo |
+| PUB-001 | done/pub_001_dataset_download.md | done |
+| PUB-002 | done/pub_002_umi_clustering.md | done |
+| PUB-003 | done/pub_003_seqc2.md | done |
+| PUB-004 | done/pub_004_colo829.md | done |
+| PUB-005 | done/pub_005_cross_dataset_table.md | done |
 
 ## Dependencies
 

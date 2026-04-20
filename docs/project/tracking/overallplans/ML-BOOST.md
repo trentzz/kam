@@ -63,7 +63,8 @@ annotates.
 
 | ID | File | Status |
 |----|------|--------|
-| ML-001 | todo/ml_001_data_pipeline.md | todo |
-| ML-002 | todo/ml_002_train_eval.md | todo |
-| ML-003 | todo/ml_003_rust_integration_design.md | todo |
-| ML-004 | todo/ml_004_figures_report.md | todo |
+| ML-001 | done/ml_001_data_pipeline.md | todo |
+| ML-002 | done/ml_002_train_eval.md | todo |
+| ML-003 | done/ml_003_rust_integration_design.md | todo |
+| ML-004 | done/ml_004_figures_report.md | todo |
+| ML-005 | done/ml_005_v2_training.md | todo |
