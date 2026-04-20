@@ -3,7 +3,7 @@
 **Epic**: PAPER (docs/claudetracking/overallplans/PAPER.md)
 **Priority**: high
 **Depends on**: bench_svn_005_sv_figures.md
-**Status**: todo
+**Status**: done
 
 ## Goal
 

@@ -3,7 +3,7 @@
 **Epic**: PUB-BENCH (docs/claudetracking/overallplans/PUB-BENCH.md)
 **Priority**: high
 **Depends on**: pub_001_dataset_download.md, sv_exp_009_vcf_new_sv.md
-**Status**: todo
+**Status**: done
 
 ## Goal
 

@@ -3,7 +3,7 @@
 **Epic**: QUALITY
 **Priority**: medium
 **Depends on**: none
-**Status**: todo
+**Status**: done
 
 ## Goal
 
@@ -11,11 +11,11 @@ Bring non-test code in kam-core, kam-assemble, kam-index, kam-pathfind, kam-call
 
 ## Success Criteria
 
-- [ ] `grep -rn "\.unwrap()" kam-*/src/` returns only test code, const expressions, or calls annotated with a `// SAFETY:` comment explaining the infallible invariant.
-- [ ] `KamError` enum in `kam-core/src/error.rs` covers the new error paths.
-- [ ] `cargo clippy --all --all-targets -- -D warnings` passes.
-- [ ] All tests pass.
-- [ ] `/update` has been run after changes.
+- [x] `grep -rn "\.unwrap()" kam-*/src/` returns only test code, const expressions, or calls annotated with a `// SAFETY:` comment explaining the infallible invariant.
+- [x] `KamError` enum in `kam-core/src/error.rs` covers the new error paths.
+- [x] `cargo clippy --all --all-targets -- -D warnings` passes.
+- [x] All tests pass.
+- [x] `/update` has been run after changes.
 
 ## Steps
 

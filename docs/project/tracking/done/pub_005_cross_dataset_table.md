@@ -3,7 +3,7 @@
 **Epic**: PUB-BENCH (docs/claudetracking/overallplans/PUB-BENCH.md)
 **Priority**: high
 **Depends on**: pub_002_umi_clustering.md, pub_003_seqc2.md, pub_004_colo829.md
-**Status**: todo
+**Status**: done
 
 ## Goal
 

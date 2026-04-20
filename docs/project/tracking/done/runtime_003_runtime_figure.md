@@ -3,7 +3,7 @@
 **Epic**: RUNTIME (docs/claudetracking/overallplans/RUNTIME.md)
 **Priority**: medium
 **Depends on**: runtime_002_alignment_timing.md
-**Status**: todo
+**Status**: done
 
 ## Goal
 

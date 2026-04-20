@@ -299,12 +299,23 @@ kam run --config configs/tumour-informed.toml \
 
 #### `--chemistry-override`
 
-Chemistry preset name. Overrides the config file value. Currently only `twist-umi-duplex` is supported, which sets UMI length = 5 bp, skip length = 2 bp, and template start = 7 bp.
+Chemistry preset name. Overrides the config file value. Supported presets:
+
+| Preset | UMI length | Skip length | Template start | Notes |
+|--------|-----------|-------------|----------------|-------|
+| `twist-umi-duplex` | 5 bp | 2 bp | 7 bp | Twist Bioscience duplex UMI panel (`5M2S+T`) |
+| `simplex-12bp` | 12 bp | 0 bp | 12 bp | Single-strand 12 bp UMI, no skip region (`12M+T`) |
 
 ```bash
 kam run --r1 sample_R1.fq.gz --r2 sample_R2.fq.gz \
   --targets panel.fa --output-dir results/ \
   --chemistry-override twist-umi-duplex
+```
+
+```bash
+kam run --r1 simplex_R1.fq.gz --r2 simplex_R2.fq.gz \
+  --targets panel.fa --output-dir results/ \
+  --chemistry-override simplex-12bp
 ```
 
 ---
@@ -808,11 +819,16 @@ kam assemble --r1 sample_R1.fq.gz --r2 sample_R2.fq.gz \
 
 #### `--chemistry`
 
-Chemistry preset. Default: `twist-umi-duplex`.
+Chemistry preset. Default: `twist-umi-duplex`. Supported values: `twist-umi-duplex` (5 bp UMI, 2 bp skip) and `simplex-12bp` (12 bp UMI, no skip).
 
 ```bash
 kam assemble --r1 sample_R1.fq.gz --r2 sample_R2.fq.gz \
   --output molecules.bin --chemistry twist-umi-duplex
+```
+
+```bash
+kam assemble --r1 simplex_R1.fq.gz --r2 simplex_R2.fq.gz \
+  --output molecules.bin --chemistry simplex-12bp
 ```
 
 ---

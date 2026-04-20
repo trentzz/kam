@@ -3,7 +3,7 @@
 **Epic**: PAPER (docs/claudetracking/overallplans/PAPER.md)
 **Priority**: high
 **Depends on**: paper_003_results_ti.md, paper_004_results_sv.md, paper_005_results_chemistry.md, paper_006_results_runtime.md
-**Status**: todo
+**Status**: done
 
 ## Goal
 

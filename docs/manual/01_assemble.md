@@ -86,8 +86,8 @@ A successfully parsed read pair produces a `ParsedReadPair` with:
 |-------|---------|
 | `umi_r1` | 5 UMI bases from R1 |
 | `umi_r2` | 5 UMI bases from R2 |
-| `skip_r1` | 2 skip bases from R1 |
-| `skip_r2` | 2 skip bases from R2 |
+| `skip_r1` | Skip bases from R1 (length determined by chemistry; 2 bp for Twist duplex, 0 bp for simplex-12bp) |
+| `skip_r2` | Skip bases from R2 (same length as `skip_r1`) |
 | `template_r1` | Genomic sequence from R1 (bases 7+) |
 | `template_r2` | Genomic sequence from R2 (bases 7+) |
 | `qual_r1` | Base qualities matching `template_r1` |

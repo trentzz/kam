@@ -3,7 +3,7 @@
 **Epic**: CHEM-CONFIG (docs/claudetracking/overallplans/CHEM-CONFIG.md)
 **Priority**: critical
 **Depends on**: chem_002_generalise_parser.md
-**Status**: todo
+**Status**: done
 
 ## Goal
 

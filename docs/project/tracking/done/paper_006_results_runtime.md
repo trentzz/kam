@@ -3,7 +3,7 @@
 **Epic**: PAPER (docs/claudetracking/overallplans/PAPER.md)
 **Priority**: high
 **Depends on**: runtime_003_runtime_figure.md
-**Status**: todo
+**Status**: done
 
 ## Goal
 

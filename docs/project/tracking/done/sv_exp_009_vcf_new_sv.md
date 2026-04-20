@@ -3,7 +3,7 @@
 **Epic**: SV-EXPAND (docs/claudetracking/overallplans/SV-EXPAND.md)
 **Priority**: high
 **Depends on**: sv_exp_007_multi_coord_allele.md, sv_exp_008_sv_thresholds.md
-**Status**: todo
+**Status**: done
 
 ## Goal
 

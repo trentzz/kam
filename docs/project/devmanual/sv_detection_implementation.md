@@ -249,7 +249,7 @@ sequence is distant from both flanks and sensitivity may drop at low VAF.
 | `kam/src/commands/index.rs` | Allowlist augmentation with junction k-mers |
 | `kam/src/commands/pathfind.rs` | `parse_maxpath_from_id` + WalkConfig override |
 | `kam/src/commands/run.rs` | Allowlist augmentation + WalkConfig override |
-| `kam-call/src/caller.rs` | `LargeDeletion`, `TandemDuplication`, `Inversion` in `VariantType` |
+| `kam-call/src/caller/types.rs` | `LargeDeletion`, `TandemDuplication`, `Inversion` in `VariantType` |
 | `kam-call/src/output.rs` | Symbolic VCF alleles, SVTYPE/SVLEN, ALT headers |
 | `docs/benchmarking/scripts/make_sv_targets.py` | New script |
 | `docs/project/devmanual/sv_detection_design.md` | Design document (written before implementation) |

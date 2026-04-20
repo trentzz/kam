@@ -215,7 +215,7 @@ targets are walked and scored identically to normal targets.
 
 ### 4.3 kam-call
 
-#### caller.rs: classify_variant
+#### caller/classify.rs: classify_variant
 
 `classify_variant` currently infers the variant type from `ref_seq` and
 `alt_seq` byte comparison. It cannot detect fusions because fusions are not
@@ -239,7 +239,7 @@ pub fn classify_variant_with_context(
 The `is_fusion_target` check parses the target ID for the `__fusion` suffix
 (or checks a flag passed from the caller).
 
-#### caller.rs: call_variant (fusion-specific VAF)
+#### caller/mod.rs: call_variant (fusion-specific VAF)
 
 Add a `FusionContext` struct that carries the denominator molecule count from
 the partner loci:
@@ -554,12 +554,12 @@ sequence explicitly).
 
 ### Phase 3: Fusion calling
 
-1. Add `call_fusion_variant` to `kam-call/src/caller.rs`.
-2. Add `classify_variant_with_context` or pass variant type override.
+1. Add `call_fusion_variant` to `kam-call/src/caller/mod.rs`.
+2. Add `classify_variant_with_context` to `kam-call/src/caller/classify.rs`, or pass variant type override.
 3. Implement fusion-specific VAF with partner depth denominator.
 4. Unit tests for VAF estimation with fusion context.
 
-Estimated scope: `kam-call/src/caller.rs`. Moderate complexity.
+Estimated scope: `kam-call/src/caller/` (mod.rs + classify.rs). Moderate complexity.
 
 ### Phase 4: VCF BND output
 

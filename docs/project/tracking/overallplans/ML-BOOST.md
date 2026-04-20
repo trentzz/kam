@@ -1,6 +1,6 @@
 # ML-BOOST: Gradient Boosting for Variant Call Filtering
 
-**Status**: active
+**Status**: done
 **Priority**: medium
 **Branch**: epic/ML-BOOST
 
@@ -63,8 +63,8 @@ annotates.
 
 | ID | File | Status |
 |----|------|--------|
-| ML-001 | done/ml_001_data_pipeline.md | todo |
-| ML-002 | done/ml_002_train_eval.md | todo |
-| ML-003 | done/ml_003_rust_integration_design.md | todo |
-| ML-004 | done/ml_004_figures_report.md | todo |
-| ML-005 | done/ml_005_v2_training.md | todo |
+| ML-001 | done/ml_001_data_pipeline.md | done |
+| ML-002 | done/ml_002_train_eval.md | done |
+| ML-003 | done/ml_003_rust_integration_design.md | done |
+| ML-004 | done/ml_004_figures_report.md | done |
+| ML-005 | done/ml_005_v2_training.md | done |

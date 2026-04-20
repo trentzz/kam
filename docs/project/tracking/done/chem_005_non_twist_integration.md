@@ -3,7 +3,7 @@
 **Epic**: CHEM-CONFIG (docs/claudetracking/overallplans/CHEM-CONFIG.md)
 **Priority**: critical
 **Depends on**: chem_003_generalise_clustering.md, chem_004_read_structure_presets.md
-**Status**: todo
+**Status**: done
 
 ## Goal
 

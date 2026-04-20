@@ -51,8 +51,8 @@ pub struct MoleculeEvidence {
 pub struct TwistReadPair {
     pub umi_r1: [u8; 5],
     pub umi_r2: [u8; 5],
-    pub skip_r1: [u8; 2],       // should be consistent per adapter lot
-    pub skip_r2: [u8; 2],
+    pub skip_r1: Vec<u8>,       // variable-length skip region; should be consistent per adapter lot
+    pub skip_r2: Vec<u8>,
     pub template_r1: Vec<u8>,   // genomic sequence after skip
     pub template_r2: Vec<u8>,
     pub qual_r1: Vec<u8>,
