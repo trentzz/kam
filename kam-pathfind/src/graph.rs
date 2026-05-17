@@ -9,6 +9,7 @@
 //! - Edge exists when suffix(A) == prefix(B)
 
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::OnceLock;
 
 use kam_core::kmer::KmerIndex;
 
@@ -45,9 +46,11 @@ pub struct DeBruijnGraph {
     /// Forward adjacency list: kmer → list of successor kmers
     successors: HashMap<u64, Vec<u64>>,
     /// Reverse adjacency list: kmer → list of predecessor kmers.
-    /// Built once at construction time so backward BFS does not need to
-    /// rebuild it on every `backward_reachable` call.
-    predecessors: HashMap<u64, Vec<u64>>,
+    ///
+    /// Built on first `backward_reachable` call via OnceLock rather than at
+    /// construction time. This saves ~50% edge-storage memory for pipelines
+    /// that never call backward_reachable (e.g., targeted panel calling).
+    predecessors: OnceLock<HashMap<u64, Vec<u64>>>,
     /// Number of nodes
     n_nodes: usize,
     /// Number of edges
@@ -137,15 +140,8 @@ impl DeBruijnGraph {
             }
         }
 
-        // Build reverse adjacency (predecessor) map once at construction time
-        // so that backward_reachable can BFS without rebuilding it on every call.
-        let mut predecessors: HashMap<u64, Vec<u64>> =
-            nodes.iter().map(|&km| (km, Vec::new())).collect();
-        for (&a, succs) in &successors {
-            for &b in succs {
-                predecessors.entry(b).or_default().push(a);
-            }
-        }
+        // Lazy: reverse adjacency built on first `backward_reachable` call.
+        let predecessors = OnceLock::new();
 
         DeBruijnGraph {
             k,
@@ -238,7 +234,7 @@ impl DeBruijnGraph {
         DeBruijnGraph {
             k,
             successors: HashMap::new(),
-            predecessors: HashMap::new(),
+            predecessors: OnceLock::new(),
             n_nodes: 0,
             n_edges: 0,
         }
@@ -302,7 +298,19 @@ impl DeBruijnGraph {
     ///
     /// [`forward_reachable`]: DeBruijnGraph::forward_reachable
     pub fn backward_reachable(&self, end: u64, max_hops: usize) -> HashSet<u64> {
-        // BFS backward from `end` using the pre-built predecessor map.
+        // Build reverse adjacency on first call, cache via OnceLock for subsequent calls.
+        let predecessors = self.predecessors.get_or_init(|| {
+            let mut preds: HashMap<u64, Vec<u64>> = HashMap::new();
+            for (&a, succs) in &self.successors {
+                preds.entry(a).or_default();
+                for &b in succs {
+                    preds.entry(b).or_default().push(a);
+                }
+            }
+            preds
+        });
+
+        // BFS backward from `end` using the cached predecessor map.
         let mut reachable: HashSet<u64> = HashSet::new();
         let mut queue: VecDeque<(u64, usize)> = VecDeque::new();
         reachable.insert(end);
@@ -312,7 +320,7 @@ impl DeBruijnGraph {
             if depth >= max_hops {
                 continue;
             }
-            if let Some(preds) = self.predecessors.get(&node) {
+            if let Some(preds) = predecessors.get(&node) {
                 for &pred in preds {
                     if reachable.insert(pred) {
                         queue.push_back((pred, depth + 1));
@@ -335,7 +343,10 @@ impl DeBruijnGraph {
             self.n_nodes += 1;
         }
         self.successors.entry(from).or_default().push(to);
-        self.predecessors.entry(to).or_default().push(from);
+        // If predecessors have already been computed, keep them in sync.
+        if let Some(preds) = self.predecessors.get_mut() {
+            preds.entry(to).or_default().push(from);
+        }
         self.n_edges += 1;
     }
 }

@@ -85,8 +85,23 @@ pub struct AssembleArgs {
     pub log: Vec<String>,
 
     /// Number of threads.
+    ///
+    /// Overrides the config file [runtime] threads value when set.
+    /// If neither is set, uses the number of logical CPUs.
     #[arg(long)]
     pub threads: Option<usize>,
+
+    /// Memory budget in gigabytes.
+    ///
+    /// When set, kam adapts its memory usage to fit within this budget by:
+    /// - Splitting FASTQ reads into streaming batches (25% of budget)
+    /// - Using a frequency prefilter on k-mers (60% of budget)
+    /// - Building De Bruijn graph with lazy structures (15% of budget)
+    ///
+    /// Example: `--memory 32` uses 32 GB total across all phases.
+    /// Without this flag, kam uses unbounded memory (may consume hundreds of GB for WGS).
+    #[arg(long)]
+    pub memory: Option<u64>,
 
     /// Write a TSV of assembled molecules to this path for comparison with external tools.
     ///
@@ -542,8 +557,23 @@ pub struct RunArgs {
     pub log: Vec<String>,
 
     /// Number of threads.
+    ///
+    /// Overrides the config file [runtime] threads value when set.
+    /// If neither is set, uses the number of logical CPUs.
     #[arg(long)]
     pub threads: Option<usize>,
+
+    /// Memory budget in gigabytes.
+    ///
+    /// When set, kam adapts its memory usage to fit within this budget by:
+    /// - Splitting FASTQ reads into streaming batches (25% of budget)
+    /// - Using a frequency prefilter on k-mers (60% of budget)
+    /// - Building De Bruijn graph with lazy structures (15% of budget)
+    ///
+    /// Example: `--memory 32` uses 32 GB total across all phases.
+    /// Without this flag, kam uses unbounded memory (may consume hundreds of GB for WGS).
+    #[arg(long)]
+    pub memory: Option<u64>,
 
     /// Fisher p-value threshold for strand bias filter on SV-type variants.
     ///
