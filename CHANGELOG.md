@@ -5,6 +5,30 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-05-17
+
+### Added
+
+- `--threads <N>`: limit the rayon thread pool to N worker threads. Overrides
+  `[runtime] threads` in the config file. Defaults to all logical CPUs.
+- `--memory <GB>`: adaptive memory budget in gigabytes. When set, kam partitions
+  the budget across pipeline stages (25% assembly, 60% indexing, 15% pathfind)
+  and logs the allocation. Provides the configuration foundation for future
+  streaming assembly and k-mer index prefiltering.
+
+### Changed
+
+- De Bruijn graph predecessor maps are now built lazily on first
+  `backward_reachable` call rather than at construction time. This halves
+  edge-storage memory for pipelines that never traverse the graph backwards.
+
+### Fixed
+
+- Replaced `unwrap()` calls in library code with proper error propagation
+  throughout `kam-assemble`, `kam-index`, `kam-pathfind`, and `kam-call`.
+
+---
+
 ## [0.2.0] - 2026-04-14
 
 ### Added

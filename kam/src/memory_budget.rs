@@ -105,7 +105,7 @@ impl MemoryBudget {
     pub fn read_batch_bytes(&self) -> usize {
         // Use 50% of phase 1 budget for actual read data
         // rest goes to consensus storage and overhead
-        ((self.phase1_mb * 1024.0 * 1024.0 * 0.50) as f64) as usize
+        (self.phase1_mb * 1024.0 * 1024.0 * 0.50) as usize
     }
 
     /// Max k-mers that fit in index given memory budget.
@@ -135,7 +135,7 @@ impl MemoryBudget {
     /// - Tracks frequencies for ~100M distinct k-mers
     pub fn prefilter_bits(&self) -> usize {
         // Use 10% of phase 2 budget for the prefilter
-        ((self.phase2_mb * 1024.0 * 1024.0 * 8.0 * 0.10) as f64) as usize
+        (self.phase2_mb * 1024.0 * 1024.0 * 8.0 * 0.10) as usize
     }
 
     /// Estimated max edges in De Bruijn graph.

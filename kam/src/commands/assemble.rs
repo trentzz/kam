@@ -27,7 +27,7 @@ pub fn run_assemble(args: AssembleArgs) -> Result<(), Box<dyn std::error::Error>
         ThreadPoolBuilder::new()
             .num_threads(n)
             .build_global()
-            .unwrap_or_else(|_| {});
+            .unwrap_or(());
     }
 
     if let Some(gb) = args.memory {

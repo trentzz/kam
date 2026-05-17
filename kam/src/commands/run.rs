@@ -74,9 +74,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
         ThreadPoolBuilder::new()
             .num_threads(n)
             .build_global()
-            .unwrap_or_else(|_| {
-                // Thread pool may already be initialised in another phase; ignore.
-            });
+            .unwrap_or(());
     }
 
     // Create memory budget if configured (memory is in GB).

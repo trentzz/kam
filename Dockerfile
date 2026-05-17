@@ -9,7 +9,7 @@
 # No reference genome is bundled or required.
 #
 # Build:
-#   docker build -t kam:0.3.0 .
+#   docker build -t kam:0.3.1 .
 #
 # Run:
 #   docker run --rm \
@@ -84,7 +84,7 @@ FROM debian:trixie-slim AS runtime
 
 LABEL org.opencontainers.image.title="kam" \
       org.opencontainers.image.description="Alignment-free variant detection for duplex UMI sequencing" \
-      org.opencontainers.image.version="0.3.0" \
+      org.opencontainers.image.version="0.3.1" \
       org.opencontainers.image.source="https://github.com/trentzz/kam"
 
 # Install runtime libraries required by the binary and the ONNX Runtime.
