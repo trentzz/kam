@@ -11,6 +11,7 @@ mod caller_config;
 mod cli;
 mod commands;
 pub mod config;
+pub mod memory_budget;
 mod models;
 mod output;
 pub mod rescue;

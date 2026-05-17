@@ -12,6 +12,9 @@ use std::io::BufWriter;
 
 use kam_assemble::assembler::assemble_molecules;
 use kam_assemble::io::read_fastq_pairs;
+use rayon::ThreadPoolBuilder;
+
+use crate::memory_budget::MemoryBudget;
 use kam_call::caller::{call_variant, VariantFilter};
 use kam_call::fusion::{call_fusion, parse_fusion_targets, FusionContext};
 use kam_call::output::write_variants;
@@ -62,7 +65,32 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir_all(output_dir)?;
 
     let k = cfg.kmer_size();
+
+    // ── Resource initialisation ────────────────────────────────────────────────
     let t_total = std::time::Instant::now();
+
+    // Initialise rayon thread pool if threads are configured.
+    if let Some(n) = cfg.runtime.threads {
+        ThreadPoolBuilder::new()
+            .num_threads(n)
+            .build_global()
+            .unwrap_or_else(|_| {
+                // Thread pool may already be initialised in another phase; ignore.
+            });
+    }
+
+    // Create memory budget if configured (memory is in GB).
+    let _memory_budget = cfg.runtime.memory.map(|gb| {
+        let budget = MemoryBudget::new(gb as f64);
+        eprintln!(
+            "[run] memory budget: {} GB total (assemble={:.0} MB, index={:.0} MB, pathfind={:.0} MB)",
+            budget.total_gb(),
+            budget.phase1_mb(),
+            budget.phase2_mb(),
+            budget.phase3_mb(),
+        );
+        budget
+    });
 
     // ── Stage 1: Assemble ─────────────────────────────────────────────────────
     let t_assemble = std::time::Instant::now();
@@ -1865,6 +1893,7 @@ mod tests {
             log_dir: None,
             log: vec![],
             threads: None,
+            memory: None,
             ml_model: None,
             custom_ml_model: None,
         }
@@ -2094,6 +2123,7 @@ min_umi_quality = 0
             log_dir: None,
             log: vec![],
             threads: None,
+            memory: None,
             ml_model: None,
             custom_ml_model: None,
         };
@@ -2190,6 +2220,7 @@ min_umi_quality = 0
             log_dir: None,
             log: vec![],
             threads: None,
+            memory: None,
             ml_model: None,
             custom_ml_model: None,
         };
@@ -2546,6 +2577,7 @@ min_umi_quality = 0
             log_dir: None,
             log: vec![],
             threads: None,
+            memory: None,
             ml_model: None,
             custom_ml_model: None,
         };

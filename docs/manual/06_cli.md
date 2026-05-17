@@ -765,12 +765,32 @@ kam run --r1 sample_R1.fq.gz --r2 sample_R2.fq.gz \
 
 #### `--threads`
 
-Number of worker threads.
+Number of worker threads. Overrides the config file `[runtime] threads` value when set. If neither is set, uses the number of logical CPUs.
 
 ```bash
 kam run --r1 sample_R1.fq.gz --r2 sample_R2.fq.gz \
   --targets panel.fa --output-dir results/ \
   --threads 8
+```
+
+---
+
+#### `--memory`
+
+Memory budget in gigabytes. When set, kam adapts its memory usage across all pipeline phases to stay within this budget. Without this flag, kam uses unbounded memory (may consume hundreds of GB for whole-genome samples).
+
+The budget is divided automatically:
+
+- **25% for assembly** -- streaming FASTQ batch sizing and consensus building
+- **60% for indexing** -- k-mer frequency prefiltering and main index storage
+- **15% for pathfinding** -- De Bruijn graph construction
+
+See the [Memory budgeting](#memory-budgeting) section below for full details.
+
+```bash
+kam run --r1 sample_R1.fq.gz --r2 sample_R2.fq.gz \
+  --targets panel.fa --output-dir results/ \
+  --memory 32
 ```
 
 ---
@@ -874,11 +894,22 @@ kam assemble --r1 sample_R1.fq.gz --r2 sample_R2.fq.gz \
 
 #### `--threads`
 
-Number of worker threads.
+Number of worker threads. Overrides the config file `[runtime] threads` value when set. If neither is set, uses the number of logical CPUs.
 
 ```bash
 kam assemble --r1 sample_R1.fq.gz --r2 sample_R2.fq.gz \
   --output molecules.bin --threads 4
+```
+
+---
+
+#### `--memory`
+
+Memory budget in gigabytes. When set, kam sizes the streaming FASTQ read batches and consensus buffers to fit within 25% of this budget. See the [Memory budgeting](#memory-budgeting) section below for full details.
+
+```bash
+kam assemble --r1 sample_R1.fq.gz --r2 sample_R2.fq.gz \
+  --output molecules.bin --memory 32
 ```
 
 ---
