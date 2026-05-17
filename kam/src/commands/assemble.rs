@@ -14,6 +14,7 @@ use kam_core::serialize::{write_bincode, FileType};
 
 use crate::cli::AssembleArgs;
 use crate::memory_budget::MemoryBudget;
+use crate::metrics::StageTimer;
 use rayon::ThreadPoolBuilder;
 
 /// Run the `assemble` subcommand end-to-end.
@@ -22,7 +23,9 @@ use rayon::ThreadPoolBuilder;
 ///
 /// Returns an error if any file I/O or serialization step fails.
 pub fn run_assemble(args: AssembleArgs) -> Result<(), Box<dyn std::error::Error>> {
-    // ── 0. Resource initialisation ─────────────────────────────────────────────
+    let mut timer = StageTimer::new("assemble");
+
+    // 0. Resource initialisation ─────────────────────────────────────────────
     if let Some(n) = args.threads {
         ThreadPoolBuilder::new()
             .num_threads(n)
@@ -110,10 +113,11 @@ pub fn run_assemble(args: AssembleArgs) -> Result<(), Box<dyn std::error::Error>
         .join("assembly_qc.json");
     write_qc(&qc_path, &qc)?;
 
-    // ── 7. Print summary to stderr ────────────────────────────────────────────
-    eprintln!(
-        "[assemble] input_pairs={} molecules={} duplex={} dropped={}",
-        n_input, n_molecules, assembly_stats.n_duplex, n_dropped,
+    // ── 7. Print summary ────────────────────────────────────────────
+    let metrics = timer.finish();
+    log::info!(
+        "[assemble] input_pairs={} molecules={} duplex={} dropped={} elapsed_ms={}",
+        n_input, n_molecules, assembly_stats.n_duplex, n_dropped, metrics.elapsed_ms,
     );
 
     Ok(())
@@ -279,6 +283,8 @@ mod tests {
             threads: None,
             memory: None,
             dump_molecules: None,
+            log_level: None,
+            metrics: vec![],
         };
 
         run_assemble(args).expect("run_assemble should succeed");
@@ -317,6 +323,8 @@ mod tests {
             threads: None,
             memory: None,
             dump_molecules: None,
+            log_level: None,
+            metrics: vec![],
         };
 
         run_assemble(args).expect("run_assemble with empty input should succeed");

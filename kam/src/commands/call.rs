@@ -19,6 +19,7 @@ use kam_core::serialize::read_bincode;
 use crate::caller_config::caller_config_from_args;
 use crate::cli::CallArgs;
 use crate::commands::pathfind::ScoredPathRecord;
+use crate::metrics::StageTimer;
 use crate::output::{format_extension, parse_output_formats};
 
 /// Run the `call` subcommand end-to-end.
@@ -27,6 +28,8 @@ use crate::output::{format_extension, parse_output_formats};
 ///
 /// Returns an error if file I/O or serialization fails.
 pub fn run_call(args: CallArgs) -> Result<(), Box<dyn std::error::Error>> {
+    let mut timer = StageTimer::new("call");
+
     // ── 1. Read scored paths ──────────────────────────────────────────────────
     let (_header, records): (_, Vec<ScoredPathRecord>) = read_bincode(&args.paths)?;
 
@@ -192,9 +195,10 @@ pub fn run_call(args: CallArgs) -> Result<(), Box<dyn std::error::Error>> {
         .join("call_qc.json");
     write_qc(&qc_path, &qc)?;
 
-    eprintln!(
-        "[call] variants={} pass={} filtered={}",
-        n_variants_called, n_pass, n_filtered,
+    let metrics = timer.finish();
+    log::info!(
+        "[call] variants={} pass={} filtered={} elapsed_ms={}",
+        n_variants_called, n_pass, n_filtered, metrics.elapsed_ms,
     );
 
     Ok(())

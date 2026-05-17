@@ -170,6 +170,12 @@ min_confidence = 0.99
 strand_bias_threshold = 0.01
 min_alt_molecules = 2
 max_vaf = 0.35
+ml_model = "single-strand-v1"
+# custom_ml_model = "/path/to/model.onnx"  # alternative to ml_model (mutually exclusive)
+
+[logging]
+log_level = "info"
+metrics = ["timing", "resource"]
 ```
 
 ### Custom ML model (`--custom-ml-model`)
@@ -316,6 +322,42 @@ kam run --r1 sample_R1.fq.gz --r2 sample_R2.fq.gz \
 kam run --r1 simplex_R1.fq.gz --r2 simplex_R2.fq.gz \
   --targets panel.fa --output-dir results/ \
   --chemistry-override simplex-12bp
+```
+
+---
+
+#### `--umi-length-override`
+
+UMI length in bases. Overrides the chemistry preset value. Use this when your chemistry uses a different UMI length than the selected preset. Overrides the config file value.
+
+```bash
+kam run --r1 sample_R1.fq.gz --r2 sample_R2.fq.gz \
+  --targets panel.fa --output-dir results/ \
+  --umi-length-override 8
+```
+
+---
+
+#### `--skip-length-override`
+
+Skip/spacer length in bases. Overrides the chemistry preset value. Use this when your chemistry has a different spacer length than the selected preset. Overrides the config file value.
+
+```bash
+kam run --r1 sample_R1.fq.gz --r2 sample_R2.fq.gz \
+  --targets panel.fa --output-dir results/ \
+  --skip-length-override 3
+```
+
+---
+
+#### `--no-duplex`
+
+Disable duplex chemistry mode. When set, paired UMI strands are treated as independent simplex molecules rather than being paired into duplex consensus sequences. Use this for single-strand UMI protocols or when duplex pairing is not desired.
+
+```bash
+kam run --r1 simplex_R1.fq.gz --r2 simplex_R2.fq.gz \
+  --targets panel.fa --output-dir results/ \
+  --no-duplex
 ```
 
 ---
@@ -748,6 +790,46 @@ kam run --r1 sample_R1.fq.gz --r2 sample_R2.fq.gz \
 
 ### Logging options
 
+#### `--log-level`
+
+Verbosity level for log output. Controls the volume of messages emitted to the log sinks. Supported values: `warn` (errors and warnings only), `info` (normal operational messages), `debug` (detailed diagnostic information). Default: `info`. Overrides the config file value.
+
+**Silent mode with warnings only:**
+```bash
+kam run --r1 sample_R1.fq.gz --r2 sample_R2.fq.gz \
+  --targets panel.fa --output-dir results/ \
+  --log-level warn
+```
+
+**Debug mode for troubleshooting:**
+```bash
+kam run --r1 sample_R1.fq.gz --r2 sample_R2.fq.gz \
+  --targets panel.fa --output-dir results/ \
+  --log-level debug
+```
+
+---
+
+#### `--metrics`
+
+Collect performance metrics during pipeline execution. Repeatable flag that accepts one or more metric categories. Supported values: `timing` (stage durations and throughput), `resource` (memory and CPU usage), `all` (all available metrics). Metrics are written alongside QC JSON output. Overrides the config file value.
+
+**Collect timing metrics only:**
+```bash
+kam run --r1 sample_R1.fq.gz --r2 sample_R2.fq.gz \
+  --targets panel.fa --output-dir results/ \
+  --metrics timing
+```
+
+**Collect both timing and resource metrics:**
+```bash
+kam run --r1 sample_R1.fq.gz --r2 sample_R2.fq.gz \
+  --targets panel.fa --output-dir results/ \
+  --metrics timing --metrics resource
+```
+
+---
+
 #### `--log-dir`
 
 Directory for structured log output.
@@ -803,6 +885,47 @@ kam run --r1 sample_R1.fq.gz --r2 sample_R2.fq.gz \
   --targets panel.fa --output-dir results/ \
   --memory 32
 ```
+
+---
+
+## Metrics and logging
+
+The `--log-level` and `--metrics` flags control what information kam emits during execution. They are independent and can be used together or separately.
+
+### Log levels
+
+| Level | Description |
+|-------|-------------|
+| `warn` | Errors and warnings only. Use for production pipelines where only problems matter. |
+| `info` | Normal operational messages, stage progress, and summary counts. The default. |
+| `debug` | Detailed per-read, per-molecule, and per-k-mer diagnostic information. Use for troubleshooting unexpected results. |
+
+### Metrics collection
+
+| Metric kind | Description |
+|-------------|-------------|
+| `timing` | Stage duration, throughput (reads/second, molecules/second), and wall-clock time per pipeline phase. |
+| `resource` | Peak memory usage, CPU utilisation, and thread counts. |
+| `all` | All available metrics. Equivalent to `--metrics timing --metrics resource`. |
+
+### How they work together
+
+- `--log-level` controls the verbosity of log messages to the configured sinks (file, stderr). It does not affect metrics collection.
+- `--metrics` controls which performance measurements are gathered and written to the QC JSON output. It does not affect log verbosity.
+- When neither flag is set, kam logs at `info` level and collects no performance metrics.
+- When `--metrics all` is set together with `--log-level debug`, kam produces the most detailed output: all performance measurements alongside per-read diagnostic messages.
+
+### Config file equivalents
+
+Both flags have config file equivalents in the `[logging]` section:
+
+```toml
+[logging]
+log_level = "info"
+metrics = ["timing", "resource"]
+```
+
+CLI flags override config file values.
 
 ---
 
@@ -904,6 +1027,28 @@ Enable specific log sinks. Repeatable.
 ```bash
 kam assemble --r1 sample_R1.fq.gz --r2 sample_R2.fq.gz \
   --output molecules.bin --log-dir logs/ --log umi --log family
+```
+
+---
+
+#### `--log-level`
+
+Verbosity level for log output. Same behaviour as the `kam run` flag. Supported values: `warn`, `info`, `debug`. Overrides the config file value.
+
+```bash
+kam assemble --r1 sample_R1.fq.gz --r2 sample_R2.fq.gz \
+  --output molecules.bin --log-level debug
+```
+
+---
+
+#### `--metrics`
+
+Collect performance metrics during assembly. Repeatable. Same behaviour as the `kam run` flag. Supported values: `timing`, `resource`, `all`. Overrides the config file value.
+
+```bash
+kam assemble --r1 sample_R1.fq.gz --r2 sample_R2.fq.gz \
+  --output molecules.bin --metrics timing --metrics resource
 ```
 
 ---

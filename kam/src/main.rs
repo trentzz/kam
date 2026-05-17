@@ -12,12 +12,29 @@ mod cli;
 mod commands;
 pub mod config;
 pub mod memory_budget;
+pub mod metrics;
 mod models;
 mod output;
 pub mod rescue;
 
 fn main() {
     let cli = Cli::parse();
+
+    // Determine log level from CLI --log-level flag on subcommands that support it.
+    let log_level = match &cli.command {
+        Commands::Run(args) => args.log_level.as_deref(),
+        Commands::Assemble(args) => args.log_level.as_deref(),
+        _ => None,
+    };
+
+    // Initialise env_logger. CLI --log-level takes precedence, then RUST_LOG
+    // env var, then defaults to "info".
+    let mut builder =
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
+    if let Some(level) = log_level {
+        builder.parse_filters(level);
+    }
+    builder.init();
 
     let result = match cli.command {
         Commands::Assemble(args) => commands::assemble::run_assemble(args),

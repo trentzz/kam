@@ -17,6 +17,7 @@ use kam_index::extract::{extract_all, ConsensusReadInfo};
 use kam_index::HashKmerIndex;
 
 use crate::cli::IndexArgs;
+use crate::metrics::StageTimer;
 
 /// A single entry in the serialized k-mer index file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,6 +44,7 @@ pub struct KmerEntry {
 ///
 /// Returns an error if file I/O or serialization fails.
 pub fn run_index(args: IndexArgs) -> Result<(), Box<dyn std::error::Error>> {
+    let mut timer = StageTimer::new("index");
     let k = args.kmer_size as usize;
 
     // ── 1. Read molecules from bincode ────────────────────────────────────────
@@ -162,9 +164,10 @@ pub fn run_index(args: IndexArgs) -> Result<(), Box<dyn std::error::Error>> {
         .join("index_qc.json");
     write_qc(&qc_path, &qc)?;
 
-    eprintln!(
-        "[index] target_kmers={} observed={} mean_depth={:.2}",
-        n_target_kmers, n_kmers_observed, mean_molecule_depth,
+    let metrics = timer.finish();
+    log::info!(
+        "[index] target_kmers={} observed={} mean_depth={:.2} elapsed_ms={}",
+        n_target_kmers, n_kmers_observed, mean_molecule_depth, metrics.elapsed_ms,
     );
 
     Ok(())
