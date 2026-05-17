@@ -196,7 +196,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
         let fusion_allowlist = build_allowlist(&fusion_slices, k);
         let n_fusion = fusion_allowlist.len();
         allowlist.extend(fusion_allowlist);
-        eprintln!(
+        log::info!(
             "[run/index] fusion_targets: loaded {} targets, added {n_fusion} k-mers ({} total)",
             fts.len(),
             allowlist.len()
@@ -221,7 +221,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             let n_jseq = jseq_allowlist.len();
             junction_seq_canonical_kmers = jseq_allowlist.clone();
             allowlist.extend(jseq_allowlist);
-            eprintln!(
+            log::info!(
             "[run/index] junction_sequences: added {n_jseq} k-mers from {} sequences ({} total)",
             seqs.len(),
             allowlist.len()
@@ -380,7 +380,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
         let anchors = match anchor_result {
             Some(a) => a,
             None => {
-                eprintln!("[run/pathfind] target {target_id}: too short for k={k}, skipping");
+                log::info!("[run/pathfind] target {target_id}: too short for k={k}, skipping");
                 continue;
             }
         };
@@ -703,7 +703,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     // are available. For each fusion target: walk, score, then call using the
     // partner locus depths as the VAF denominator.
     if !fusion_targets_data.is_empty() {
-        eprintln!(
+        log::info!(
             "[run/call] processing {} fusion targets",
             fusion_targets_data.len()
         );
@@ -716,20 +716,20 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             {
                 Some(v) => v,
                 None => {
-                    eprintln!("[run/fusion] {}: no start anchor in graph", ft.name);
+                    log::info!("[run/fusion] {}: no start anchor in graph", ft.name);
                     continue;
                 }
             };
             let (end_offset, end_raw) = match find_soft_anchor(fusion_seq, k, &graph, true, 10) {
                 Some(v) => v,
                 None => {
-                    eprintln!("[run/fusion] {}: no end anchor in graph", ft.name);
+                    log::info!("[run/fusion] {}: no end anchor in graph", ft.name);
                     continue;
                 }
             };
 
             if start_raw == end_raw {
-                eprintln!(
+                log::info!(
                     "[run/fusion] {}: start and end anchors are identical, skipping",
                     ft.name
                 );
@@ -757,7 +757,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
                 });
 
             if raw_paths.is_empty() {
-                eprintln!("[run/fusion] {}: no paths found (fusion absent)", ft.name);
+                log::info!("[run/fusion] {}: no paths found (fusion absent)", ft.name);
                 continue;
             }
 
@@ -795,7 +795,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
                 .or_else(|| scored.first());
 
             let Some(fp) = fusion_path else {
-                eprintln!("[run/fusion] {}: scored paths empty after scoring", ft.name);
+                log::info!("[run/fusion] {}: scored paths empty after scoring", ft.name);
                 continue;
             };
 
@@ -815,9 +815,11 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             if let Some(fusion_call) =
                 call_fusion(&fp.aggregate_evidence, &context, ft, &caller_config)
             {
-                eprintln!(
+                log::info!(
                     "[run/fusion] {}: VAF={:.4} molecules={}",
-                    fusion_call.name, fusion_call.vaf, fusion_call.n_molecules
+                    fusion_call.name,
+                    fusion_call.vaf,
+                    fusion_call.n_molecules
                 );
                 // Convert FusionCall to a VariantCall for unified output.
                 use kam_call::caller::{CallSource, VariantCall, VariantType};
@@ -877,7 +879,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             target_depths.values().copied().sum::<f64>() / target_depths.len() as f64
         };
 
-        eprintln!(
+        log::info!(
             "[run/call] processing {} junction sequences (mean library depth: {:.1})",
             junction_seq_data.len(),
             mean_total_depth
@@ -887,20 +889,20 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             let (start_offset, start_raw) = match find_soft_anchor(jseq_seq, k, &graph, false, 10) {
                 Some(v) => v,
                 None => {
-                    eprintln!("[run/jseq] {jseq_name}: no start anchor in graph");
+                    log::info!("[run/jseq] {jseq_name}: no start anchor in graph");
                     continue;
                 }
             };
             let (end_offset, end_raw) = match find_soft_anchor(jseq_seq, k, &graph, true, 10) {
                 Some(v) => v,
                 None => {
-                    eprintln!("[run/jseq] {jseq_name}: no end anchor in graph");
+                    log::info!("[run/jseq] {jseq_name}: no end anchor in graph");
                     continue;
                 }
             };
 
             if start_raw == end_raw {
-                eprintln!("[run/jseq] {jseq_name}: start and end anchors are identical, skipping");
+                log::info!("[run/jseq] {jseq_name}: start and end anchors are identical, skipping");
                 continue;
             }
 
@@ -925,7 +927,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
                 });
 
             if raw_paths.is_empty() {
-                eprintln!("[run/jseq] {jseq_name}: no paths found (junction absent)");
+                log::info!("[run/jseq] {jseq_name}: no paths found (junction absent)");
                 continue;
             }
 
@@ -960,7 +962,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
                 .or_else(|| scored.first());
 
             let Some(jp) = junction_path else {
-                eprintln!("[run/jseq] {jseq_name}: scored paths empty after scoring");
+                log::info!("[run/jseq] {jseq_name}: scored paths empty after scoring");
                 continue;
             };
 
@@ -992,9 +994,11 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
                 &synthetic_ft,
                 &caller_config,
             ) {
-                eprintln!(
+                log::info!(
                     "[run/jseq] {}: VAF={:.4} molecules={}",
-                    fusion_call.name, fusion_call.vaf, fusion_call.n_molecules
+                    fusion_call.name,
+                    fusion_call.vaf,
+                    fusion_call.n_molecules
                 );
                 use kam_call::caller::{CallSource, VariantCall, VariantType};
                 all_calls.push(VariantCall {
@@ -1043,7 +1047,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             use crate::commands::call::load_alt_seq_map;
             let alt_seqs = load_alt_seq_map(alt_path)?;
             apply_target_filter_with_seq_fallback(&mut all_calls, &target_set, tol, &alt_seqs);
-            eprintln!(
+            log::info!(
                 "[run/call] tumour-informed filter applied: {} target variants loaded, {} target windows with alt sequences (position tolerance: {}bp, sequence fallback: enabled)",
                 target_set.len(),
                 alt_seqs.len(),
@@ -1051,14 +1055,14 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             );
         } else if tol > 0 {
             apply_target_filter_with_tolerance(&mut all_calls, &target_set, tol);
-            eprintln!(
+            log::info!(
                 "[run/call] tumour-informed filter applied: {} target variants loaded (position tolerance: {}bp)",
                 target_set.len(),
                 tol,
             );
         } else {
             apply_target_filter(&mut all_calls, &target_set);
-            eprintln!(
+            log::info!(
                 "[run/call] tumour-informed filter applied: {} target variants loaded (position tolerance: {}bp)",
                 target_set.len(),
                 tol,
@@ -1223,7 +1227,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             }
 
             if !rescue_calls.is_empty() {
-                eprintln!(
+                log::info!(
                     "[run/rescue] {} rescue probe records added ({} with evidence, {} with no evidence)",
                     rescue_calls.len(),
                     rescue_calls.iter().filter(|c| c.call_source == CallSource::Rescued).count(),
@@ -1395,7 +1399,7 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             }
 
             if !rescue_calls.is_empty() {
-                eprintln!(
+                log::info!(
                     "[run/alt-walk] {} alt-walk rescue records added ({} with evidence, {} with no evidence)",
                     rescue_calls.len(),
                     rescue_calls.iter().filter(|c| c.call_source == CallSource::Rescued).count(),
@@ -1426,14 +1430,14 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
                 for call in &mut all_calls {
                     call.ml_prob = scorer.score(call);
                 }
-                eprintln!(
+                log::info!(
                     "[run/call] ML scoring applied: {} calls scored",
                     all_calls.len()
                 );
                 threshold
             }
             Err(e) => {
-                eprintln!("[run/call] WARNING: failed to load ML model: {}", e);
+                log::warn!("[run/call] failed to load ML model: {}", e);
                 0.5
             }
         }
@@ -1513,14 +1517,17 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     let peak_rss = crate::metrics::read_peak_rss_mb();
     let total_cpu = stages.iter().map(|s| s.cpu_time_ms).sum();
 
-    let metrics_enabled = cfg.logging.metrics.as_ref().map_or(false, |m| {
-        m.iter().any(|v| v == "all" || v == "timing" || v == "resource")
+    let metrics_enabled = cfg.logging.metrics.as_ref().is_some_and(|m| {
+        m.iter()
+            .any(|v| v == "all" || v == "timing" || v == "resource")
     });
     if metrics_enabled {
         let table = format_metrics_table(&stages, total_elapsed, total_cpu, peak_rss);
         eprintln!("{}", table);
 
-        let metrics_path = output_dir.join("metrics.json");
+        let metrics_path = cfg.logging.metrics_file
+            .clone()
+            .unwrap_or_else(|| output_dir.join("metrics.json"));
         let run_metrics = RunMetrics {
             stages,
             peak_rss_mb: peak_rss,
@@ -1929,6 +1936,8 @@ mod tests {
             memory: None,
             log_level: None,
             metrics: vec![],
+            metrics_file: None,
+            log_file: None,
             umi_length_override: None,
             skip_length_override: None,
             no_duplex: false,
@@ -2166,6 +2175,8 @@ min_umi_quality = 0
             custom_ml_model: None,
             log_level: None,
             metrics: vec![],
+            metrics_file: None,
+            log_file: None,
             umi_length_override: None,
             skip_length_override: None,
             no_duplex: false,
@@ -2268,6 +2279,8 @@ min_umi_quality = 0
             custom_ml_model: None,
             log_level: None,
             metrics: vec![],
+            metrics_file: None,
+            log_file: None,
             umi_length_override: None,
             skip_length_override: None,
             no_duplex: false,
@@ -2630,6 +2643,8 @@ min_umi_quality = 0
             custom_ml_model: None,
             log_level: None,
             metrics: vec![],
+            metrics_file: None,
+            log_file: None,
             umi_length_override: None,
             skip_length_override: None,
             no_duplex: false,

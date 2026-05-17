@@ -104,14 +104,14 @@ pub fn run_call(args: CallArgs) -> Result<(), Box<dyn std::error::Error>> {
                 for call in &mut all_calls {
                     call.ml_prob = scorer.score(call);
                 }
-                eprintln!(
+                log::info!(
                     "[call] ML scoring applied: {} calls scored",
                     all_calls.len()
                 );
                 threshold
             }
             Err(e) => {
-                eprintln!("[call] WARNING: failed to load ML model: {}", e);
+                log::warn!("[call] failed to load ML model: {}", e);
                 0.5
             }
         }
@@ -128,7 +128,7 @@ pub fn run_call(args: CallArgs) -> Result<(), Box<dyn std::error::Error>> {
             // Sequence-level fallback: load alt sequences and use the extended filter.
             let alt_seqs = load_alt_seq_map(alt_path)?;
             apply_target_filter_with_seq_fallback(&mut all_calls, &targets, tol, &alt_seqs);
-            eprintln!(
+            log::info!(
                 "[call] tumour-informed filter applied: {} target variants loaded, {} target windows with alt sequences (position tolerance: {}bp, sequence fallback: enabled)",
                 targets.len(),
                 alt_seqs.len(),
@@ -136,14 +136,14 @@ pub fn run_call(args: CallArgs) -> Result<(), Box<dyn std::error::Error>> {
             );
         } else if tol > 0 {
             apply_target_filter_with_tolerance(&mut all_calls, &targets, tol);
-            eprintln!(
+            log::info!(
                 "[call] tumour-informed filter applied: {} target variants loaded (position tolerance: {}bp)",
                 targets.len(),
                 tol,
             );
         } else {
             apply_target_filter(&mut all_calls, &targets);
-            eprintln!(
+            log::info!(
                 "[call] tumour-informed filter applied: {} target variants loaded (position tolerance: {}bp)",
                 targets.len(),
                 tol,
@@ -198,7 +198,10 @@ pub fn run_call(args: CallArgs) -> Result<(), Box<dyn std::error::Error>> {
     let metrics = timer.finish();
     log::info!(
         "[call] variants={} pass={} filtered={} elapsed_ms={}",
-        n_variants_called, n_pass, n_filtered, metrics.elapsed_ms,
+        n_variants_called,
+        n_pass,
+        n_filtered,
+        metrics.elapsed_ms,
     );
 
     Ok(())

@@ -35,7 +35,7 @@ pub fn run_assemble(args: AssembleArgs) -> Result<(), Box<dyn std::error::Error>
 
     if let Some(gb) = args.memory {
         let budget = MemoryBudget::new(gb as f64);
-        eprintln!(
+        log::info!(
             "[assemble] memory budget: {} GB total (batch={:.0} MB)",
             budget.total_gb(),
             budget.phase1_mb(),
@@ -117,7 +117,11 @@ pub fn run_assemble(args: AssembleArgs) -> Result<(), Box<dyn std::error::Error>
     let metrics = timer.finish();
     log::info!(
         "[assemble] input_pairs={} molecules={} duplex={} dropped={} elapsed_ms={}",
-        n_input, n_molecules, assembly_stats.n_duplex, n_dropped, metrics.elapsed_ms,
+        n_input,
+        n_molecules,
+        assembly_stats.n_duplex,
+        n_dropped,
+        metrics.elapsed_ms,
     );
 
     Ok(())
@@ -285,6 +289,7 @@ mod tests {
             dump_molecules: None,
             log_level: None,
             metrics: vec![],
+            log_file: None,
         };
 
         run_assemble(args).expect("run_assemble should succeed");
@@ -325,6 +330,7 @@ mod tests {
             dump_molecules: None,
             log_level: None,
             metrics: vec![],
+            log_file: None,
         };
 
         run_assemble(args).expect("run_assemble with empty input should succeed");

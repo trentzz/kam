@@ -84,7 +84,7 @@ pub fn run_pathfind(args: PathfindArgs) -> Result<(), Box<dyn std::error::Error>
         let anchors = match anchor_result {
             Some(a) => a,
             None => {
-                eprintln!("[pathfind] target {target_id}: sequence too short for k={k}, skipping");
+                log::info!("[pathfind] target {target_id}: sequence too short for k={k}, skipping");
                 continue;
             }
         };
@@ -92,7 +92,7 @@ pub fn run_pathfind(args: PathfindArgs) -> Result<(), Box<dyn std::error::Error>
         if !anchors.start_unique || !anchors.end_unique {
             n_anchors_non_unique += 1;
             if let Some(warn) = &anchors.warning {
-                eprintln!("[pathfind] target {target_id}: {warn}");
+                log::info!("[pathfind] target {target_id}: {warn}");
             }
         }
 

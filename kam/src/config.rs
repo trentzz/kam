@@ -210,6 +210,10 @@ pub struct LoggingConfig {
     pub log_level: Option<String>,
     /// Metrics to collect (timing, resource, all).
     pub metrics: Option<Vec<String>>,
+    /// Path to write log output (stderr if not set).
+    pub log_file: Option<PathBuf>,
+    /// Path to write metrics JSON (default: {output_dir}/metrics.json).
+    pub metrics_file: Option<PathBuf>,
 }
 
 /// Runtime settings.
@@ -336,7 +340,9 @@ impl KamConfig {
 
         cfg.chemistry.preset = args.chemistry_override.clone();
         cfg.chemistry.umi_length = args.umi_length_override.unwrap_or(cfg.chemistry.umi_length);
-        cfg.chemistry.skip_length = args.skip_length_override.unwrap_or(cfg.chemistry.skip_length);
+        cfg.chemistry.skip_length = args
+            .skip_length_override
+            .unwrap_or(cfg.chemistry.skip_length);
         cfg.chemistry.duplex = !args.no_duplex;
         cfg.chemistry.min_umi_quality = args.min_umi_quality_override;
         cfg.chemistry.min_template_length = args.min_template_length;
@@ -372,6 +378,8 @@ impl KamConfig {
         } else {
             Some(args.metrics.clone())
         };
+        cfg.logging.log_file = args.log_file.clone();
+        cfg.logging.metrics_file = args.metrics_file.clone();
 
         cfg.runtime.threads = args.threads;
         cfg.runtime.memory = args.memory;
@@ -525,6 +533,18 @@ impl KamConfig {
         }
         if !args.log.is_empty() {
             self.logging.log = Some(args.log.clone());
+        }
+        if let Some(ref v) = args.log_level {
+            self.logging.log_level = Some(v.clone());
+        }
+        if !args.metrics.is_empty() {
+            self.logging.metrics = Some(args.metrics.clone());
+        }
+        if let Some(ref v) = args.log_file {
+            self.logging.log_file = Some(v.clone());
+        }
+        if let Some(ref v) = args.metrics_file {
+            self.logging.metrics_file = Some(v.clone());
         }
 
         // Runtime fields.
@@ -897,6 +917,8 @@ min_family_size = 3
             custom_ml_model: None,
             log_level: None,
             metrics: vec![],
+            metrics_file: None,
+            log_file: None,
             umi_length_override: None,
             skip_length_override: None,
             no_duplex: false,
@@ -1084,6 +1106,10 @@ ti_rescue = true
 
 [logging]
 log_dir = "/logs"
+log_level = "info"
+metrics = ["timing", "resource"]
+# log_file = "/logs/kam.log"          # stderr if absent
+# metrics_file = "/results/metrics.json"  # {output_dir}/metrics.json if absent
 
 [runtime]
 threads = 4

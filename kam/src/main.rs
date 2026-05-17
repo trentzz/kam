@@ -27,12 +27,25 @@ fn main() {
         _ => None,
     };
 
+    // Determine log file from CLI --log-file flag.
+    let log_file: Option<std::path::PathBuf> = match &cli.command {
+        Commands::Run(args) => args.log_file.clone(),
+        Commands::Assemble(args) => args.log_file.clone(),
+        _ => None,
+    };
+
     // Initialise env_logger. CLI --log-level takes precedence, then RUST_LOG
-    // env var, then defaults to "info".
+    // env var, then defaults to "info". When --log-file is set, redirect
+    // output from stderr to the specified file.
     let mut builder =
         env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
     if let Some(level) = log_level {
         builder.parse_filters(level);
+    }
+    if let Some(ref path) = log_file {
+        let file = std::fs::File::create(path)
+            .unwrap_or_else(|e| panic!("failed to create log file {}: {e}", path.display()));
+        builder.target(env_logger::Target::Pipe(Box::new(file)));
     }
     builder.init();
 

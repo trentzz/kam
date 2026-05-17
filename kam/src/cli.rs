@@ -118,6 +118,10 @@ pub struct AssembleArgs {
     /// Metrics to collect (timing, resource, all). Repeatable.
     #[arg(long, value_parser = ["timing", "resource", "all"])]
     pub metrics: Vec<String>,
+
+    /// Path to write log output (stderr if not set).
+    #[arg(long)]
+    pub log_file: Option<PathBuf>,
 }
 
 /// Arguments for the `index` subcommand.
@@ -583,6 +587,14 @@ pub struct RunArgs {
     /// Metrics to collect (timing, resource, all). Repeatable.
     #[arg(long, value_parser = ["timing", "resource", "all"])]
     pub metrics: Vec<String>,
+
+    /// Path to write metrics JSON (default: {output_dir}/metrics.json).
+    #[arg(long)]
+    pub metrics_file: Option<PathBuf>,
+
+    /// Path to write log output (stderr if not set).
+    #[arg(long)]
+    pub log_file: Option<PathBuf>,
 
     /// Number of threads.
     ///
