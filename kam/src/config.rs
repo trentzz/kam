@@ -210,6 +210,13 @@ pub struct LoggingConfig {
 pub struct RuntimeConfig {
     /// Number of threads.
     pub threads: Option<usize>,
+    /// Memory budget in gigabytes.
+    ///
+    /// When set, kam adapts memory usage across all phases:
+    /// - 25% for streaming assembly
+    /// - 60% for k-mer indexing with prefiltering
+    /// - 15% for De Bruijn graph construction
+    pub memory: Option<u64>,
 }
 
 // ── Top-level config ──────────────────────────────────────────────────────────
@@ -477,6 +484,9 @@ impl KamConfig {
         // Runtime fields.
         if let Some(v) = args.threads {
             self.runtime.threads = Some(v);
+        }
+        if let Some(v) = args.memory {
+            self.runtime.memory = Some(v);
         }
     }
 
@@ -836,6 +846,7 @@ min_family_size = 3
             log_dir: None,
             log: vec![],
             threads: None,
+            memory: None,
             ml_model: None,
             custom_ml_model: None,
         }
@@ -918,6 +929,45 @@ output_dir = "out"
             cfg.validate().is_ok(),
             "validate should pass with all required fields"
         );
+    }
+
+    /// RuntimeConfig parses and carries through threads and memory fields.
+    #[test]
+    fn runtime_fields_parsed() {
+        let toml = r#"
+[input]
+r1 = "r1.fq"
+r2 = "R2.fq"
+targets = "t.fa"
+[output]
+output_dir = "out"
+[runtime]
+threads = 8
+memory = 32
+"#;
+        let cfg: KamConfig = toml::from_str(toml).expect("parse");
+        assert_eq!(cfg.runtime.threads, Some(8));
+        assert_eq!(cfg.runtime.memory, Some(32));
+    }
+
+    /// merge_cli_overrides: runtime threads is set from CLI.
+    #[test]
+    fn merge_cli_runtime_threads() {
+        let mut cfg: KamConfig = toml::from_str(minimal_config_str()).expect("parse");
+        let mut args = minimal_run_args();
+        args.threads = Some(16);
+        cfg.merge_cli_overrides(&args);
+        assert_eq!(cfg.runtime.threads, Some(16));
+    }
+
+    /// merge_cli_overrides: runtime memory is set from CLI.
+    #[test]
+    fn merge_cli_runtime_memory() {
+        let mut cfg: KamConfig = toml::from_str(minimal_config_str()).expect("parse");
+        let mut args = minimal_run_args();
+        args.memory = Some(64);
+        cfg.merge_cli_overrides(&args);
+        assert_eq!(cfg.runtime.memory, Some(64));
     }
 
     /// validate() fails with an error mentioning r1 when r1 is missing.

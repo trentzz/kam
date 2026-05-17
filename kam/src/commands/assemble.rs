@@ -13,6 +13,8 @@ use kam_core::qc::{write_qc, AssemblyQc};
 use kam_core::serialize::{write_bincode, FileType};
 
 use crate::cli::AssembleArgs;
+use crate::memory_budget::MemoryBudget;
+use rayon::ThreadPoolBuilder;
 
 /// Run the `assemble` subcommand end-to-end.
 ///
@@ -20,6 +22,23 @@ use crate::cli::AssembleArgs;
 ///
 /// Returns an error if any file I/O or serialization step fails.
 pub fn run_assemble(args: AssembleArgs) -> Result<(), Box<dyn std::error::Error>> {
+    // ── 0. Resource initialisation ─────────────────────────────────────────────
+    if let Some(n) = args.threads {
+        ThreadPoolBuilder::new()
+            .num_threads(n)
+            .build_global()
+            .unwrap_or_else(|_| {});
+    }
+
+    if let Some(gb) = args.memory {
+        let budget = MemoryBudget::new(gb as f64);
+        eprintln!(
+            "[assemble] memory budget: {} GB total (batch={:.0} MB)",
+            budget.total_gb(),
+            budget.phase1_mb(),
+        );
+    }
+
     // ── 1. Build parser config ────────────────────────────────────────────────
     let parser_config = ParserConfig {
         min_template_length: args.min_template_length.map(|v| v as usize),
@@ -258,6 +277,7 @@ mod tests {
             log_dir: None,
             log: vec![],
             threads: None,
+            memory: None,
             dump_molecules: None,
         };
 
@@ -295,6 +315,7 @@ mod tests {
             log_dir: None,
             log: vec![],
             threads: None,
+            memory: None,
             dump_molecules: None,
         };
 
