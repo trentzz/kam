@@ -21,6 +21,12 @@ tumour-informed monitoring.
 - **Tumour-informed monitoring**: precision 1.0 at all VAF levels. Background
   cfDNA variants are eliminated because they do not match the expected somatic
   alleles.
+- **TI rescue** (`--ti-rescue`, `--alt-walk`): probes the k-mer index directly
+  for TI targets that produce no PASS call, recovering sub-threshold evidence.
+- **SV and fusion detection**: large deletions, tandem duplications, inversions,
+  and gene fusions via junction allowlists (`--sv-junctions`, `--fusion-targets`).
+- **ML rescoring** (`--ml-model`): optional gradient-boosted re-scoring of
+  variant calls using a bundled ONNX model.
 - **Fast**: 16--22 seconds per sample on a single core at 2 M read pairs.
 
 ---
@@ -29,7 +35,7 @@ tumour-informed monitoring.
 
 Evaluated on the Twist cfDNA Pan-Cancer Reference Standard v2 (24 samples,
 375 truth variants, 3 concentrations, 8 VAF levels).
-Configuration: `--max-vaf 0.35 --min-family-size 2 --target-variants`.
+Configuration: `--max-vaf 0.35 --min-family-size-override 2 --target-variants`.
 
 | Concentration | VAF | Sensitivity | SNV sens | Indel sens | Precision |
 |---------------|-----|-------------|----------|-----------|-----------|
@@ -93,7 +99,7 @@ kam run \
   --targets targets_100bp.fa \
   --output-dir results/ \
   --max-vaf 0.35 \
-  --min-family-size 2 \
+  --min-family-size-override 2 \
   --target-variants known_variants.vcf
 ```
 
@@ -106,24 +112,29 @@ The pipeline can also be run stage by stage:
 kam assemble --r1 R1.fastq.gz --r2 R2.fastq.gz --output molecules.bin
 
 # 2. Build a k-mer index against target sequences.
-kam index --molecules molecules.bin --targets targets.fa --output index.bin
+kam index --input molecules.bin --targets targets.fa --output index.bin
 
 # 3. Walk de Bruijn graph paths.
 kam pathfind --index index.bin --targets targets.fa --output paths.bin
 
 # 4. Call variants from scored paths.
-kam call --paths paths.bin --targets targets.fa --output calls.vcf
+kam call --paths paths.bin --output calls.vcf
 ```
 
 ### Key options
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--min-family-size N` | 1 | Minimum reads per UMI family. Set to 2 to remove singletons. |
+| `--min-family-size-override N` | 1 | Minimum reads per UMI family. Set to 2 to remove singletons. |
 | `--max-vaf F` | — | Discard calls above this VAF (removes germline heterozygotes). |
 | `--min-alt-molecules N` | 2 | Minimum alt molecules to emit a call. |
 | `--min-confidence F` | 0.99 | Minimum posterior confidence. |
 | `--target-variants VCF` | — | Enable tumour-informed monitoring mode. |
+| `--ti-rescue` | false | Probe k-mer index directly for TI targets with no PASS call. |
+| `--alt-walk` | false | Rescue using pre-built alt sequences from `--alt-as-ref`. |
+| `--sv-junctions FASTA` | — | Add SV junction k-mers to the allowlist for SV detection. |
+| `--fusion-targets FASTA` | — | Add fusion junction k-mers for fusion/translocation detection. |
+| `--ml-model NAME` | — | Re-score calls with a built-in ML model (e.g. `single-strand-v1`). |
 
 ---
 
@@ -174,6 +185,7 @@ kam-assemble  — molecule assembly from raw FASTQ (replaces HUMID)
 kam-index     — k-mer indexing with molecule provenance (replaces Jellyfish)
 kam-pathfind  — de Bruijn graph construction and path walking (replaces km)
 kam-call      — statistical variant calling and tumour-informed filtering
+kam-ml        — optional gradient-boosted variant re-scoring (ONNX)
 kam           — CLI binary wiring all stages together
 ```
 

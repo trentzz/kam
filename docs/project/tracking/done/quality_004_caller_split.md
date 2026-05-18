@@ -3,7 +3,7 @@
 **Epic**: QUALITY
 **Priority**: low
 **Depends on**: none
-**Status**: todo
+**Status**: done
 
 ## Goal
 
@@ -11,11 +11,11 @@ Split the 2271-line `kam-call/src/caller.rs` into focused modules: `types.rs` (V
 
 ## Success Criteria
 
-- [ ] `caller.rs` is under 500 lines.
-- [ ] Each new module has its own `#[cfg(test)] mod tests`.
-- [ ] No public API change: `pub use` re-exports in `lib.rs` preserve existing import paths.
-- [ ] All tests pass.
-- [ ] `/update` has been run after changes.
+- [x] `caller.rs` is under 500 lines. (mod.rs is 473 lines)
+- [x] Each new module has its own `#[cfg(test)] mod tests`. (classify, filter, stats, mod all have tests; types is pure data)
+- [x] No public API change: `pub use` re-exports in `lib.rs` preserve existing import paths.
+- [x] All tests pass.
+- [x] `/update` has been run after changes.
 
 ## Steps
 

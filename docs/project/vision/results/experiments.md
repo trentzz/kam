@@ -6,7 +6,7 @@
 
 - Input: all 24 titration samples (5/15/30 ng input × 8 VAF levels).
 - Mode: tumour-informed.
-- Baseline: RaSCALL results from `/mnt/tzeng-local/tzeng-thesis/`.
+- Baseline: RaSCALL results from the local thesis data directory.
 - Analysis: per-variant concordance. For every variant, record whether kam and the alignment-based baseline detect it, at what VAF, and with what confidence score.
 - Output: sensitivity table, precision table, per-variant concordance table.
 

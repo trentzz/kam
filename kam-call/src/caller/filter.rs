@@ -177,8 +177,8 @@ pub fn assign_filter(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::stats::compute_confidence;
+    use super::*;
 
     // Test: CallerConfig default values match documented expectations.
     // The defaults are public API and must not drift silently.

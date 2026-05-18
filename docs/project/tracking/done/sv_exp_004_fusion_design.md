@@ -3,7 +3,7 @@
 **Epic**: SV-EXPAND (docs/claudetracking/overallplans/SV-EXPAND.md)
 **Priority**: high
 **Depends on**: sv_exp_001_new_variant_types.md
-**Status**: todo
+**Status**: done
 
 ## Goal
 

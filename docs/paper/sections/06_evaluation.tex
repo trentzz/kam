@@ -1,7 +1,7 @@
 \section{Evaluation}
 \label{sec:evaluation}
 
-We identified two implementation bugs by code review and fixed them.
+We identified three implementation bugs by code review and fixed them.
 We describe each and their impact on sensitivity.
 
 % ── Strand bias overcounting ──────────────────────────────────────────────────
@@ -52,6 +52,24 @@ The fix adds a rotation check:
 comparison or the 32-bit-rotated comparison passes the threshold.
 This correctly groups genuine duplex pairs while keeping the collision detection
 logic unchanged for same-strand reads.
+
+% ── graph_min_molecules override ─────────────────────────────────────────────
+\subsection{graph\_min\_molecules override}
+\label{sec:eval:gmin}
+
+The \texttt{--graph-min-molecules} flag sets the minimum number of molecules
+required for a k-mer to enter the de Bruijn graph. A hardcoded
+\texttt{n\_molecules >= 2} expression in \texttt{run.rs} silently overrode the
+user-supplied value, so \texttt{--graph-min-molecules 1} behaved identically to
+the default of 2. Variants whose alt-specific k-mers had only singleton
+molecule evidence, common at 0.5--1\% VAF, were therefore invisible to the
+path walker.
+
+The fix uses the configured value directly. On the 24-sample titration batch
+at 1M read pairs, this change raised 15\,ng 0.5\% VAF indel sensitivity from
+27.1\% to 37.1\%, and 5\,ng 1\% VAF SNV sensitivity from 49.8\% to 69.8\%.
+Gains were largest at low VAF where singleton molecules dominate the alt-allele
+evidence.
 
 % ── Indel normalisation regression ───────────────────────────────────────────
 \subsection{Indel normalisation regression}
@@ -247,11 +265,19 @@ using reference-first path prioritisation would extend the usable window to
 % ── Overall assessment ────────────────────────────────────────────────────────
 \subsection{Overall assessment}
 
-With both implementation fixes applied and the recommended configuration
+With all implementation fixes applied and the recommended configuration
 (\texttt{--max-vaf 0.35 --min-family-size 2 --target-variants}), kam achieves
 precision 1.0 across all VAF levels and input concentrations.
 Sensitivity at 2\% VAF is 52--61\% overall (69--80\% for SNVs, 31--39\% for
-indels).
+indels) at 2M read pairs with 100\,bp targets.
+With the tuned indel configuration (150\,bp targets, \texttt{--alt-as-ref},
+\texttt{--ti-rescue}, \texttt{--graph-min-molecules 1},
+\texttt{--min-alt-molecules 1}, \texttt{--min-confidence 0.80}) at 5M read
+pairs on the 15\,ng 2\% VAF sample, indel detection reaches 74 of 170 truth
+indels (43.5\%), which is 93.7\% of the 79 of 170 junction-k-mer ceiling set
+by the input data.
 The remaining false negative rate reflects coverage limitations and structural
 indel constraints, not false positive contamination.
-Increasing depth further would improve sensitivity for both SNVs and indels.
+Sensitivity in this regime is data-limited rather than algorithm-limited: the
+alt alleles for the missing indels are absent from the sequencing data at any
+tested depth.

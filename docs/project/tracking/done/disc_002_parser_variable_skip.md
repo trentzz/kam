@@ -3,7 +3,7 @@
 **Epic**: DISC-2026-04-20 (also serves CHEM-CONFIG)
 **Priority**: high
 **Depends on**: none
-**Status**: todo
+**Status**: done
 
 ## Goal
 
@@ -11,13 +11,13 @@
 
 ## Success Criteria
 
-- [ ] `ParsedReadPair::skip_r1` and `skip_r2` are variable-length (Vec<u8> or similar).
-- [ ] `ReadStructure { umi_length: 12, skip_length: 0 }` parses without error.
-- [ ] A unit test for `simplex_12bp()` chemistry round-trips through the parser.
-- [ ] Existing Twist duplex tests still pass.
-- [ ] `cargo clippy --all --all-targets -- -D warnings` passes.
-- [ ] All tests pass.
-- [ ] `/update` has been run after changes.
+- [x] `ParsedReadPair::skip_r1` and `skip_r2` are variable-length (Vec<u8> or similar).
+- [x] `ReadStructure { umi_length: 12, skip_length: 0 }` parses without error.
+- [x] A unit test for `simplex_12bp()` chemistry round-trips through the parser.
+- [x] Existing Twist duplex tests still pass.
+- [x] `cargo clippy --all --all-targets -- -D warnings` passes.
+- [x] All tests pass.
+- [x] `/update` has been run after changes.
 
 ## Steps
 

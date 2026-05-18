@@ -16,11 +16,11 @@ Bring kam source in line with CLAUDE.md rule "No `unwrap()` in library code — 
 
 | ID | File | Status |
 |----|------|--------|
-| QUALITY-001 | todo/quality_001_unwrap_to_thiserror.md | todo |
-| QUALITY-002 | todo/quality_002_ci_workflow.md | todo |
+| QUALITY-001 | done/quality_001_unwrap_to_thiserror.md | done |
+| QUALITY-002 | done/quality_002_ci_workflow.md | done |
 | QUALITY-003 | todo/quality_003_uncommitted_cleanup.md | todo |
-| QUALITY-004 | todo/quality_004_caller_split.md | todo |
-| QUALITY-005 | todo/quality_005_targeting_dead_else_if.md | todo |
+| QUALITY-004 | done/quality_004_caller_split.md | done |
+| QUALITY-005 | done/quality_005_targeting_dead_else_if.md | done |
 
 ## Scope
 

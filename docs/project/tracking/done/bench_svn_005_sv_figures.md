@@ -3,7 +3,7 @@
 **Epic**: BENCH-SV-NEW (docs/claudetracking/overallplans/BENCH-SV-NEW.md)
 **Priority**: high
 **Depends on**: bench_svn_004_run_score.md
-**Status**: todo
+**Status**: done
 
 ## Goal
 

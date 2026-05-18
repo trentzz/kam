@@ -3,7 +3,7 @@
 **Epic**: CHEM-CONFIG (docs/claudetracking/overallplans/CHEM-CONFIG.md)
 **Priority**: critical
 **Depends on**: none
-**Status**: todo
+**Status**: done
 
 ## Goal
 

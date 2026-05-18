@@ -1,6 +1,6 @@
 # ALIGN-COMPARE: Comparison Against Thesis Alignment-Based Results
 
-**Status**: in_progress
+**Status**: done
 **Priority**: high
 **Branch**: epic/ALIGN-COMPARE
 

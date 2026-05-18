@@ -3,7 +3,7 @@
 **Epic**: PAPER (docs/claudetracking/overallplans/PAPER.md)
 **Priority**: high
 **Depends on**: align_003_concordance.md
-**Status**: todo
+**Status**: done
 
 ## Goal
 

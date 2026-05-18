@@ -17,6 +17,7 @@ use kam_index::extract::{extract_all, ConsensusReadInfo};
 use kam_index::HashKmerIndex;
 
 use crate::cli::IndexArgs;
+use crate::metrics::StageTimer;
 
 /// A single entry in the serialized k-mer index file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,6 +44,7 @@ pub struct KmerEntry {
 ///
 /// Returns an error if file I/O or serialization fails.
 pub fn run_index(args: IndexArgs) -> Result<(), Box<dyn std::error::Error>> {
+    let mut timer = StageTimer::new("index");
     let k = args.kmer_size as usize;
 
     // ── 1. Read molecules from bincode ────────────────────────────────────────
@@ -66,7 +68,7 @@ pub fn run_index(args: IndexArgs) -> Result<(), Box<dyn std::error::Error>> {
         let junction_allowlist = build_allowlist(&junction_slices, k);
         let n_junction = junction_allowlist.len();
         allowlist.extend(junction_allowlist);
-        eprintln!(
+        log::info!(
             "[index] sv_junctions: added {n_junction} junction k-mers ({} total)",
             allowlist.len()
         );
@@ -83,7 +85,7 @@ pub fn run_index(args: IndexArgs) -> Result<(), Box<dyn std::error::Error>> {
         let alt_allowlist = build_allowlist(&alt_slices, k);
         let n_alt = alt_allowlist.len();
         allowlist.extend(alt_allowlist);
-        eprintln!(
+        log::info!(
             "[index] alt_as_ref: added {n_alt} alt-allele k-mers from {} sequences ({} total)",
             alt_seqs.len(),
             allowlist.len()
@@ -100,7 +102,7 @@ pub fn run_index(args: IndexArgs) -> Result<(), Box<dyn std::error::Error>> {
         let jseq_allowlist = build_allowlist(&jseq_slices, k);
         let n_jseq = jseq_allowlist.len();
         allowlist.extend(jseq_allowlist);
-        eprintln!(
+        log::info!(
             "[index] junction_sequences: added {n_jseq} k-mers from {} sequences ({} total)",
             jseq.len(),
             allowlist.len()
@@ -162,9 +164,13 @@ pub fn run_index(args: IndexArgs) -> Result<(), Box<dyn std::error::Error>> {
         .join("index_qc.json");
     write_qc(&qc_path, &qc)?;
 
-    eprintln!(
-        "[index] target_kmers={} observed={} mean_depth={:.2}",
-        n_target_kmers, n_kmers_observed, mean_molecule_depth,
+    let metrics = timer.finish();
+    log::info!(
+        "[index] target_kmers={} observed={} mean_depth={:.2} elapsed_ms={}",
+        n_target_kmers,
+        n_kmers_observed,
+        mean_molecule_depth,
+        metrics.elapsed_ms,
     );
 
     Ok(())

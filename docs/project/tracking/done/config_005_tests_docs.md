@@ -3,7 +3,7 @@
 **Epic**: CONFIG-TOML (docs/claudetracking/overallplans/CONFIG-TOML.md)
 **Priority**: critical
 **Depends on**: config_003_wire_pipeline.md, config_004_example_configs.md
-**Status**: todo
+**Status**: done
 
 ## Goal
 

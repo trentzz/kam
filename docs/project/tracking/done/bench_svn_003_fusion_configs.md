@@ -3,7 +3,7 @@
 **Epic**: BENCH-SV-NEW (docs/claudetracking/overallplans/BENCH-SV-NEW.md)
 **Priority**: high
 **Depends on**: sv_exp_005_fusion_junctions.md, sv_exp_006_fusion_classify.md
-**Status**: todo
+**Status**: done
 
 ## Goal
 

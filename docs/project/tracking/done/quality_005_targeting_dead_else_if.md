@@ -3,7 +3,7 @@
 **Epic**: QUALITY
 **Priority**: low
 **Depends on**: none
-**Status**: todo
+**Status**: done
 
 ## Goal
 
@@ -11,10 +11,10 @@
 
 ## Success Criteria
 
-- [ ] The dead branch is removed or replaced with a documented explicit `else {}`.
-- [ ] All existing sequence-fallback tests still pass.
-- [ ] `cargo clippy` reports no redundant-pattern-matching warnings on targeting.rs.
-- [ ] `/update` has been run after changes.
+- [x] The dead branch is removed or replaced with a documented explicit `else {}`. (branch was removed; code falls through cleanly to sequence-level fallback)
+- [x] All existing sequence-fallback tests still pass.
+- [x] `cargo clippy` reports no redundant-pattern-matching warnings on targeting.rs.
+- [x] `/update` has been run after changes.
 
 ## Steps
 

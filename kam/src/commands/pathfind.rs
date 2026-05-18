@@ -15,6 +15,7 @@ use kam_pathfind::score::{score_and_rank_paths, ScoredPath};
 
 use crate::cli::PathfindArgs;
 use crate::commands::index::{entries_to_hash_index, read_fasta, KmerEntry};
+use crate::metrics::StageTimer;
 
 /// A serializable scored path record for inter-stage bincode files.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,6 +52,8 @@ pub struct ScoredPathRecord {
 ///
 /// Returns an error if file I/O or serialization fails.
 pub fn run_pathfind(args: PathfindArgs) -> Result<(), Box<dyn std::error::Error>> {
+    let mut timer = StageTimer::new("pathfind");
+
     // ── 1. Read k-mer index ───────────────────────────────────────────────────
     let (_header, entries): (_, Vec<KmerEntry>) = read_bincode(&args.index)?;
     let index = entries_to_hash_index(&entries);
@@ -81,7 +84,7 @@ pub fn run_pathfind(args: PathfindArgs) -> Result<(), Box<dyn std::error::Error>
         let anchors = match anchor_result {
             Some(a) => a,
             None => {
-                eprintln!("[pathfind] target {target_id}: sequence too short for k={k}, skipping");
+                log::info!("[pathfind] target {target_id}: sequence too short for k={k}, skipping");
                 continue;
             }
         };
@@ -89,7 +92,7 @@ pub fn run_pathfind(args: PathfindArgs) -> Result<(), Box<dyn std::error::Error>
         if !anchors.start_unique || !anchors.end_unique {
             n_anchors_non_unique += 1;
             if let Some(warn) = &anchors.warning {
-                eprintln!("[pathfind] target {target_id}: {warn}");
+                log::info!("[pathfind] target {target_id}: {warn}");
             }
         }
 
@@ -186,11 +189,13 @@ pub fn run_pathfind(args: PathfindArgs) -> Result<(), Box<dyn std::error::Error>
         .join("pathfind_qc.json");
     write_qc(&qc_path, &qc)?;
 
-    eprintln!(
-        "[pathfind] targets={} with_variants={} paths={}",
+    let metrics = timer.finish();
+    log::info!(
+        "[pathfind] targets={} with_variants={} paths={} elapsed_ms={}",
         n_targets_queried,
         n_targets_with_variants,
         all_records.len(),
+        metrics.elapsed_ms,
     );
 
     Ok(())

@@ -3,7 +3,7 @@
 **Epic**: QUALITY
 **Priority**: medium
 **Depends on**: none
-**Status**: todo
+**Status**: done
 
 ## Goal
 
@@ -11,10 +11,10 @@ Add `.github/workflows/ci.yml` running `cargo fmt --check`, `cargo clippy --all 
 
 ## Success Criteria
 
-- [ ] `.github/workflows/ci.yml` exists and passes on main.
-- [ ] All three jobs (fmt, clippy, test) run on Linux stable Rust.
-- [ ] README has a CI badge.
-- [ ] `/update` has been run after changes.
+- [x] `.github/workflows/ci.yml` exists and passes on main.
+- [x] All three jobs (fmt, clippy, test) run on Linux stable Rust.
+- [x] README has a CI badge.
+- [x] `/update` has been run after changes.
 
 ## Steps
 

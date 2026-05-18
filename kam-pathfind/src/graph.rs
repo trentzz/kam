@@ -332,6 +332,11 @@ impl DeBruijnGraph {
         reachable
     }
 
+    /// Add a directed edge `from -> to` to the graph.
+    ///
+    /// Nodes are created implicitly if they do not already exist, and
+    /// `n_nodes` / `n_edges` are updated accordingly. Parallel edges are
+    /// allowed: callers are responsible for deduplication if required.
     pub fn add_edge(&mut self, from: u64, to: u64) {
         use std::collections::hash_map::Entry;
         if let Entry::Vacant(e) = self.successors.entry(from) {

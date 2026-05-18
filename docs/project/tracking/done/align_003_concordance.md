@@ -3,7 +3,7 @@
 **Epic**: ALIGN-COMPARE (docs/claudetracking/overallplans/ALIGN-COMPARE.md)
 **Priority**: high
 **Depends on**: align_001_parse_thesis.md, align_002_run_titration.md
-**Status**: todo
+**Status**: done
 
 ## Goal
 

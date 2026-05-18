@@ -15,22 +15,28 @@ structural variants. Large deletions and insertions $\ge$50\,bp are detected by 
 
 We evaluate kam in two operating modes on the Twist cfDNA Pan-Cancer Reference
 Standard v2 titration series (375 truth variants, 24 samples, 5--30\,ng input
-DNA, VAF 0\%--2\%). In discovery mode, kam detects 54--63\% of truth variants
-at 2\% VAF with precision 0.69--0.84 using 2M read pairs per sample. In
-tumour-informed monitoring mode (\texttt{--target-variants}), the same calls
-are filtered to variants matching a pre-specified target VCF: precision rises
-to 1.0 at all VAF levels with no change to sensitivity.
+DNA, VAF 0\%--2\%). In discovery mode, kam detects 52--61\% of truth variants
+at 2\% VAF using 2M read pairs per sample. In tumour-informed monitoring mode
+(\texttt{--target-variants}), the same calls are filtered to variants matching
+a pre-specified target VCF: precision rises to 1.0 at all VAF levels with no
+change to sensitivity.
 
-We identified and fixed two implementation bugs during evaluation: a strand
+We identified and fixed three implementation bugs during evaluation: a strand
 bias overcounting bug that inflated the Fisher exact test sample size
-approximately 70-fold, and a duplex orientation comparison bug that prevented
-genuine duplex pairs from being grouped correctly.
-With both fixes applied and 2M read pairs per sample, duplex identification
+approximately 70-fold, a duplex orientation comparison bug that prevented
+genuine duplex pairs from being grouped correctly, and a \texttt{graph\_min\_molecules}
+override bug that silently ignored the user-supplied minimum-molecule threshold.
+With all fixes applied and 2M read pairs per sample, duplex identification
 rates are 6.2--18.9\% of molecules. With recommended filters
 (\texttt{--max-vaf 0.35 --min-family-size 2}) and tumour-informed mode applied,
-kam detects 54--63\% of truth variants at 2\% VAF with precision 1.0, running
+kam detects 52--61\% of truth variants at 2\% VAF with precision 1.0, running
 end-to-end in 41--55 seconds per sample on a single core. SNV sensitivity
-reaches 69--80\% at 2\% VAF; indel sensitivity is 32--39\%. Sensitivity at
-0.25--0.5\% VAF reaches 26--46\% at 15--30\,ng input and 6--17\% at 5\,ng input.
+reaches 69--80\% at 2\% VAF; indel sensitivity is 31--39\%. A targeted
+configuration (\texttt{--targets} 150\,bp, \texttt{--alt-as-ref},
+\texttt{--ti-rescue}, \texttt{--graph-min-molecules 1}) lifts indel detection
+to 74 of 170 truth indels (43.5\%) at 5M reads, which is 93.7\% of the
+junction-k-mer ceiling set by the input data (79 of 170).
+Sensitivity at 0.25--0.5\% VAF reaches 26--46\% at 15--30\,ng input and
+6--17\% at 5\,ng input.
 
 kam is implemented in Rust and is available as an open-source workspace.

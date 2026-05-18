@@ -4,15 +4,17 @@
 kam is a proof of concept that alignment-free variant detection is feasible for
 Twist duplex UMI panel sequencing.
 The pipeline preserves molecule-level information from raw FASTQ to variant call
-without any alignment step, detecting 54--63\% of truth variants at 2\% VAF
+without any alignment step, detecting 52--61\% of truth variants at 2\% VAF
 with precision 1.0 in tumour-informed monitoring mode using 2M read pairs per
 sample, running in 41--55 seconds on a single core.
 
-Evaluation identified and fixed two implementation bugs: a strand
+Evaluation identified and fixed three implementation bugs: a strand
 bias overcounting bug that inflated the Fisher exact test sample size
-approximately 70-fold, and a duplex orientation comparison bug that prevented
-genuine duplex pairs from being grouped correctly.
-With both fixes applied, sensitivity extends to the 0.25--0.5\% VAF range at
+approximately 70-fold, a duplex orientation comparison bug that prevented
+genuine duplex pairs from being grouped correctly, and a
+\texttt{graph\_min\_molecules} override bug that silently ignored the
+user-supplied minimum-molecule threshold.
+With all fixes applied, sensitivity extends to the 0.25--0.5\% VAF range at
 15--30\,ng input.
 
 \paragraph{Tumour-informed monitoring mode.}
@@ -32,12 +34,12 @@ This mode is directly applicable to serial ctDNA monitoring: given a set of
 somatic variants identified from a tissue biopsy, kam confirms whether each
 variant is detectable in a subsequent liquid biopsy sample.
 Precision 1.0 at all VAF levels means every reported call is a confirmed target
-variant; sensitivity 54--63\% at 2\% VAF means that roughly half of all target
+variant; sensitivity 52--61\% at 2\% VAF means that roughly half of all target
 variants with sufficient sequencing depth are recovered.
 
 \paragraph{SNV and indel calling.}
-Indel sensitivity at 2M reads ranges from 32\% to 39\% at 2\% VAF, compared to
-72--82\% for SNVs. The gap is expected: insertions and deletions shift the
+Indel sensitivity at 2M reads ranges from 31\% to 39\% at 2\% VAF, compared to
+69--80\% for SNVs. The gap is expected: insertions and deletions shift the
 position of end-anchor k-mers relative to the reference, requiring those
 shifted k-mers to be covered by sequencing reads for a walk to complete. This
 anchor coverage requirement is more likely to be satisfied as depth increases.
@@ -58,11 +60,11 @@ once the O($n^2$) UMI grouping bottleneck is resolved by hash partitioning
 Alignment-based pipelines for ctDNA variant calling typically report sensitivity
 of 80--95\% at 1--2\% VAF with comparable panel sizes, using millions of
 read pairs~\autocite{Twist22cfdna}. The gap between those numbers and the
-54--63\% reported here has two primary components: the anchor coverage
-limitation for indels (SNV sensitivity at 2\% VAF reaches 72--82\%, narrowing
+52--61\% reported here has two primary components: the anchor coverage
+limitation for indels (SNV sensitivity at 2\% VAF reaches 69--80\%, narrowing
 the gap considerably), and the conservative minimum alt molecule threshold.
 A direct head-to-head comparison on the same samples against GATK Mutect2,
-Sentieon TNscope, or fgbio\,+\,bwa is not included in this work; such a
+Sentieon TNscope, or fgbio\,+\,bwa is not included here; such a
 comparison requires running alignment-based callers on matched read sets, which
 is deferred to future evaluation (Section~\ref{sec:future}).
 
@@ -110,11 +112,11 @@ scripts require engineering changes for each chemistry variation.
 \paragraph{Limitations.}
 
 \textit{Discovery mode sensitivity gap.}
-At 2\% VAF, kam discovery mode sensitivity of 54--63\% is lower than
+At 2\% VAF, kam discovery mode sensitivity of 52--61\% is lower than
 published alignment-based figures of 80--95\% for comparable panels.
 Two structural causes account for most of the gap.
 The anchor coverage constraint means indels are harder to detect than SNVs;
-at 2\% VAF indel sensitivity is 32--39\% vs.\ 72--82\% for SNVs.
+at 2\% VAF indel sensitivity is 31--39\% vs.\ 69--80\% for SNVs.
 The O($n^2$) UMI clustering step limits practical sequencing depth to 2M
 read pairs, below the depths used in some alignment-based evaluations.
 Neither limitation is fundamental to the alignment-free approach; both have
@@ -150,10 +152,13 @@ A collision reporting module is planned (\texttt{kam-assemble} QC output) but
 is not included in the current version.
 
 \paragraph{Cross-chemistry outlook.}
-Generalisation beyond the Twist 5M2S+T chemistry is reserved for future work.
-The \texttt{config.toml} design means adapting to a new UMI chemistry requires
-only a configuration change, not a code change, but validation on public datasets
-with different UMI structures has not yet been performed.
+kam supports arbitrary UMI and skip-base lengths via the \texttt{[chemistry]}
+section of \texttt{config.toml}, including a \texttt{simplex\_12bp} preset
+(12\,bp UMI, 0\,bp skip) that covers the UMI Clustering Benchmark dataset.
+The parser, assembly, and index code paths accept variable chemistry without
+any hard-coded Twist-specific assumptions.
+Sensitivity validation on public datasets with different UMI structures is
+in preparation; results are not included in this version of the paper.
 
 \paragraph{Figure availability.}
 All figures are generated by scripts in \texttt{docs/benchmarking/*/scripts/}

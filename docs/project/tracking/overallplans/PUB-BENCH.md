@@ -1,6 +1,6 @@
 # PUB-BENCH: Public Dataset Benchmarks
 
-**Status**: in_progress
+**Status**: done
 **Priority**: high
 **Branch**: epic/PUB-BENCH
 

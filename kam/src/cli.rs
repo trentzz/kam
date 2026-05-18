@@ -106,10 +106,22 @@ pub struct AssembleArgs {
     /// Write a TSV of assembled molecules to this path for comparison with external tools.
     ///
     /// Each row is one assembled molecule. Columns: molecule_id, umi_fwd, umi_rev,
-    /// has_duplex, fwd_n_reads, rev_n_reads, duplex_n_reads, fwd_seq, rev_seq,
+    /// has_duplex, fwd_n_reads, rev_n_reads, duplex_n_reads, duplex_n_reads, fwd_seq, rev_seq,
     /// duplex_seq, fwd_mean_error, rev_mean_error, duplex_mean_error.
     #[arg(long)]
     pub dump_molecules: Option<PathBuf>,
+
+    /// Log level (warn, info, debug).
+    #[arg(long, value_parser = ["warn", "info", "debug"])]
+    pub log_level: Option<String>,
+
+    /// Metrics to collect (timing, resource, all). Repeatable.
+    #[arg(long, value_parser = ["timing", "resource", "all"])]
+    pub metrics: Vec<String>,
+
+    /// Path to write log output (stderr if not set).
+    #[arg(long)]
+    pub log_file: Option<PathBuf>,
 }
 
 /// Arguments for the `index` subcommand.
@@ -388,6 +400,18 @@ pub struct RunArgs {
     #[arg(long)]
     pub chemistry_override: Option<String>,
 
+    /// UMI length in bases. Overrides the chemistry preset value.
+    #[arg(long)]
+    pub umi_length_override: Option<u32>,
+
+    /// Skip/spacer length in bases. Overrides the chemistry preset value.
+    #[arg(long)]
+    pub skip_length_override: Option<u32>,
+
+    /// Disable duplex chemistry (single-strand mode).
+    #[arg(long)]
+    pub no_duplex: bool,
+
     /// Minimum Phred quality threshold for UMI bases.
     ///
     /// Overrides the config file value when set.
@@ -556,6 +580,22 @@ pub struct RunArgs {
     #[arg(long, action = clap::ArgAction::Append)]
     pub log: Vec<String>,
 
+    /// Log level (warn, info, debug).
+    #[arg(long, value_parser = ["warn", "info", "debug"])]
+    pub log_level: Option<String>,
+
+    /// Metrics to collect (timing, resource, all). Repeatable.
+    #[arg(long, value_parser = ["timing", "resource", "all"])]
+    pub metrics: Vec<String>,
+
+    /// Path to write metrics JSON (default: {output_dir}/metrics.json).
+    #[arg(long)]
+    pub metrics_file: Option<PathBuf>,
+
+    /// Path to write log output (stderr if not set).
+    #[arg(long)]
+    pub log_file: Option<PathBuf>,
+
     /// Number of threads.
     ///
     /// Overrides the config file [runtime] threads value when set.
@@ -686,6 +726,8 @@ mod tests {
         assert!(args.log_dir.is_none());
         assert!(args.threads.is_none());
         assert!(args.log.is_empty());
+        assert!(args.log_level.is_none());
+        assert!(args.metrics.is_empty());
     }
 
     /// Verify the `index` subcommand parses required arguments.
@@ -844,6 +886,11 @@ mod tests {
         assert!(args.output_format_override.is_none());
         assert!(args.qc_output.is_none());
         assert!(args.sv_strand_bias_threshold_override.is_none());
+        assert!(args.log_level.is_none());
+        assert!(args.metrics.is_empty());
+        assert!(args.umi_length_override.is_none());
+        assert!(args.skip_length_override.is_none());
+        assert!(!args.no_duplex);
     }
 
     /// Verify `--config` flag is accepted.

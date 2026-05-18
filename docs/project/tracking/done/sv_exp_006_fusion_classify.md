@@ -3,7 +3,7 @@
 **Epic**: SV-EXPAND (docs/claudetracking/overallplans/SV-EXPAND.md)
 **Priority**: high
 **Depends on**: sv_exp_005_fusion_junctions.md
-**Status**: todo
+**Status**: done
 
 ## Goal
 

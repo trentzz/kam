@@ -18,7 +18,7 @@ and `report.md` for the TI vs discovery comparison.
 
 ## Dataset
 - 24 samples: 3 DNA inputs (5 ng, 15 ng, 30 ng) × 8 VAF levels (0 %–2 %)
-- FASTQs: `/mnt/tzeng-local/tzeng-thesis/titration-nondedup/fastqs/`
+- FASTQs: `/path/to/titration-nondedup/fastqs/`
 - Targets: `../01-snvindel/scripts/targets_100bp.fa` (375 loci, 100 bp)
 - Truth VCF: `../01-snvindel/scripts/truth_variants.vcf` (375 variants: 205 SNV, 170 indel)
 
@@ -29,7 +29,7 @@ Install psutil if needed: `pip install psutil`
 ### Discovery (no ML, no TI)
 ```bash
 python3 docs/benchmarking/07-snvindel-ml-boost-v1/scripts/run_titration_batch.py \
-  --fastq-dir /mnt/tzeng-local/tzeng-thesis/titration-nondedup/fastqs \
+  --fastq-dir /path/to/titration-nondedup/fastqs \
   --reads 2000000 \
   --output titration_2mreads_disc.tsv
 ```
@@ -37,7 +37,7 @@ python3 docs/benchmarking/07-snvindel-ml-boost-v1/scripts/run_titration_batch.py
 ### Discovery + ML v1
 ```bash
 python3 docs/benchmarking/07-snvindel-ml-boost-v1/scripts/run_titration_batch.py \
-  --fastq-dir /mnt/tzeng-local/tzeng-thesis/titration-nondedup/fastqs \
+  --fastq-dir /path/to/titration-nondedup/fastqs \
   --reads 2000000 \
   --ml-model twist-duplex-v1 \
   --output titration_2mreads_disc_ml.tsv
@@ -46,7 +46,7 @@ python3 docs/benchmarking/07-snvindel-ml-boost-v1/scripts/run_titration_batch.py
 ### Discovery + ML v2
 ```bash
 python3 docs/benchmarking/07-snvindel-ml-boost-v1/scripts/run_titration_batch.py \
-  --fastq-dir /mnt/tzeng-local/tzeng-thesis/titration-nondedup/fastqs \
+  --fastq-dir /path/to/titration-nondedup/fastqs \
   --reads 2000000 \
   --ml-model twist-duplex-v2 \
   --output titration_2mreads_disc_ml_v2.tsv
@@ -55,7 +55,7 @@ python3 docs/benchmarking/07-snvindel-ml-boost-v1/scripts/run_titration_batch.py
 ### TI only (no ML)
 ```bash
 python3 docs/benchmarking/07-snvindel-ml-boost-v1/scripts/run_titration_batch.py \
-  --fastq-dir /mnt/tzeng-local/tzeng-thesis/titration-nondedup/fastqs \
+  --fastq-dir /path/to/titration-nondedup/fastqs \
   --reads 2000000 \
   --target-variants docs/benchmarking/01-snvindel/scripts/truth_variants.vcf \
   --output titration_2mreads_ti.tsv
@@ -64,7 +64,7 @@ python3 docs/benchmarking/07-snvindel-ml-boost-v1/scripts/run_titration_batch.py
 ### TI + duplex confirmation filter
 ```bash
 python3 docs/benchmarking/07-snvindel-ml-boost-v1/scripts/run_titration_batch.py \
-  --fastq-dir /mnt/tzeng-local/tzeng-thesis/titration-nondedup/fastqs \
+  --fastq-dir /path/to/titration-nondedup/fastqs \
   --reads 2000000 \
   --target-variants docs/benchmarking/01-snvindel/scripts/truth_variants.vcf \
   --min-alt-duplex 1 \

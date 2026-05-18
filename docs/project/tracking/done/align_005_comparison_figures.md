@@ -3,7 +3,7 @@
 **Epic**: ALIGN-COMPARE (docs/claudetracking/overallplans/ALIGN-COMPARE.md)
 **Priority**: high
 **Depends on**: align_004_discordance.md
-**Status**: todo
+**Status**: done
 
 ## Goal
 

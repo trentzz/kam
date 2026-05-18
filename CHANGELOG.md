@@ -5,6 +5,44 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-05-18
+
+### Added
+
+- `--threads <N>`: limit the rayon thread pool to N worker threads. Overrides
+  `[runtime] threads` in the config file. Defaults to all logical CPUs.
+- `--memory <GB>`: adaptive memory budget in gigabytes. When set, kam partitions
+  the budget across pipeline stages (25% assembly, 60% indexing, 15% pathfind)
+  and logs the allocation. Provides the configuration foundation for future
+  streaming assembly and k-mer index prefiltering.
+- `--log-level <LEVEL>`: structured log verbosity (`warn`, `info`, `debug`).
+  Replaces ad-hoc `eprintln!` with `env_logger`-backed `log::info!` / `log::debug!`
+  calls. Overrides `[logging] log_level` in the config file.
+- `--metrics [<KIND>...]`: per-stage timing and resource metrics (`timing`,
+  `resource`, `all`). When enabled, prints a human-readable table to stderr
+  and writes `metrics.json` to the output directory. Overrides
+  `[logging] metrics` in the config file.
+- `--umi-length-override <N>` / `--skip-length-override <N>` / `--no-duplex`:
+  per-run overrides for UMI length, skip length, and duplex mode without
+  editing the config file. Useful for non-standard library preparations.
+- Config parity: `[logging] log_level`, `[logging] metrics`, `[calling] ml_model`,
+  and `[calling] custom_ml_model` fields added to `config.toml` schema. All
+  CLI flags now have config file equivalents. CLI takes precedence and logs a
+  warning when it overrides a config value.
+
+### Changed
+
+- De Bruijn graph predecessor maps are now built lazily on first
+  `backward_reachable` call rather than at construction time. This halves
+  edge-storage memory for pipelines that never traverse the graph backwards.
+
+### Fixed
+
+- Replaced `unwrap()` calls in library code with proper error propagation
+  throughout `kam-assemble`, `kam-index`, `kam-pathfind`, and `kam-call`.
+
+---
+
 ## [0.2.0] - 2026-04-14
 
 ### Added

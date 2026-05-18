@@ -3,7 +3,7 @@
 **Epic**: BENCH-VARFORGE (docs/claudetracking/overallplans/BENCH-VARFORGE.md)
 **Priority**: medium
 **Depends on**: BENCH-VF-005
-**Status**: todo
+**Status**: done
 
 ## Goal
 

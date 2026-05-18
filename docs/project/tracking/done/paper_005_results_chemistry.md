@@ -3,7 +3,7 @@
 **Epic**: PAPER (docs/claudetracking/overallplans/PAPER.md)
 **Priority**: high
 **Depends on**: pub_005_cross_dataset_table.md
-**Status**: todo
+**Status**: done
 
 ## Goal
 

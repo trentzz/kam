@@ -44,7 +44,7 @@ The truth set contains 375 variants: 205 SNVs and 170 indels. The baseline run s
 - **Samples:** 24 samples in a 3 × 8 factorial design.
   - DNA inputs: 5 ng, 15 ng, 30 ng.
   - VAF levels: 0%, 0.001%, 0.01%, 0.1%, 0.25%, 0.5%, 1%, 2%.
-- **FASTQs:** `/mnt/tzeng-local/tzeng-thesis/titration-nondedup/fastqs/`
+- **FASTQs:** `/path/to/titration-nondedup/fastqs/` (local thesis data)
 - **Read depth:** 2 million read pairs per sample (subsampled from the full dataset).
 - **Targets:** 100 bp padded targets at `docs/benchmarking/01-snvindel/scripts/targets_100bp.fa`.
 - **Truth VCF:** 375 variants (205 SNV, 170 indel) at `docs/benchmarking/01-snvindel/scripts/truth_variants.vcf` (0-based coordinates, used for baseline scoring).

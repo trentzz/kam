@@ -1,6 +1,6 @@
 //! Variant classification helpers: sequence analysis for classify_variant and its sub-routines.
 
-use super::types::{SV_LENGTH_THRESHOLD, VariantType};
+use super::types::{VariantType, SV_LENGTH_THRESHOLD};
 
 /// Determine variant type by comparing reference and alternate sequences.
 ///
@@ -434,7 +434,7 @@ mod tests {
         // region, 40 bp right flank.
         let flank_l: Vec<u8> = b"AAAAAAAAAA".to_vec(); // 10 bp
         let del_region: Vec<u8> = b"TTTTTTTTTT".repeat(5).to_vec(); // 50 bp, deleted
-        // 60 bp inversion region: use AAACCC repeated 10 times.
+                                                                    // 60 bp inversion region: use AAACCC repeated 10 times.
         let inv_region: Vec<u8> = b"AAACCC".repeat(10).to_vec(); // 60 bp
         let flank_r: Vec<u8> = b"GGGGGGGGGG".repeat(4).to_vec(); // 40 bp
 
@@ -508,7 +508,7 @@ mod tests {
     fn classify_novel_insertion_random_sequence() {
         // ref = 50 bp of ACGT repeats — no 'C' runs of 60 bp.
         let ref_seq: Vec<u8> = b"ACGT".repeat(12).to_vec(); // 48 bp, close enough
-        // Insert 60 bp of all-C at position 24 (midpoint of ref).
+                                                            // Insert 60 bp of all-C at position 24 (midpoint of ref).
         let novel_insert: Vec<u8> = vec![b'C'; 60];
         let alt_seq: Vec<u8> = ref_seq[..24]
             .iter()
@@ -530,7 +530,7 @@ mod tests {
     fn classify_tandem_dup_stays_tandem_duplication() {
         // ref = 100 bp of ACGT repeats.
         let ref_seq: Vec<u8> = b"ACGT".repeat(25).to_vec(); // 100 bp
-        // Duplicate 60 bp starting at position 20 and insert them at position 80.
+                                                            // Duplicate 60 bp starting at position 20 and insert them at position 80.
         let dup_bases: Vec<u8> = ref_seq[20..80].to_vec(); // 60 bp from ref
         let alt_seq: Vec<u8> = ref_seq[..80]
             .iter()
@@ -550,7 +550,7 @@ mod tests {
     #[test]
     fn classify_novel_insertion_at_sv_threshold() {
         let ref_seq: Vec<u8> = b"ACGT".repeat(25).to_vec(); // 100 bp
-        // Insert 50 bp of all-T at position 50.
+                                                            // Insert 50 bp of all-T at position 50.
         let novel_insert: Vec<u8> = vec![b'T'; 50];
         let alt_seq: Vec<u8> = ref_seq[..50]
             .iter()

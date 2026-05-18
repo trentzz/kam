@@ -3,7 +3,7 @@
 **Epic**: SV-EXPAND (docs/claudetracking/overallplans/SV-EXPAND.md)
 **Priority**: high
 **Depends on**: sv_exp_002_invdel_classification.md, sv_exp_003_novel_insertion.md, sv_exp_006_fusion_classify.md, sv_exp_009_vcf_new_sv.md
-**Status**: todo
+**Status**: done
 
 ## Goal
 

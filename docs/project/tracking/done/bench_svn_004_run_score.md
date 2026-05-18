@@ -3,7 +3,7 @@
 **Epic**: BENCH-SV-NEW (docs/claudetracking/overallplans/BENCH-SV-NEW.md)
 **Priority**: high
 **Depends on**: bench_svn_001_invdel_configs.md, bench_svn_002_novel_ins_configs.md, bench_svn_003_fusion_configs.md
-**Status**: todo
+**Status**: done
 
 ## Goal
 

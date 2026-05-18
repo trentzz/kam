@@ -3,7 +3,7 @@
 **Epic**: PUB-BENCH (docs/claudetracking/overallplans/PUB-BENCH.md)
 **Priority**: high
 **Depends on**: none
-**Status**: todo
+**Status**: done
 
 ## Goal
 

@@ -78,6 +78,7 @@ A workspace shares core data structures across crates while allowing independent
 - De novo mode: find all supported variant paths above posterior threshold
 - Output: TSV (primary, km-compatible), VCF (standard with custom INFO/FORMAT), JSON (full evidence for morning report). See `docs/research/output_format_specs.md`
 - Filter labels: PASS, STRAND_BIAS, LOW_CONFIDENCE, LOW_DUPLEX, COLLISION_RISK
+- **caller submodule layout** (`kam-call/src/caller/`): `mod.rs` — primary `call_variant` entry point; `types.rs` — `VariantCall`, `VariantFilter`, `VariantType`, `CallSource`; `classify.rs` — `classify_variant` and helpers; `stats.rs` — `estimate_vaf`, `strand_bias_test`, `compute_confidence`; `filter.rs` — `assign_filter` and `CallerConfig`.
 
 ### kam (integrated binary)
 - Wires all crates together with zero-copy data passing

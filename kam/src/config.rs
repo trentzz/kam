@@ -192,6 +192,10 @@ pub struct CallingConfig {
     /// Enable alt-walk rescue using pre-built FASTA alt sequences.
     #[serde(default)]
     pub alt_walk: bool,
+    /// Built-in ML model name for variant re-scoring.
+    pub ml_model: Option<String>,
+    /// Path to a custom ONNX model file for variant re-scoring.
+    pub custom_ml_model: Option<PathBuf>,
 }
 
 /// Logging settings.
@@ -202,6 +206,14 @@ pub struct LoggingConfig {
     pub log_dir: Option<PathBuf>,
     /// Specific log channels to enable.
     pub log: Option<Vec<String>>,
+    /// Log level (warn, info, debug).
+    pub log_level: Option<String>,
+    /// Metrics to collect (timing, resource, all).
+    pub metrics: Option<Vec<String>>,
+    /// Path to write log output (stderr if not set).
+    pub log_file: Option<PathBuf>,
+    /// Path to write metrics JSON (default: {output_dir}/metrics.json).
+    pub metrics_file: Option<PathBuf>,
 }
 
 /// Runtime settings.
@@ -327,6 +339,11 @@ impl KamConfig {
         cfg.output.qc_output = args.qc_output.clone();
 
         cfg.chemistry.preset = args.chemistry_override.clone();
+        cfg.chemistry.umi_length = args.umi_length_override.unwrap_or(cfg.chemistry.umi_length);
+        cfg.chemistry.skip_length = args
+            .skip_length_override
+            .unwrap_or(cfg.chemistry.skip_length);
+        cfg.chemistry.duplex = !args.no_duplex;
         cfg.chemistry.min_umi_quality = args.min_umi_quality_override;
         cfg.chemistry.min_template_length = args.min_template_length;
 
@@ -346,6 +363,8 @@ impl KamConfig {
         cfg.calling.ti_position_tolerance = args.ti_position_tolerance_override;
         cfg.calling.ti_rescue = args.ti_rescue;
         cfg.calling.alt_walk = args.alt_walk;
+        cfg.calling.ml_model = args.ml_model.clone();
+        cfg.calling.custom_ml_model = args.custom_ml_model.clone();
 
         cfg.logging.log_dir = args.log_dir.clone();
         cfg.logging.log = if args.log.is_empty() {
@@ -353,8 +372,17 @@ impl KamConfig {
         } else {
             Some(args.log.clone())
         };
+        cfg.logging.log_level = args.log_level.clone();
+        cfg.logging.metrics = if args.metrics.is_empty() {
+            None
+        } else {
+            Some(args.metrics.clone())
+        };
+        cfg.logging.log_file = args.log_file.clone();
+        cfg.logging.metrics_file = args.metrics_file.clone();
 
         cfg.runtime.threads = args.threads;
+        cfg.runtime.memory = args.memory;
 
         cfg
     }
@@ -418,6 +446,32 @@ impl KamConfig {
         if let Some(ref v) = args.chemistry_override {
             self.chemistry.preset = Some(v.clone());
         }
+        if let Some(v) = args.umi_length_override {
+            if self.chemistry.umi_length != v {
+                eprintln!(
+                    "warning: config field \"chemistry.umi_length = {}\" overridden by CLI \"--umi-length-override {}\"",
+                    self.chemistry.umi_length, v
+                );
+            }
+            self.chemistry.umi_length = v;
+        }
+        if let Some(v) = args.skip_length_override {
+            if self.chemistry.skip_length != v {
+                eprintln!(
+                    "warning: config field \"chemistry.skip_length = {}\" overridden by CLI \"--skip-length-override {}\"",
+                    self.chemistry.skip_length, v
+                );
+            }
+            self.chemistry.skip_length = v;
+        }
+        if args.no_duplex {
+            if self.chemistry.duplex {
+                eprintln!(
+                    "warning: config field \"chemistry.duplex = true\" overridden by CLI \"--no-duplex\""
+                );
+            }
+            self.chemistry.duplex = false;
+        }
         if let Some(v) = args.min_umi_quality_override {
             self.chemistry.min_umi_quality = Some(v);
         }
@@ -479,6 +533,18 @@ impl KamConfig {
         }
         if !args.log.is_empty() {
             self.logging.log = Some(args.log.clone());
+        }
+        if let Some(ref v) = args.log_level {
+            self.logging.log_level = Some(v.clone());
+        }
+        if !args.metrics.is_empty() {
+            self.logging.metrics = Some(args.metrics.clone());
+        }
+        if let Some(ref v) = args.log_file {
+            self.logging.log_file = Some(v.clone());
+        }
+        if let Some(ref v) = args.metrics_file {
+            self.logging.metrics_file = Some(v.clone());
         }
 
         // Runtime fields.
@@ -849,6 +915,13 @@ min_family_size = 3
             memory: None,
             ml_model: None,
             custom_ml_model: None,
+            log_level: None,
+            metrics: vec![],
+            metrics_file: None,
+            log_file: None,
+            umi_length_override: None,
+            skip_length_override: None,
+            no_duplex: false,
         }
     }
 
@@ -1033,6 +1106,10 @@ ti_rescue = true
 
 [logging]
 log_dir = "/logs"
+log_level = "info"
+metrics = ["timing", "resource"]
+# log_file = "/logs/kam.log"          # stderr if absent
+# metrics_file = "/results/metrics.json"  # {output_dir}/metrics.json if absent
 
 [runtime]
 threads = 4
