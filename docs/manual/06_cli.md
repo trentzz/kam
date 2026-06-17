@@ -1403,7 +1403,7 @@ kam explore results/molecules.bin
 ```
 
 ```
-kam explore v0.3.0
+kam explore v0.4.0
 Loaded: molecules.bin (612,847 molecules, 4,821,044 input reads)
 Type 'help' for commands, 'quit' to exit.
 

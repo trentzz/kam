@@ -29,7 +29,7 @@ have identified a structural event in a tumour and want to monitor it in liquid 
 | BAM with the SV | Tumour or tissue biopsy BAM showing chimeric reads spanning the junction |
 | cfDNA FASTQs | Paired R1/R2 FASTQ files from plasma samples (Twist UMI duplex chemistry) |
 | Panel targets | FASTA of your standard panel target windows (`--targets`) |
-| kam binary | Version 0.3.0 or later (junction sequence support) |
+| kam binary | Version 0.4.0 or later (junction sequence support) |
 
 You do not need a reference genome. kam is alignment-free.
 

@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-06-17
+
+### Added
+- Streaming molecule index: molecules are indexed per-batch instead of accumulated in memory, fixing the 42 GB memory bottleneck at WGS scale.
+
+### Changed
+- Migration from bincode 1.x to 2.x (resolves RUSTSEC-2025-0141). Uses bincode::config::legacy() for backward-compatible file format.
+- Version bumped from 0.3.1 to 0.4.0.
+
+---
+
 ## [0.3.1] - 2026-05-18
 
 ### Added
@@ -137,3 +148,5 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - ML model artefacts consolidated: mislabelled v2 artefacts renamed to `v2b`;
   v3 label reserved for the ML3 training dataset.
 - Training CSVs compressed before Nextcloud upload to avoid gateway timeouts.
+
+[0.4.0]: https://github.com/trentzz/kam/compare/v0.3.1...v0.4.0
