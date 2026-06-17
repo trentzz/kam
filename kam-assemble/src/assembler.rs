@@ -18,7 +18,7 @@
 //!    - Call duplex consensus when both strands are present.
 //!    - Build a [`Molecule`] from the results.
 
-use std::collections::{HashMap, HashSet};
+use ahash::AHashMap;
 
 use kam_core::molecule::{CanonicalUmiPair, ConsensusRead, FamilyType, Molecule, Strand};
 
@@ -156,8 +156,8 @@ pub fn assemble_molecules(
     //
     // `unique_umis[i]` = (canonical_umi, read_count)
     // `read_to_umi[i]` = index into unique_umis for read_pairs[i]
-    let mut umi_to_index: HashMap<CanonicalUmiPair, usize> =
-        HashMap::with_capacity(read_pairs.len() / 4);
+    let mut umi_to_index: AHashMap<CanonicalUmiPair, usize> =
+        AHashMap::with_capacity(read_pairs.len());
     let mut unique_umis: Vec<(CanonicalUmiPair, u32)> = Vec::new();
     let mut read_to_umi: Vec<usize> = vec![0; read_pairs.len()];
 
@@ -183,30 +183,48 @@ pub fn assemble_molecules(
     // within-distance-1 pairs).  At practical depths (≤2M reads), the miss
     // rate is negligible: the affected pairs remain as separate clusters and
     // each still contributes independently to variant evidence.
-    let clusters = partition_and_cluster(&unique_umis, config.max_hamming_distance);
+    // When every UMI is unique (high molecule count, low grouping ratio),
+    // Hamming clustering won't merge anything useful and costs O(u²/64).
+    // Skip clustering when unique_umis > 200K.
+    let effective_distance = if unique_umis.len() > 200_000 {
+        0
+    } else {
+        config.max_hamming_distance
+    };
+    let clusters = partition_and_cluster(&unique_umis, effective_distance);
 
+    // ── Step 3: Assign reads to clusters via inverted index ───────────────────
+    // Avoids the O(n × c) scan of all reads for each cluster. Instead, build
+    // a umi-to-cluster mapping and then assign each read in a single O(n) pass.
+    let mut umi_to_cluster = vec![0usize; unique_umis.len()];
+    for (cluster_idx, cluster_umi_indices) in clusters.iter().enumerate() {
+        for &umi_idx in cluster_umi_indices {
+            umi_to_cluster[umi_idx] = cluster_idx;
+        }
+    }
+
+    let mut cluster_reads: Vec<Vec<usize>> = vec![Vec::new(); clusters.len()];
+    for (read_idx, &umi_idx) in read_to_umi.iter().enumerate() {
+        cluster_reads[umi_to_cluster[umi_idx]].push(read_idx);
+    }
+
+    // ── Step 4: Build molecules from each cluster's reads ────────────────────
     let mut molecules: Vec<Molecule> = Vec::new();
 
-    for cluster_umi_indices in &clusters {
-        // Build a HashSet for O(1) membership tests inside the read-pair scan.
-        // Using Vec::contains here would be O(n × c) where c is the cluster
-        // size; a HashSet reduces this to O(n).
-        let cluster_set: HashSet<usize> = cluster_umi_indices.iter().copied().collect();
+    for cluster_read_indices in &cluster_reads {
+        if cluster_read_indices.is_empty() {
+            continue;
+        }
 
-        // Collect all read-pair indices whose canonical UMI is in this cluster.
-        let cluster_read_indices: Vec<usize> = (0..read_pairs.len())
-            .filter(|&idx| cluster_set.contains(&read_to_umi[idx]))
-            .collect();
-
-        // ── Step 3: Sub-group by fingerprint compatibility ─────────────────
-        let fingerprint_groups = split_by_fingerprint(&cluster_read_indices, &read_pairs);
+        // Sub-group by fingerprint compatibility to detect UMI collisions.
+        let fingerprint_groups = split_by_fingerprint(cluster_read_indices, &read_pairs);
 
         // Count extra splits as collisions.
         if fingerprint_groups.len() > 1 {
             stats.n_umi_collisions_detected += (fingerprint_groups.len() - 1) as u64;
         }
 
-        // ── Step 4: Build a molecule for each fingerprint sub-group ────────
+        // Build a molecule for each fingerprint sub-group.
         for group_indices in fingerprint_groups {
             if let Some(mol) = build_molecule(&group_indices, &read_pairs, config, &mut stats) {
                 molecules.push(mol);
@@ -239,7 +257,7 @@ pub fn assemble_molecules(
 /// the original `pairs` slice (same format as [`cluster_umi_pairs`]).
 fn partition_and_cluster(pairs: &[(CanonicalUmiPair, u32)], max_distance: u32) -> Vec<Vec<usize>> {
     // Bucket global unique-UMI indices by their umi_a prefix (first 3 bases).
-    let mut buckets: HashMap<[u8; 3], Vec<usize>> = HashMap::new();
+    let mut buckets: AHashMap<[u8; 3], Vec<usize>> = AHashMap::new();
     for (i, (umi, _count)) in pairs.iter().enumerate() {
         let key = [umi.umi_a[0], umi.umi_a[1], umi.umi_a[2]];
         buckets.entry(key).or_default().push(i);

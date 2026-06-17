@@ -34,14 +34,11 @@ cargo test
 Also verify the version number in `Cargo.toml` (`[workspace.package]`) matches
 the intended release tag.
 
-### v0.4.0 requirement: bincode migration
+### v0.4.0: bincode migration (complete)
 
-Before cutting the v0.4.0 release, migrate from `bincode 1.x` to `bincode 2.x`.
-The on-disk format will change, so the migration requires a version header in
-all serialised files and either a `kam convert` sub-command or clear rejection
-of v1 files. See decisions log entry 2026-04-20 for context. Do not skip this:
-RUSTSEC-2025-0141 is currently allowed in `audit.toml` only until this migration
-is complete.
+The migration from `bincode 1.x` to `bincode 2.x` was completed in v0.4.0,
+resolving RUSTSEC-2025-0141. The on-disk format uses `bincode::config::legacy()`
+for backward compatibility with v0.3.x files.
 
 ---
 

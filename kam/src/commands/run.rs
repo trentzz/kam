@@ -11,7 +11,8 @@ use std::fs::{self, File};
 use std::io::BufWriter;
 
 use kam_assemble::assembler::assemble_molecules;
-use kam_assemble::io::read_fastq_pairs;
+use kam_assemble::io::read_fastq_pairs_from_readers;
+use kam_assemble::parser::ParseStats;
 use rayon::ThreadPoolBuilder;
 
 use crate::memory_budget::MemoryBudget;
@@ -26,7 +27,6 @@ use kam_core::kmer::KmerIndex;
 use kam_core::qc::{write_qc, AssemblyQc, CallQc, IndexQc, PathfindQc};
 use kam_index::allowlist::build_allowlist;
 use kam_index::encode::{canonical, encode_kmer, reverse_complement, KmerIterator};
-use kam_index::extract::ConsensusReadInfo;
 use kam_index::HashKmerIndex;
 use kam_pathfind::anchor::{validate_anchors, DEFAULT_ANCHOR_THRESHOLD};
 use kam_pathfind::graph::DeBruijnGraph;
@@ -91,53 +91,8 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
         budget
     });
 
-    // ── Stage 1: Assemble ─────────────────────────────────────────────────────
-    let mut timer_assemble = StageTimer::new("assemble");
-    let parser_config = cfg.to_parser_config();
-    let assembler_config = cfg.to_assembler_config();
-
-    let (read_pairs, parse_stats) = read_fastq_pairs(r1, r2, &parser_config)?;
-    let (molecules, mut assembly_stats) = assemble_molecules(read_pairs, &assembler_config);
-    assembly_stats.parse_stats = parse_stats;
-
-    let n_molecules = assembly_stats.n_molecules;
-    let n_input = assembly_stats.parse_stats.n_processed;
-    let n_dropped = n_input.saturating_sub(assembly_stats.parse_stats.n_passed);
-    let duplex_fraction = if n_molecules > 0 {
-        assembly_stats.n_duplex as f64 / n_molecules as f64
-    } else {
-        0.0
-    };
-    let mean_family_size = if n_molecules > 0 {
-        (assembly_stats.parse_stats.n_passed as f64) / (n_molecules as f64)
-    } else {
-        0.0
-    };
-
-    let assembly_qc = AssemblyQc {
-        stage: "molecule_assembly".to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-        n_input_read_pairs: n_input,
-        n_molecules,
-        n_duplex: assembly_stats.n_duplex,
-        n_simplex_fwd: assembly_stats.n_simplex_fwd,
-        n_simplex_rev: assembly_stats.n_simplex_rev,
-        n_singletons: assembly_stats.n_singletons,
-        duplex_fraction,
-        mean_family_size,
-        n_dropped_reads: n_dropped,
-        passed: true,
-    };
-    write_qc(&output_dir.join("assembly_qc.json"), &assembly_qc)?;
-    let stage_assemble = timer_assemble.finish();
-    log::info!(
-        "[run/assemble] molecules={} duplex={} elapsed_ms={}",
-        n_molecules,
-        assembly_stats.n_duplex,
-        stage_assemble.elapsed_ms,
-    );
-
-    // ── Stage 2: Index ────────────────────────────────────────────────────────
+    // ── Prepare: build allowlist before assembly so per-batch indexing can
+    //              check target overlap without a second pass. ───────────────
     let mut timer_index = StageTimer::new("index");
     let targets = read_fasta(targets_path)?;
     let target_slices: Vec<&[u8]> = targets.iter().map(|(_id, seq)| seq.as_slice()).collect();
@@ -231,39 +186,158 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             vec![]
         };
 
-    let n_target_kmers = allowlist.len() as u64;
+    // ── Stage 1: Assemble ─────────────────────────────────────────────────────
+    let mut timer_assemble = StageTimer::new("assemble");
+    let parser_config = cfg.to_parser_config();
+    let assembler_config = cfg.to_assembler_config();
 
-    // Two-pass indexing: include ALL k-mers from molecules that overlap a
-    // target region, not just exact target k-mers.
-    //
-    // Pass 1 (allowlist check): a molecule "overlaps a target" if ANY of its
-    //   k-mers is in the allowlist.  This identifies on-target molecules.
-    //
-    // Pass 2 (full extraction): index every k-mer from on-target molecules,
-    //   including variant k-mers that differ from the reference.  These
-    //   non-allowlist k-mers are essential for de Bruijn graph variant paths.
-    //
-    // Off-target molecules (no k-mer in allowlist) are skipped for efficiency.
-    let reads: Vec<ConsensusReadInfo> = molecules_to_consensus_reads(&molecules);
+    // Determine batch size: use memory budget when available, else default 2M.
+    let batch_size = _memory_budget
+        .as_ref()
+        .map(|b| {
+            // Assume ~400 bytes per read pair (5 UMI + 2 skip + ~150 template
+            // + quality strings + Vec overhead).
+            let bytes_per_pair = 400usize;
+            let batch_bytes = b.read_batch_bytes();
+            // Floor at 100k so tiny budgets still produce reasonable batches.
+            (batch_bytes / bytes_per_pair).max(100_000)
+        })
+        .unwrap_or(2_000_000);
+
     let mut index = HashKmerIndex::new();
-    for read in &reads {
-        let overlaps_target = KmerIterator::new(&read.sequence, k)
-            .any(|(_, km)| allowlist.contains(&canonical(km, k)));
-        if overlaps_target {
-            kam_index::extract::extract_and_index(read, k, &mut index);
+    let mut raw_kmer_counts: HashMap<u64, u32> = HashMap::new();
+    let mut cum_parse_stats = ParseStats::default();
+    let mut cum_assembly_stats = kam_assemble::assembler::AssemblyStats::default();
+
+    // Open FASTQ readers, handling empty files before creating readers
+    // (needletail returns an error for empty files, not an empty reader).
+    let r1_result = needletail::parse_fastx_file(r1);
+    let r2_result = needletail::parse_fastx_file(r2);
+
+    let r1_empty = r1_result
+        .as_ref()
+        .err()
+        .map(|e| e.kind == needletail::errors::ParseErrorKind::EmptyFile)
+        .unwrap_or(false);
+    let r2_empty = r2_result
+        .as_ref()
+        .err()
+        .map(|e| e.kind == needletail::errors::ParseErrorKind::EmptyFile)
+        .unwrap_or(false);
+
+    if r1_empty && r2_empty {
+        log::info!("[run/assemble] both FASTQ files empty, zero molecules");
+    } else if r1_empty || r2_empty {
+        return Err(
+            "One FASTQ file is empty and the other is not: mismatched record counts".into(),
+        );
+    } else {
+        let mut r1_reader = r1_result.unwrap();
+        let mut r2_reader = r2_result.unwrap();
+
+        loop {
+            let (batch, batch_parse) = read_fastq_pairs_from_readers(
+                r1_reader.as_mut(),
+                r2_reader.as_mut(),
+                &parser_config,
+                batch_size,
+            )?;
+            if batch.is_empty() {
+                break;
+            }
+
+            let (mols, asm_stats) = assemble_molecules(batch, &assembler_config);
+
+            // Accumulate parse stats across batches.
+            cum_parse_stats.n_processed += batch_parse.n_processed;
+            cum_parse_stats.n_passed += batch_parse.n_passed;
+            cum_parse_stats.n_read_too_short += batch_parse.n_read_too_short;
+            cum_parse_stats.n_template_too_short += batch_parse.n_template_too_short;
+            cum_parse_stats.n_low_umi_quality += batch_parse.n_low_umi_quality;
+
+            // Accumulate assembly stats across batches.
+            cum_assembly_stats.n_molecules += asm_stats.n_molecules;
+            cum_assembly_stats.n_duplex += asm_stats.n_duplex;
+            cum_assembly_stats.n_simplex_fwd += asm_stats.n_simplex_fwd;
+            cum_assembly_stats.n_simplex_rev += asm_stats.n_simplex_rev;
+            cum_assembly_stats.n_singletons += asm_stats.n_singletons;
+            cum_assembly_stats.n_families_below_min_size += asm_stats.n_families_below_min_size;
+            cum_assembly_stats.n_umi_collisions_detected += asm_stats.n_umi_collisions_detected;
+
+            // Stream molecules directly into the index per-batch.
+            // This avoids accumulating all molecules in memory.
+            let reads = molecules_to_consensus_reads(&mols);
+            for read in &reads {
+                let overlaps_target = KmerIterator::new(&read.sequence, k)
+                    .any(|(_, km)| allowlist.contains(&canonical(km, k)));
+                if overlaps_target {
+                    kam_index::extract::extract_and_index(read, k, &mut index);
+                }
+            }
+            for read in &reads {
+                let overlaps_target = KmerIterator::new(&read.sequence, k)
+                    .any(|(_, km)| allowlist.contains(&canonical(km, k)));
+                if overlaps_target {
+                    for (_, raw_km) in KmerIterator::new(&read.sequence, k) {
+                        *raw_kmer_counts.entry(raw_km).or_insert(0) += 1;
+                        *raw_kmer_counts
+                            .entry(reverse_complement(raw_km, k))
+                            .or_insert(0) += 1;
+                    }
+                }
+            }
+            // reads and mols go out of scope here — memory freed per batch.
+
+            log::info!(
+                "[run/assemble] batch: {} pairs, {} molecules ({} total processed)",
+                batch_parse.n_processed,
+                cum_assembly_stats.n_molecules,
+                cum_parse_stats.n_processed,
+            );
         }
     }
 
-    let n_kmers_observed = index.len() as u64;
-    let mean_molecule_depth = if n_kmers_observed > 0 {
-        index
-            .iter()
-            .map(|(_, ev)| ev.n_molecules as f64)
-            .sum::<f64>()
-            / n_kmers_observed as f64
+    let mut assembly_stats = cum_assembly_stats;
+    assembly_stats.parse_stats = cum_parse_stats;
+
+    let n_molecules = assembly_stats.n_molecules;
+    let n_input = assembly_stats.parse_stats.n_processed;
+    let n_dropped = n_input.saturating_sub(assembly_stats.parse_stats.n_passed);
+    let duplex_fraction = if n_molecules > 0 {
+        assembly_stats.n_duplex as f64 / n_molecules as f64
     } else {
         0.0
     };
+    let mean_family_size = if n_molecules > 0 {
+        (assembly_stats.parse_stats.n_passed as f64) / (n_molecules as f64)
+    } else {
+        0.0
+    };
+
+    let assembly_qc = AssemblyQc {
+        stage: "molecule_assembly".to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        n_input_read_pairs: n_input,
+        n_molecules,
+        n_duplex: assembly_stats.n_duplex,
+        n_simplex_fwd: assembly_stats.n_simplex_fwd,
+        n_simplex_rev: assembly_stats.n_simplex_rev,
+        n_singletons: assembly_stats.n_singletons,
+        duplex_fraction,
+        mean_family_size,
+        n_dropped_reads: n_dropped,
+        passed: true,
+    };
+    write_qc(&output_dir.join("assembly_qc.json"), &assembly_qc)?;
+    let stage_assemble = timer_assemble.finish();
+    log::info!(
+        "[run/assemble] molecules={} duplex={} elapsed_ms={}",
+        n_molecules,
+        assembly_stats.n_duplex,
+        stage_assemble.elapsed_ms,
+    );
+
+    let n_target_kmers = allowlist.len() as u64;
 
     // Build a raw (non-canonical) k-mer index for de Bruijn graph construction.
     //
@@ -277,26 +351,6 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
     // The raw index stores k-mers in the original orientation AND their reverse
     // complements so that every read direction is represented.  The graph is
     // then built from this raw index; scoring still uses the canonical index.
-    //
-    // Pass 1: count how many on-target molecules each raw k-mer (and its
-    // reverse complement) appears in.  Using real molecule counts rather than a
-    // sentinel 1 allows the graph to later filter low-evidence k-mers by
-    // molecule support.
-    let mut raw_kmer_counts: HashMap<u64, u32> = HashMap::new();
-    for read in &reads {
-        let overlaps_target = KmerIterator::new(&read.sequence, k)
-            .any(|(_, km)| allowlist.contains(&canonical(km, k)));
-        if overlaps_target {
-            for (_, raw_km) in KmerIterator::new(&read.sequence, k) {
-                *raw_kmer_counts.entry(raw_km).or_insert(0) += 1;
-                *raw_kmer_counts
-                    .entry(reverse_complement(raw_km, k))
-                    .or_insert(0) += 1;
-            }
-        }
-    }
-
-    // Pass 2: build the raw graph index from the counted k-mers.
     let mut raw_graph_index = HashKmerIndex::new();
     for (raw_km, count) in raw_kmer_counts {
         raw_graph_index.insert(
@@ -307,6 +361,18 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             },
         );
     }
+
+    // Index metrics.
+    let n_kmers_observed = index.len() as u64;
+    let mean_molecule_depth = if n_kmers_observed > 0 {
+        index
+            .iter()
+            .map(|(_, ev)| ev.n_molecules as f64)
+            .sum::<f64>()
+            / n_kmers_observed as f64
+    } else {
+        0.0
+    };
 
     let index_qc = IndexQc {
         stage: "kmer_indexing".to_string(),
@@ -1525,7 +1591,9 @@ pub fn run_pipeline(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
         let table = format_metrics_table(&stages, total_elapsed, total_cpu, peak_rss);
         eprintln!("{}", table);
 
-        let metrics_path = cfg.logging.metrics_file
+        let metrics_path = cfg
+            .logging
+            .metrics_file
             .clone()
             .unwrap_or_else(|| output_dir.join("metrics.json"));
         let run_metrics = RunMetrics {

@@ -68,8 +68,14 @@ pub fn read_cpu_time_ms() -> u64 {
     let fields: Vec<&str> = after_comm.split_whitespace().collect();
 
     // Fields 14 and 15 are zero-indexed at indices 12 and 13.
-    let utime = fields.get(12).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
-    let stime = fields.get(13).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+    let utime = fields
+        .get(12)
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(0);
+    let stime = fields
+        .get(13)
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(0);
 
     // Convert clock ticks to milliseconds (assuming 100 Hz).
     // Use saturating arithmetic in case of overflow.
