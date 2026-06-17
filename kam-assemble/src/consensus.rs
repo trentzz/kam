@@ -145,6 +145,10 @@ pub fn single_strand_consensus(
         let depth = sequences.len().min(u8::MAX as usize) as u8;
 
         for (seq, qual) in sequences.iter().zip(qualities.iter()) {
+            // Skip sequences shorter than current position (fwd/rev can differ in length).
+            if pos >= seq.len() || pos >= qual.len() {
+                continue;
+            }
             let base = seq[pos];
             let q_raw = qual[pos].saturating_sub(33); // Phred+33 → Phred
             if q_raw < config.min_base_quality {
@@ -309,7 +313,7 @@ pub fn duplex_consensus(
     // template), but must not panic in library code. Return None with a
     // diagnostic message so the caller can log and skip the molecule.
     if fwd_ssc.len() != rev_ssc.len() {
-        log::warn!(
+        log::debug!(
             "duplex_consensus: length mismatch (fwd={}, rev={}) — skipping molecule",
             fwd_ssc.len(),
             rev_ssc.len()

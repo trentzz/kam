@@ -61,7 +61,7 @@ pub fn run_assemble(args: AssembleArgs) -> Result<(), Box<dyn std::error::Error>
     };
 
     // ── 3. Read FASTQ pairs ───────────────────────────────────────────────────
-    let (read_pairs, parse_stats) = read_fastq_pairs(&args.r1, &args.r2, &parser_config)?;
+    let (read_pairs, parse_stats) = read_fastq_pairs(&args.r1, &args.r2, &parser_config, None)?;
 
     // ── 4. Assemble molecules ─────────────────────────────────────────────────
     let (molecules, mut assembly_stats) = assemble_molecules(read_pairs, &assembler_config);

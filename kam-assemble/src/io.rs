@@ -5,6 +5,8 @@
 
 use std::path::Path;
 
+use needletail::parser::FastxReader;
+
 use crate::parser::{
     parse_read_pair, DropReason, ParseResult, ParseStats, ParsedReadPair, ParserConfig,
 };
@@ -16,6 +18,9 @@ use crate::parser::{
 /// Opens `r1_path` and `r2_path` with `needletail`, iterates both files in
 /// lockstep, and passes each pair through [`crate::parser::parse_read_pair`].
 ///
+/// When `max_reads` is `Some(n)`, only the first `n` read pairs are processed
+/// from each file.  When `None`, all pairs are read.
+///
 /// Reads that pass the parser filters are collected into the returned `Vec`.
 /// Reads that are dropped (e.g. too short, low UMI quality) are counted in
 /// [`ParseStats`] but not included in the `Vec`.
@@ -25,6 +30,7 @@ use crate::parser::{
 /// Returns an error if:
 /// - Either file cannot be opened or contains malformed FASTQ records.
 /// - R1 and R2 have a different number of records.
+/// - One file is empty and the other is not.
 ///
 /// # Examples
 ///
@@ -34,10 +40,12 @@ use crate::parser::{
 /// use kam_assemble::parser::ParserConfig;
 ///
 /// let config = ParserConfig::default();
+/// // Read all pairs (no limit)
 /// let (pairs, stats) = read_fastq_pairs(
 ///     Path::new("R1.fastq"),
 ///     Path::new("R2.fastq"),
 ///     &config,
+///     None,
 /// ).unwrap();
 /// println!("Passed: {}", stats.n_passed);
 /// ```
@@ -45,74 +53,109 @@ pub fn read_fastq_pairs(
     r1_path: &Path,
     r2_path: &Path,
     config: &ParserConfig,
+    max_reads: Option<usize>,
 ) -> Result<(Vec<ParsedReadPair>, ParseStats), Box<dyn std::error::Error>> {
-    // needletail returns an `EmptyFile` error when the file contains no bytes.
-    // Treat that as a valid empty input rather than a hard failure.
-    let r1_reader_result = needletail::parse_fastx_file(r1_path);
-    let r2_reader_result = needletail::parse_fastx_file(r2_path);
-
-    let is_empty_file_err = |e: &needletail::errors::ParseError| {
-        e.kind == needletail::errors::ParseErrorKind::EmptyFile
-    };
-
-    // If both are empty, return immediately.
-    let (r1_empty, r2_empty) = (
-        r1_reader_result
-            .as_ref()
-            .err()
-            .map(is_empty_file_err)
-            .unwrap_or(false),
-        r2_reader_result
-            .as_ref()
-            .err()
-            .map(is_empty_file_err)
-            .unwrap_or(false),
-    );
-
-    if r1_empty && r2_empty {
-        return Ok((Vec::new(), ParseStats::default()));
-    }
-    if r1_empty || r2_empty {
-        return Err("One file is empty and the other is not: mismatched record counts".into());
+    // Handle empty files before opening readers.
+    match check_empty_pair(r1_path, r2_path)? {
+        EmptyPair::Both => return Ok((Vec::new(), ParseStats::default())),
+        EmptyPair::Neither => {}
     }
 
-    let mut r1_reader = r1_reader_result?;
-    let mut r2_reader = r2_reader_result?;
+    let mut r1_reader = needletail::parse_fastx_file(r1_path)?;
+    let mut r2_reader = needletail::parse_fastx_file(r2_path)?;
+    read_fastq_pairs_from_readers(
+        r1_reader.as_mut(),
+        r2_reader.as_mut(),
+        config,
+        max_reads.unwrap_or(usize::MAX),
+    )
+}
 
+/// Read a batch of paired FASTQ records from already-opened readers.
+///
+/// Reads up to `max_reads` record pairs from the current stream position of
+/// `r1_reader` and `r2_reader`.  Both readers must have the same number of
+/// remaining records; a mismatch is treated as an error.
+///
+/// Returns `Ok((vec, stats))`.  The vec is empty when both streams are
+/// exhausted.  R1/R2 record count mismatch (one stream exhausted before the
+/// other) is returned as an error.
+///
+/// This function is designed for streaming batch processing: open the FASTQ
+/// files once, then call this function in a loop with a fixed `max_reads`
+/// until the returned vec is empty.
+///
+/// Note: this function does NOT handle empty-file detection.  The caller
+/// should use [`check_empty_pair`] to handle empty files before calling
+/// this function, or open the files directly with
+/// [`needletail::parse_fastx_file`].
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - A record is malformed.
+/// - R1 and R2 have a different number of remaining records.
+///
+/// # Examples
+///
+/// ```no_run
+/// use std::path::Path;
+/// use needletail::parse_fastx_file;
+/// use kam_assemble::io::read_fastq_pairs_from_readers;
+/// use kam_assemble::parser::ParserConfig;
+///
+/// let config = ParserConfig::default();
+/// let mut r1 = parse_fastx_file("R1.fastq").unwrap();
+/// let mut r2 = parse_fastx_file("R2.fastq").unwrap();
+///
+/// loop {
+///     let (batch, stats) = read_fastq_pairs_from_readers(
+///         r1.as_mut(),
+///         r2.as_mut(),
+///         &config,
+///         2_000_000,
+///     ).unwrap();
+///     if batch.is_empty() { break; }
+///     eprintln!("Read {} pairs ({} passed)", stats.n_processed, stats.n_passed);
+/// }
+/// ```
+pub fn read_fastq_pairs_from_readers(
+    r1_reader: &mut dyn FastxReader,
+    r2_reader: &mut dyn FastxReader,
+    config: &ParserConfig,
+    max_reads: usize,
+) -> Result<(Vec<ParsedReadPair>, ParseStats), Box<dyn std::error::Error>> {
     let mut pairs: Vec<ParsedReadPair> = Vec::new();
     let mut stats = ParseStats::default();
+    let mut count: usize = 0;
 
     loop {
+        if count >= max_reads {
+            break;
+        }
+
         let r1_rec = r1_reader.next();
         let r2_rec = r2_reader.next();
 
         match (r1_rec, r2_rec) {
-            // Both files exhausted — normal end.
             (None, None) => break,
-
-            // R1 has a record but R2 does not (R2 is shorter).
             (Some(_), None) => {
                 return Err(
                     "R1 has more records than R2: files have mismatched record counts".into(),
                 );
             }
-
-            // R2 has a record but R1 does not (R1 is shorter).
             (None, Some(_)) => {
                 return Err(
                     "R2 has more records than R1: files have mismatched record counts".into(),
                 );
             }
-
-            // Both files have a record — parse the pair.
             (Some(r1_result), Some(r2_result)) => {
+                count += 1;
                 let r1 = r1_result?;
                 let r2 = r2_result?;
 
                 let r1_seq = r1.seq();
                 let r2_seq = r2.seq();
-                // `qual()` returns `Option<&[u8]>`; fall back to an empty
-                // slice when quality data is absent (FASTA input).
                 let r1_qual: &[u8] = r1.qual().unwrap_or(&[]);
                 let r2_qual: &[u8] = r2.qual().unwrap_or(&[]);
 
@@ -134,6 +177,46 @@ pub fn read_fastq_pairs(
     }
 
     Ok((pairs, stats))
+}
+
+/// Result of checking whether FASTQ files are empty.
+pub enum EmptyPair {
+    /// Both files are empty.
+    Both,
+    /// Neither file is empty (or they could not be checked).
+    Neither,
+}
+
+/// Check whether both FASTQ files are empty.
+///
+/// Returns `EmptyPair::Both` when both files are empty (zero bytes), which is a
+/// valid input that simply produces zero records.  Returns an error when one
+/// file is empty and the other is not (mismatched input).
+///
+/// This is useful for callers that want to handle empty files before opening
+/// readers (since `needletail::parse_fastx_file` returns an error for empty
+/// files rather than an empty reader).
+pub fn check_empty_pair(
+    r1_path: &Path,
+    r2_path: &Path,
+) -> Result<EmptyPair, Box<dyn std::error::Error>> {
+    let r1_result = needletail::parse_fastx_file(r1_path);
+    let r2_result = needletail::parse_fastx_file(r2_path);
+
+    let is_empty_err = |e: &needletail::errors::ParseError| {
+        e.kind == needletail::errors::ParseErrorKind::EmptyFile
+    };
+
+    let r1_empty = r1_result.as_ref().err().map(is_empty_err).unwrap_or(false);
+    let r2_empty = r2_result.as_ref().err().map(is_empty_err).unwrap_or(false);
+
+    match (r1_empty, r2_empty) {
+        (true, true) => Ok(EmptyPair::Both),
+        (true, false) | (false, true) => {
+            Err("One file is empty and the other is not: mismatched record counts".into())
+        }
+        (false, false) => Ok(EmptyPair::Neither),
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -184,7 +267,7 @@ mod tests {
         write_fastq(&r2_path, &[("read1", &r2_seq, &r2_qual)]);
 
         let config = ParserConfig::default();
-        let (pairs, stats) = read_fastq_pairs(&r1_path, &r2_path, &config).unwrap();
+        let (pairs, stats) = read_fastq_pairs(&r1_path, &r2_path, &config, None).unwrap();
 
         assert_eq!(pairs.len(), 1, "expected one parsed pair");
         assert_eq!(stats.n_processed, 1);
@@ -216,7 +299,7 @@ mod tests {
         write_fastq(&r2_path, &[("read1", &seq, &qual)]);
 
         let config = ParserConfig::default();
-        let result = read_fastq_pairs(&r1_path, &r2_path, &config);
+        let result = read_fastq_pairs(&r1_path, &r2_path, &config, None);
         assert!(
             result.is_err(),
             "expected error for mismatched record counts"
@@ -240,7 +323,7 @@ mod tests {
         write_fastq(&r2_path, &[]);
 
         let config = ParserConfig::default();
-        let (pairs, stats) = read_fastq_pairs(&r1_path, &r2_path, &config).unwrap();
+        let (pairs, stats) = read_fastq_pairs(&r1_path, &r2_path, &config, None).unwrap();
 
         assert!(pairs.is_empty(), "expected empty vec");
         assert_eq!(stats.n_processed, 0);
@@ -279,7 +362,7 @@ mod tests {
         );
 
         let config = ParserConfig::default();
-        let (pairs, stats) = read_fastq_pairs(&r1_path, &r2_path, &config).unwrap();
+        let (pairs, stats) = read_fastq_pairs(&r1_path, &r2_path, &config, None).unwrap();
 
         assert_eq!(pairs.len(), 1, "only the valid pair should be collected");
         assert_eq!(stats.n_processed, 2);
@@ -318,7 +401,7 @@ mod tests {
         write_fastq(&r2_path, &r1_records);
 
         let config = ParserConfig::default();
-        let (pairs, stats) = read_fastq_pairs(&r1_path, &r2_path, &config).unwrap();
+        let (pairs, stats) = read_fastq_pairs(&r1_path, &r2_path, &config, None).unwrap();
 
         assert_eq!(pairs.len(), 5);
         assert_eq!(stats.n_processed, 5);
@@ -341,7 +424,7 @@ mod tests {
         write_fastq(&r2_path, &[("read1", &seq, &qual), ("read2", &seq, &qual)]);
 
         let config = ParserConfig::default();
-        let result = read_fastq_pairs(&r1_path, &r2_path, &config);
+        let result = read_fastq_pairs(&r1_path, &r2_path, &config, None);
         assert!(
             result.is_err(),
             "expected error for mismatched record counts"
@@ -382,7 +465,7 @@ mod tests {
         }
 
         let config = ParserConfig::default();
-        let (pairs, stats) = read_fastq_pairs(&r1_gz_path, &r2_gz_path, &config).unwrap();
+        let (pairs, stats) = read_fastq_pairs(&r1_gz_path, &r2_gz_path, &config, None).unwrap();
 
         assert_eq!(pairs.len(), 1, "expected one parsed pair from gzip input");
         assert_eq!(stats.n_processed, 1);
@@ -411,7 +494,7 @@ mod tests {
         write_fastq(&r2_path, &[("read1", "", "")]);
 
         let config = ParserConfig::default();
-        let (pairs, stats) = read_fastq_pairs(&r1_path, &r2_path, &config).unwrap();
+        let (pairs, stats) = read_fastq_pairs(&r1_path, &r2_path, &config, None).unwrap();
         assert!(pairs.is_empty(), "empty-sequence record should be dropped");
         assert_eq!(stats.n_processed, 1);
         assert_eq!(stats.n_read_too_short, 1);
@@ -432,7 +515,7 @@ mod tests {
         write_fastq(&r2_path, &[("read1", &seq, &qual)]);
 
         let config = ParserConfig::default();
-        let result = read_fastq_pairs(&r1_path, &r2_path, &config);
+        let result = read_fastq_pairs(&r1_path, &r2_path, &config, None);
         assert!(
             result.is_err(),
             "R1 empty + R2 non-empty should return error"
@@ -459,7 +542,7 @@ mod tests {
         write_fastq(&r2_path, &[]); // empty
 
         let config = ParserConfig::default();
-        let result = read_fastq_pairs(&r1_path, &r2_path, &config);
+        let result = read_fastq_pairs(&r1_path, &r2_path, &config, None);
         assert!(
             result.is_err(),
             "R1 non-empty + R2 empty should return error"
@@ -478,7 +561,7 @@ mod tests {
         write_fastq(&r2_path, &[("r1", "ACGT", "IIII"), ("r2", "TGCA", "IIII")]);
 
         let config = ParserConfig::default();
-        let (pairs, stats) = read_fastq_pairs(&r1_path, &r2_path, &config).unwrap();
+        let (pairs, stats) = read_fastq_pairs(&r1_path, &r2_path, &config, None).unwrap();
         assert!(pairs.is_empty());
         assert_eq!(stats.n_processed, 2);
         assert_eq!(stats.n_read_too_short, 2);
@@ -494,8 +577,136 @@ mod tests {
         let r2_path = dir.join("does_not_exist_R2.fastq");
 
         let config = ParserConfig::default();
-        let result = read_fastq_pairs(&r1_path, &r2_path, &config);
+        let result = read_fastq_pairs(&r1_path, &r2_path, &config, None);
         assert!(result.is_err(), "non-existent files should return error");
+    }
+
+    // ── Test 13: max_reads limits the number of pairs processed ──────────
+
+    #[test]
+    fn max_reads_limits_pairs_processed() {
+        let dir = tempdir();
+        let r1_path = dir.join("R1.fastq");
+        let r2_path = dir.join("R2.fastq");
+
+        let seq = make_read_str("ACGTA", "TG", &"N".repeat(20));
+        let qual = qual_str(seq.len());
+
+        write_fastq(
+            &r1_path,
+            &[
+                ("read1", &seq, &qual),
+                ("read2", &seq, &qual),
+                ("read3", &seq, &qual),
+            ],
+        );
+        write_fastq(
+            &r2_path,
+            &[
+                ("read1", &seq, &qual),
+                ("read2", &seq, &qual),
+                ("read3", &seq, &qual),
+            ],
+        );
+
+        let config = ParserConfig::default();
+
+        // With max_reads=2, only 2 of 3 pairs are processed.
+        let (pairs, stats) = read_fastq_pairs(&r1_path, &r2_path, &config, Some(2)).unwrap();
+        assert_eq!(pairs.len(), 2, "expected 2 parsed pairs");
+        assert_eq!(stats.n_processed, 2);
+        assert_eq!(stats.n_passed, 2);
+    }
+
+    // ── Test 14: read_fastq_pairs_from_readers streams batches correctly ──
+
+    #[test]
+    fn streaming_batches_all_pairs_read() {
+        use needletail::parse_fastx_file;
+
+        let dir = tempdir();
+        let r1_path = dir.join("R1.fastq");
+        let r2_path = dir.join("R2.fastq");
+
+        let seq = make_read_str("ACGTA", "TG", &"N".repeat(20));
+        let qual = qual_str(seq.len());
+
+        write_fastq(
+            &r1_path,
+            &[
+                ("r1", &seq, &qual),
+                ("r2", &seq, &qual),
+                ("r3", &seq, &qual),
+                ("r4", &seq, &qual),
+                ("r5", &seq, &qual),
+            ],
+        );
+        write_fastq(
+            &r2_path,
+            &[
+                ("r1", &seq, &qual),
+                ("r2", &seq, &qual),
+                ("r3", &seq, &qual),
+                ("r4", &seq, &qual),
+                ("r5", &seq, &qual),
+            ],
+        );
+
+        let config = ParserConfig::default();
+        let mut r1 = parse_fastx_file(&r1_path).unwrap();
+        let mut r2 = parse_fastx_file(&r2_path).unwrap();
+
+        let mut total_pairs = 0;
+        let mut total_processed = 0;
+        loop {
+            let (batch, stats) = read_fastq_pairs_from_readers(
+                r1.as_mut(),
+                r2.as_mut(),
+                &config,
+                2, // batch size of 2
+            )
+            .unwrap();
+            if batch.is_empty() {
+                break;
+            }
+            total_pairs += batch.len();
+            total_processed += stats.n_processed;
+        }
+
+        assert_eq!(total_pairs, 5, "all 5 pairs should be read across batches");
+        assert_eq!(total_processed, 5, "all 5 should be counted as processed");
+    }
+
+    // ── Test 15: streaming batches with max_reads larger than data ────────
+
+    #[test]
+    fn streaming_batch_larger_than_data() {
+        use needletail::parse_fastx_file;
+
+        let dir = tempdir();
+        let r1_path = dir.join("R1.fastq");
+        let r2_path = dir.join("R2.fastq");
+
+        let seq = make_read_str("ACGTA", "TG", &"N".repeat(20));
+        let qual = qual_str(seq.len());
+
+        write_fastq(&r1_path, &[("r1", &seq, &qual)]);
+        write_fastq(&r2_path, &[("r1", &seq, &qual)]);
+
+        let config = ParserConfig::default();
+        let mut r1 = parse_fastx_file(&r1_path).unwrap();
+        let mut r2 = parse_fastx_file(&r2_path).unwrap();
+
+        // Batch size larger than total records — should read all in one call.
+        let (batch, stats) =
+            read_fastq_pairs_from_readers(r1.as_mut(), r2.as_mut(), &config, 1000).unwrap();
+        assert_eq!(batch.len(), 1);
+        assert_eq!(stats.n_processed, 1);
+
+        // Next call should return empty.
+        let (empty, _) =
+            read_fastq_pairs_from_readers(r1.as_mut(), r2.as_mut(), &config, 1000).unwrap();
+        assert!(empty.is_empty(), "second batch should be empty");
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────

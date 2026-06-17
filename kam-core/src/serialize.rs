@@ -97,12 +97,11 @@ pub fn write_bincode<T: Serialize>(
     let mut writer = BufWriter::new(file);
 
     let header = FileHeader::new(file_type, records.len() as u64);
-    let header_bytes = bincode::serialize(&header)?;
+    let header_bytes = bincode::serde::encode_to_vec(&header, bincode::config::legacy())?;
     writer.write_all(&header_bytes)?;
 
     for record in records {
-        let record_bytes = bincode::serialize(record)?;
-        writer.write_all(&record_bytes)?;
+        bincode::serde::encode_into_std_write(record, &mut writer, bincode::config::legacy())?;
     }
 
     writer.flush()?;
@@ -138,7 +137,7 @@ pub fn read_header(path: &Path) -> Result<FileHeader, Box<dyn std::error::Error>
     let mut buf = Vec::new();
     reader.read_to_end(&mut buf)?;
 
-    let header: FileHeader = bincode::deserialize_from(&mut buf.as_slice())?;
+    let (header, _): (FileHeader, usize) = bincode::serde::decode_from_slice(&buf, bincode::config::legacy())?;
 
     if header.magic != FileHeader::MAGIC {
         return Err(format!(
@@ -184,7 +183,7 @@ pub fn read_bincode<T: for<'de> Deserialize<'de>>(
 
     let mut cursor = std::io::Cursor::new(&buf);
 
-    let header: FileHeader = bincode::deserialize_from(&mut cursor)?;
+    let header: FileHeader = bincode::serde::decode_from_std_read(&mut cursor, bincode::config::legacy())?;
 
     if header.magic != FileHeader::MAGIC {
         return Err(format!(
@@ -197,7 +196,7 @@ pub fn read_bincode<T: for<'de> Deserialize<'de>>(
 
     let mut records = Vec::with_capacity(header.record_count as usize);
     for _ in 0..header.record_count {
-        let record: T = bincode::deserialize_from(&mut cursor)?;
+        let record: T = bincode::serde::decode_from_std_read(&mut cursor, bincode::config::legacy())?;
         records.push(record);
     }
 
